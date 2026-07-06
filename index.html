@@ -43,12 +43,6 @@ header.app-header {
 }
 .app-title { font-size: 20px; font-weight: 700; letter-spacing: 1px; }
 .app-title small { display: block; font-size: 12px; font-weight: 400; color: var(--text-dim); letter-spacing: 0; }
-.badge {
-  font-size: 12px; padding: 4px 10px; border-radius: 20px; white-space: nowrap;
-  border: 1px solid var(--line); color: var(--text-dim); background: var(--card);
-  cursor: pointer;
-}
-.badge.unlocked { color: var(--ok); border-color: var(--ok); cursor: default; }
 .header-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .zoom-controls {
   display: flex; align-items: center; gap: 4px; padding: 4px;
@@ -129,18 +123,7 @@ table.result { width: 100%; border-collapse: collapse; margin: 10px 0; font-size
 table.result th, table.result td { border: 1px solid var(--line); padding: 8px; text-align: center; }
 table.result th { background: var(--card-2); font-weight: 600; }
 
-/* ---- 模块锁定蒙层 ---- */
-.lock-overlay {
-  position: absolute; inset: 0; z-index: 10; border-radius: var(--radius);
-  backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
-  background: rgba(15,21,32,.55);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 12px; text-align: center; padding: 20px;
-}
-.lock-overlay .lock-icon { font-size: 44px; }
-section.module.unlocked .lock-overlay { display: none; }
-
-/* ---- 引导流程（免责声明 → 内测密码）全屏蒙层 ---- */
+/* ---- 使用前提醒全屏蒙层 ---- */
 #gate {
   position: fixed; inset: 0; z-index: 100; background: var(--bg);
   overflow-y: auto; -webkit-overflow-scrolling: touch;
@@ -866,7 +849,7 @@ nav.tabs { display: none; }
 <body>
 
 <!-- ============================================================
-     引导流程蒙层：第一步免责声明 → 第二步内测密码
+     使用前提醒蒙层
      ============================================================ -->
 <div id="gate">
   <div class="gate-inner">
@@ -879,8 +862,8 @@ nav.tabs { display: none; }
         ⚠️ 注意调节音量！<br>注意调节音量！<br>注意调节音量！
       </div>
       <div class="card contact-card">
-        <h2>免费内测 · 限制人数使用</h2>
-        <p class="hint">找我领取免费密码</p>
+        <h2>免费工具 · 欢迎反馈</h2>
+        <p class="hint">有问题可添加微信交流</p>
         <p style="margin:8px 0;">微信：<strong>ErosAUC</strong></p>
         <div class="qr-wrap"><img id="contactQrImg" alt="微信二维码"></div>
       </div>
@@ -897,32 +880,6 @@ nav.tabs { display: none; }
         </label>
       </div>
       <button class="btn primary" id="agreeBtn" disabled style="width:100%;">同意并继续</button>
-    </div>
-
-    <!-- 第 2 步：输入内测密码 -->
-    <div class="step" id="gateStepUnlock">
-      <h1 style="font-size:20px;text-align:center;margin:6px 0 14px;">输入内测密码</h1>
-      <div class="card">
-        <p style="font-size:14px;">
-          这是一个<b>免费内测</b>的听音训练工具，目前限制人数使用。
-          请添加微信 <b>ErosAUC</b> 找我领取免费密码。
-        </p>
-        <div class="qr-wrap"><img id="unlockContactQrImg" alt="微信二维码"></div>
-        <p class="access-line">内测密码格式：<b>ErosIris + 数字</b></p>
-        <p class="hint" style="margin-top:10px;">
-          例如：ErosIris001、ErosIris110505180001。激活状态会保存在当前浏览器中，
-          同一设备无需重复输入。
-        </p>
-      </div>
-      <div class="card">
-        <h2>输入密码</h2>
-        <div class="row" style="margin-top:8px;">
-          <input type="text" id="unlockInput" class="grow" placeholder="请输入内测密码，例如 ErosIris001"
-                 autocomplete="off" autocapitalize="characters">
-          <button class="btn primary" id="unlockBtn">激活进入</button>
-        </div>
-        <p class="hint" id="unlockMsg" style="margin-top:8px;"></p>
-      </div>
     </div>
 
   </div>
@@ -952,7 +909,6 @@ nav.tabs { display: none; }
         <button class="btn ghost small" id="pageZoomIn" type="button" title="放大页面">+</button>
         <button class="btn ghost small" id="pageZoomReset" type="button" title="恢复 100%">1:1</button>
       </div>
-      <span class="badge" id="lockBadge">🔐 未激活</span>
     </div>
   </header>
 
@@ -964,12 +920,6 @@ nav.tabs { display: none; }
 
   <!-- ================= 模块一：频率发声器 ================= -->
   <section class="module" id="module-tone">
-    <div class="lock-overlay">
-      <div class="lock-icon">🔒</div>
-      <p>请输入内测密码后即可使用全部训练功能</p>
-      <button class="btn primary unlock-jump">输入密码</button>
-    </div>
-
     <div class="card">
       <h2>频率发声器 · 听力 / 设备自测</h2>
       <p class="notice">
@@ -1012,12 +962,6 @@ nav.tabs { display: none; }
 
   <!-- ================= 模块二：EQ 训练 ================= -->
   <section class="module active" id="module-eq">
-    <div class="lock-overlay">
-      <div class="lock-icon">🔒</div>
-      <p>请输入内测密码后即可使用全部训练功能</p>
-      <button class="btn primary unlock-jump">输入密码</button>
-    </div>
-
     <div id="mxSimple">
       <div class="mx-hero">
         <div class="mx-topbar">
@@ -1093,12 +1037,6 @@ nav.tabs { display: none; }
 
   <!-- ================= 模块三：左右耳听力平衡测试 ================= -->
   <section class="module" id="module-lr">
-    <div class="lock-overlay">
-      <div class="lock-icon">🔒</div>
-      <p>请输入内测密码后即可使用全部训练功能</p>
-      <button class="btn primary unlock-jump">输入密码</button>
-    </div>
-
     <div class="card">
       <h2>左右耳听力平衡测试</h2>
       <p class="notice">
@@ -1170,20 +1108,13 @@ nav.tabs { display: none; }
    ①【可配置区】—— 日常维护只需要改这里
    ============================================================ */
 
-// 免费内测密码规则：ErosIris + 任意数字，例如 ErosIris001
-const ACCESS_CODE_RE = /^ErosIris\d+$/;
-
-// 内测密码门开关：true = 首次使用需输入内测密码
-const ACCESS_GATE_ENABLED = true;
-
 const APP_CONFIG = {
   WECHAT_ID: 'ErosAUC',
   CONTACT_QR_URL: 'assets/微信好友码.jpg',
   TIP_QR_URL: 'assets/赞赏码.png',
 
-  // localStorage 键名（改了会导致老用户激活状态失效，一般不要动）
+  // localStorage 键名
   LS_DISCLAIMER: 'earTrainer.disclaimerAccepted.v1',
-  LS_UNLOCKED:   'earTrainer.unlocked.v1',
   LS_PAGE_ZOOM:  'earTrainer.pageZoom.v1',
 };
 
@@ -1297,9 +1228,9 @@ const AudioEngine = {
 
 // 移动端兜底：首次任意触摸/点击时唤醒 AudioContext，避免"点了没声音"
 ['touchend', 'pointerdown'].forEach(evt => {
-  document.addEventListener(evt, function unlockOnce() {
+  document.addEventListener(evt, function resumeOnce() {
     try { AudioEngine.ensure(); } catch (e) { /* 忽略 */ }
-    document.removeEventListener(evt, unlockOnce);
+    document.removeEventListener(evt, resumeOnce);
   }, { once: true, passive: true });
 });
 
@@ -1358,85 +1289,28 @@ const PageZoom = {
 };
 
 /* ============================================================
-   ④【内测密码 & 引导流程层】Gate
-   流程：免责声明 → 内测密码 → 主界面
+   ④【使用前提醒层】Gate
+   流程：免责声明 → 主界面
    ============================================================ */
 const Gate = {
-  // 内测密码门关闭时视为人人已激活
-  unlocked: !ACCESS_GATE_ENABLED || lsGet(APP_CONFIG.LS_UNLOCKED) === 'yes',
+  ready: true,
 
   async init() {
     $('#contactQrImg').src = APP_CONFIG.CONTACT_QR_URL;
-    $('#unlockContactQrImg').src = APP_CONFIG.CONTACT_QR_URL;
     $('#tipQrImg').src = APP_CONFIG.TIP_QR_URL;
 
     // 免责声明勾选
     $('#agreeCheck').addEventListener('change', e => { $('#agreeBtn').disabled = !e.target.checked; });
     $('#agreeBtn').addEventListener('click', () => {
       lsSet(APP_CONFIG.LS_DISCLAIMER, 'yes');
-      if (this.unlocked) this.enterApp();
-      else this.showStep('gateStepUnlock');
+      this.enterApp();
     });
 
-    // 内测密码验证
-    const tryUnlock = () => {
-      const code = $('#unlockInput').value.trim();
-      if (ACCESS_CODE_RE.test(code)) {
-        lsSet(APP_CONFIG.LS_UNLOCKED, 'yes');
-        this.unlocked = true;
-        $('#unlockMsg').textContent = '✅ 激活成功！欢迎使用～';
-        $('#unlockMsg').style.color = 'var(--ok)';
-        setTimeout(() => this.enterApp(), 500);
-      } else {
-        $('#unlockMsg').textContent = '❌ 密码格式不正确，请输入 ErosIris + 数字。';
-        $('#unlockMsg').style.color = 'var(--danger)';
-      }
-    };
-    $('#unlockBtn').addEventListener('click', tryUnlock);
-    $('#unlockInput').addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
-
-    // 各锁定蒙层里的"输入密码"按钮 & 顶部徽章
-    $$('.unlock-jump').forEach(b => b.addEventListener('click', () => this.reopenUnlock()));
-    $('#lockBadge').addEventListener('click', () => { if (!this.unlocked) this.reopenUnlock(); });
-
-    // 决定初始展示哪一步
-    if (lsGet(APP_CONFIG.LS_DISCLAIMER) === 'yes') {
-      if (this.unlocked) this.enterApp();
-      else this.showStep('gateStepUnlock');
-    } // 否则停留在免责声明步骤
-  },
-
-  showStep(id) {
-    $$('#gate .step').forEach(s => s.classList.remove('active'));
-    $('#' + id).classList.add('active');
-    $('#gate').style.display = 'block';
-    $('#gate').scrollTop = 0;
-  },
-
-  reopenUnlock() {
-    if (!ACCESS_GATE_ENABLED) return; // 密码门关闭时没有激活页可去
-    this.showStep('gateStepUnlock');
+    if (lsGet(APP_CONFIG.LS_DISCLAIMER) === 'yes') this.enterApp();
   },
 
   enterApp() {
     $('#gate').style.display = 'none';
-    this.applyLockState();
-  },
-
-  /** 根据激活状态刷新界面：蒙层显隐 + 徽章 */
-  applyLockState() {
-    $$('section.module').forEach(sec => sec.classList.toggle('unlocked', this.unlocked));
-    const badge = $('#lockBadge');
-    if (!ACCESS_GATE_ENABLED) {
-      badge.style.display = 'none';
-      return;
-    }
-    if (this.unlocked) {
-      badge.textContent = '✅ 已激活';
-      badge.classList.add('unlocked');
-    } else {
-      badge.textContent = '🔐 未激活 · 点此输入内测密码';
-    }
   },
 };
 
@@ -1492,7 +1366,7 @@ const ToneModule = (() => {
   }
 
   function start() {
-    if (!Gate.unlocked) return;
+    if (!Gate.ready) return;
     const ctx = AudioEngine.ensure();
     gain = ctx.createGain();
     gain.gain.value = 0;
@@ -2275,7 +2149,7 @@ const MxEqModule = (() => {
   }
 
   async function togglePlay() {
-    if (!Gate.unlocked) return;
+    if (!Gate.ready) return;
     if (loadingPlayback) return;
     if (playing) { pause(); return; }
     if (!$('#mxSafety').checked) {
@@ -3356,7 +3230,7 @@ const LrModule = (() => {
 
   /** 播放一轮：第一声只在左耳、第二声只在右耳；louder 侧为基准音量，另一侧衰减 diffDb */
   function playTrial() {
-    if (!Gate.unlocked || busy) return;
+    if (!Gate.ready || busy) return;
     busy = true;
     const ctx = AudioEngine.ensure();
     const diffDb = DIFF_STEPS[si];
@@ -3377,7 +3251,7 @@ const LrModule = (() => {
   }
 
   function startTest() {
-    if (!Gate.unlocked) return;
+    if (!Gate.ready) return;
     fi = 0; si = 0; results = [];
     trialCount = 0; correctCount = 0;
     nextTrial(true);
@@ -3499,10 +3373,9 @@ if (window.location.protocol === 'file:') {
      - 噪声门训练 GateModule     （猜门限动作）
    接入步骤：
      1. 在 <nav class="tabs"> 里加一个 <button data-tab="xxx">
-     2. 新建 <section class="module" id="module-xxx">，
-        内部放一份 .lock-overlay（复制现有模块的即可，自动受激活控制）
-     3. 仿照 MxEqModule 写一个 IIFE 模块：音频链自建、
-        把停止函数 push 进 StopRegistry、播放前检查 Gate.unlocked
+     2. 新建 <section class="module" id="module-xxx">。
+     3. 仿照 MxEqModule 写一个 IIFE 模块：音频链自建，
+        把停止函数 push 进 StopRegistry，播放前检查 Gate.ready。
    ============================================================ */
 </script>
 </body>
