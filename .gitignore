@@ -1,0 +1,11 @@
+.DS_Store
+Thumbs.db
+desktop.ini
+__MACOSX/
+__pycache__/
+*.py[cod]
+
+dist/
+*.log
+
+node_modules/

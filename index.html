@@ -1,0 +1,3292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>耳朵训练室 · 听音练耳工具</title>
+<style>
+/* ============================================================
+   样式层
+   设计基调：深色调音台风格，移动端优先的响应式布局
+   ============================================================ */
+:root {
+  --bg: #0f1520;
+  --card: #1a2332;
+  --card-2: #223047;
+  --line: #2e3f5c;
+  --text: #e8eef7;
+  --text-dim: #93a4bd;
+  --accent: #38bdf8;
+  --accent-dim: #0e7490;
+  --warn: #fbbf24;
+  --danger: #f87171;
+  --ok: #4ade80;
+  --radius: 14px;
+  --touch: 44px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  line-height: 1.6;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.container { max-width: 780px; margin: 0 auto; padding: 12px 14px 60px; }
+
+/* ---- 头部 ---- */
+header.app-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; padding: 14px 2px 10px;
+}
+.app-title { font-size: 20px; font-weight: 700; letter-spacing: 1px; }
+.app-title small { display: block; font-size: 12px; font-weight: 400; color: var(--text-dim); letter-spacing: 0; }
+.badge {
+  font-size: 12px; padding: 4px 10px; border-radius: 20px; white-space: nowrap;
+  border: 1px solid var(--line); color: var(--text-dim); background: var(--card);
+  cursor: pointer;
+}
+.badge.unlocked { color: var(--ok); border-color: var(--ok); cursor: default; }
+.header-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.zoom-controls {
+  display: flex; align-items: center; gap: 4px; padding: 4px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+}
+.zoom-controls button.btn.small {
+  min-height: 30px; padding: 4px 9px; border-radius: 7px; font-size: 12px;
+}
+.zoom-controls span {
+  min-width: 42px; text-align: center; color: var(--text-dim);
+  font-size: 12px; font-variant-numeric: tabular-nums;
+}
+
+/* ---- 标签页导航 ---- */
+nav.tabs {
+  display: flex; gap: 8px; position: sticky; top: 0; z-index: 20;
+  background: var(--bg); padding: 8px 0 10px; overflow-x: auto;
+}
+nav.tabs button {
+  flex: 1; min-width: 100px; padding: 10px 8px; font-size: 14px;
+  background: var(--card); color: var(--text-dim);
+  border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
+}
+nav.tabs button.active { background: var(--accent-dim); color: #fff; border-color: var(--accent); }
+
+/* ---- 卡片与通用元素 ---- */
+section.module { position: relative; display: none; }
+section.module.active { display: block; }
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
+}
+.card h2 { font-size: 17px; margin-bottom: 8px; }
+.card h3 { font-size: 14px; color: var(--accent); margin: 12px 0 4px; }
+.hint { font-size: 13px; color: var(--text-dim); }
+.notice {
+  font-size: 13px; color: var(--warn); background: rgba(251,191,36,.08);
+  border: 1px solid rgba(251,191,36,.3); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px;
+}
+button.btn {
+  min-height: var(--touch); padding: 12px 20px; font-size: 15px; border-radius: 10px; border: none;
+  background: var(--accent-dim); color: #fff; cursor: pointer; touch-action: manipulation;
+}
+button.btn:disabled { opacity: .4; cursor: not-allowed; }
+button.btn.primary { background: var(--accent); color: #06283a; font-weight: 700; }
+button.btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+button.btn.small { padding: 8px 14px; font-size: 13px; }
+button.btn.playing { background: var(--danger); color: #fff; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.grow { flex: 1; }
+input[type=range] { width: 100%; accent-color: var(--accent); height: 32px; }
+input[type=number], input[type=text], select {
+  background: var(--card-2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px 12px; font-size: 16px; width: 100%;
+}
+label.check { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; cursor: pointer; }
+label.check input { width: 18px; height: 18px; margin-top: 3px; accent-color: var(--accent); flex: none; }
+.safety-line {
+  display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--warn);
+  background: rgba(251,191,36,.07); border-radius: 8px; padding: 8px 10px; margin: 10px 0;
+}
+.safety-line input { width: 16px; height: 16px; accent-color: var(--warn); flex: none; }
+.big-value { font-size: 30px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+canvas { display: block; width: 100%; border-radius: 10px; background: #101827; touch-action: none; }
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+.stat-grid > div { background: var(--card-2); border-radius: 8px; padding: 8px 4px; text-align: center; }
+.stat-grid b { display: block; font-size: 18px; color: var(--accent); }
+.stat-grid span { font-size: 11px; color: var(--text-dim); }
+table.result { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+table.result th, table.result td { border: 1px solid var(--line); padding: 8px; text-align: center; }
+table.result th { background: var(--card-2); font-weight: 600; }
+
+/* ---- 模块锁定蒙层 ---- */
+.lock-overlay {
+  position: absolute; inset: 0; z-index: 10; border-radius: var(--radius);
+  backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+  background: rgba(15,21,32,.55);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; text-align: center; padding: 20px;
+}
+.lock-overlay .lock-icon { font-size: 44px; }
+section.module.unlocked .lock-overlay { display: none; }
+
+/* ---- 引导流程（免责声明 → 解锁）全屏蒙层 ---- */
+#gate {
+  position: fixed; inset: 0; z-index: 100; background: var(--bg);
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+#gate .gate-inner { max-width: 560px; margin: 0 auto; padding: 30px 18px 60px; }
+#gate .step { display: none; }
+#gate .step.active { display: block; }
+.volume-warning {
+  font-size: 21px; font-weight: 800; color: var(--danger); text-align: center;
+  line-height: 1.8; margin: 18px 0; letter-spacing: 1px;
+}
+.disclaim-list { font-size: 14px; color: var(--text); padding-left: 20px; margin: 14px 0; }
+.disclaim-list li { margin-bottom: 10px; }
+.qr-wrap { text-align: center; margin: 14px 0; }
+.qr-wrap img { width: 210px; max-width: 70%; border-radius: 12px; border: 1px solid var(--line); }
+.price-line { text-align: center; font-size: 17px; margin: 8px 0; }
+.price-line b { color: var(--warn); font-size: 24px; }
+
+/* ---- EQ 工具通用控件 ---- */
+.band-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.band-chips button {
+  flex: 1 0 17%; min-width: 62px; min-height: var(--touch); padding: 9px 4px; font-size: 13px; border-radius: 8px;
+  background: var(--card-2); color: var(--text); border: 1px solid var(--line); cursor: pointer;
+}
+.band-chips button.sel { background: var(--accent); color: #06283a; font-weight: 700; border-color: var(--accent); }
+.band-chips button.off { opacity: .56; }
+/* 已启用但当前未选中的滤波器：保持醒目（绿色描边 + 圆点），表示"仍在作用中" */
+.band-chips button.on {
+  border-color: var(--ok);
+  color: var(--ok);
+  background: rgba(74,222,128,.12);
+  font-weight: 700;
+  opacity: 1;
+}
+.band-chips button.on::after { content: ' ●'; font-size: 9px; vertical-align: 2px; }
+.dir-chips button.sel { background: var(--warn); border-color: var(--warn); }
+.freq-picks {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px;
+}
+.freq-picks label {
+  display: flex; align-items: center; gap: 6px; min-height: 36px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card-2);
+  padding: 7px 8px; font-size: 13px; cursor: pointer;
+}
+.freq-picks input { width: 16px; height: 16px; accent-color: var(--accent); flex: none; }
+.track-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.track-card {
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+  background: #172236; min-width: 0;
+}
+.track-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.track-head b { color: var(--accent); }
+.track-card label.check { font-size: 13px; }
+.track-card .mini { display: grid; grid-template-columns: 74px 1fr 46px; gap: 8px; align-items: center; margin-top: 6px; }
+.track-card .mini span { font-size: 12px; color: var(--text-dim); }
+.track-card .mini output { font-size: 12px; color: var(--text); text-align: right; }
+.track-card .advanced { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.08); }
+.track-card select { font-size: 13px; padding: 7px 8px; }
+.eq-split { display: grid; grid-template-columns: 1.2fr .8fr; gap: 10px; align-items: stretch; }
+.band-info {
+  border: 1px solid #314766; border-radius: 8px; padding: 12px;
+  background: #172236; min-height: 100%;
+}
+.band-info h3 { margin-top: 0; }
+.band-info p { font-size: 14px; margin-top: 6px; }
+.quiz-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
+.answer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.answer-grid button { min-height: 42px; }
+.meter-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.meter {
+  height: 8px; flex: 1; border-radius: 99px; overflow: hidden;
+  background: #111b2b; border: 1px solid var(--line);
+}
+.meter > span { display: block; width: 0%; height: 100%; background: linear-gradient(90deg,#38bdf8,#4ade80); }
+#module-eq.active { display: flex; flex-direction: column; }
+#mxGraphCard { order: 1; }
+#mxTransportCard { order: 2; }
+#mxTracksCard { order: 3; }
+#mxGuidePanel { order: 4; }
+#mxQuizPanel { order: 5; }
+#mxFreePanel { order: 6; }
+/* "正在听什么"大状态条 */
+.hear-pill {
+  text-align: center; font-size: 16px; font-weight: 700;
+  padding: 10px 12px; border-radius: 10px; margin: 8px 0 10px;
+  background: var(--card-2); border: 1px solid var(--line); color: var(--text-dim);
+}
+.hear-pill.flat { background: rgba(56,189,248,.14); border-color: #38bdf8; color: #7dd3fc; }
+.hear-pill.proc { background: rgba(251,146,60,.16); border-color: #fb923c; color: #fdba74; }
+.hear-pill.ans  { background: rgba(74,222,128,.14); border-color: #4ade80; color: #86efac; }
+.hear-pill.user { background: rgba(251,191,36,.14); border-color: #fbbf24; color: #fde68a; }
+.hear-pill.cut  { background: rgba(167,139,250,.14); border-color: #a78bfa; color: #c4b5fd; }
+.feedback-box { border-radius: 10px; padding: 12px; margin-top: 10px; font-size: 14px; display: none; }
+.feedback-box.show { display: block; }
+.feedback-box.good { background: rgba(74,222,128,.1); border: 1px solid rgba(74,222,128,.4); }
+.feedback-box.bad { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.4); }
+
+/* ---- 极简 EQ 单屏 ---- */
+nav.tabs { display: none; }
+.container {
+  max-width: none;
+  padding: 8px 10px 40px;
+}
+#mxSimple {
+  display: grid;
+  gap: 10px;
+}
+.mx-hero {
+  min-height: calc(100vh - 104px);
+  display: grid;
+  grid-template-rows: auto minmax(420px, 1fr);
+  gap: 8px;
+}
+.mx-topbar {
+  display: grid;
+  grid-template-columns: minmax(150px, 200px) minmax(110px, 150px) auto minmax(170px, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+#mxPlayBtn,
+#mxEqToggleBtn { width: 100%; }
+.mx-safety {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(251,191,36,.07);
+}
+.mx-topbar .hear-pill {
+  margin: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#mxCanvas {
+  height: min(74vh, 720px);
+  min-height: 440px;
+  border-radius: 8px;
+}
+.mx-eq-controls,
+.mx-batch-import,
+.mx-mini-mixer,
+.mx-tips,
+.mx-directivity-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 10px;
+}
+.mx-control-line {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+.mx-control-line b {
+  color: var(--accent);
+  font-size: 18px;
+}
+.mx-control-line span {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+#mxGainLabel {
+  color: var(--warn);
+  font-size: 18px;
+  font-weight: 800;
+  text-align: right;
+}
+.mx-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr minmax(260px, 1.4fr);
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.mx-db { margin: 0; }
+.mx-filter-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 10px 0 8px;
+}
+.mx-filter-tabs button {
+  min-width: 0;
+}
+.mx-bell-tabs {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0 0 8px;
+}
+.mx-bell-tabs button {
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 4px;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.mx-bell-tabs button.add {
+  border-style: dashed;
+}
+.mx-batch-import {
+  display: grid;
+  grid-template-columns: auto auto minmax(180px, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+.mx-batch-import select {
+  min-width: 0;
+  height: 38px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.mx-batch-import .mx-batch-status {
+  grid-column: 1 / -1;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.35;
+  min-height: 16px;
+}
+.mx-mini-mixer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
+  padding: 8px;
+}
+.mx-mini-track {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #172236;
+  padding: 8px;
+}
+.mx-mini-track label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.mx-track-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.mx-track-ctl { display: flex; align-items: center; gap: 6px; }
+.mx-solo {
+  width: 26px; height: 22px; line-height: 1; font-size: 12px; font-weight: 700;
+  border-radius: 6px; border: 1px solid var(--line); background: var(--card-2);
+  color: var(--text-dim); cursor: pointer; padding: 0;
+}
+.mx-solo.on { background: #fbbf24; border-color: #fbbf24; color: #3b2b00; }
+.mx-mini-track input[type=checkbox] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.mx-mini-track .mini {
+  display: grid;
+  grid-template-columns: 1fr 38px;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+.mx-mini-track output {
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: right;
+}
+.mx-track-import {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+.mx-track-import .btn.small {
+  min-height: 32px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.mx-track-import input[type=text] {
+  min-width: 0;
+  height: 32px;
+  padding: 5px 7px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.mx-track-select-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  margin-top: 6px;
+}
+.mx-track-select-row select {
+  min-width: 0;
+  height: 32px;
+  padding: 5px 7px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.mx-track-select-row .btn.small {
+  min-height: 32px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.mx-generator-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(76px, .7fr) auto;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+.mx-generator-controls select,
+.mx-generator-controls input[type=number] {
+  min-width: 0;
+  height: 32px;
+  padding: 5px 7px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.mx-generator-controls span {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.mx-generator-slider {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 44px;
+  gap: 6px;
+  align-items: center;
+}
+.mx-generator-slider input[type=range] {
+  height: 28px;
+}
+.mx-generator-slider span {
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: center;
+}
+.mx-track-status {
+  margin-top: 6px;
+  min-height: 17px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mx-track-status[data-state="ok"] { color: var(--ok); }
+.mx-track-status[data-state="warn"] { color: var(--warn); }
+.mx-track-status[data-state="bad"] { color: var(--danger); }
+.mx-track-status[data-state="loading"] { color: var(--accent); }
+.mx-tips h2 {
+  font-size: 15px;
+  margin-bottom: 4px;
+  color: var(--accent);
+}
+.mx-tips p {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+#mxDirectivityCanvas {
+  height: 190px;
+  min-height: 160px;
+  border-radius: 8px;
+}
+
+/* ---- 左右耳测试大按钮 ---- */
+.lr-answer { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 12px; }
+.lr-answer button { padding: 18px 6px; font-size: 16px; }
+
+@media (max-width: 700px) {
+  .container {
+    max-width: 100%;
+    padding: 8px max(10px, env(safe-area-inset-left)) calc(72px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-right));
+  }
+  header.app-header { align-items: flex-start; padding: 8px 0 6px; }
+  .app-title { font-size: 18px; line-height: 1.25; letter-spacing: 0; }
+  .app-title small { margin-top: 2px; font-size: 11px; }
+  .header-tools { gap: 6px; }
+  .badge { padding: 6px 9px; font-size: 11px; }
+  .zoom-controls { padding: 3px; gap: 3px; }
+  .zoom-controls button.btn.small { min-height: 32px; padding: 4px 8px; }
+  .zoom-controls span { min-width: 38px; font-size: 11px; }
+  nav.tabs {
+    margin: 0 -10px 8px;
+    padding: 6px 10px 8px;
+    gap: 6px;
+    scrollbar-width: none;
+  }
+  nav.tabs::-webkit-scrollbar { display: none; }
+  nav.tabs button {
+    min-width: 0;
+    min-height: 42px;
+    padding: 9px 4px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .card {
+    padding: 12px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+  }
+  .card h2 { font-size: 16px; }
+  .card h3 { font-size: 13px; }
+  .hint { font-size: 12.5px; }
+  .row { gap: 8px; }
+  .grow { min-width: 0; }
+  button.btn { min-height: 46px; padding: 11px 12px; border-radius: 9px; }
+  button.btn.small { min-height: 42px; padding: 9px 10px; }
+  .band-chips {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .band-chips button {
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px 4px;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+  #mxGraphCard { padding: 10px; }
+  #mxGraphCard .eq-split {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  #mxGraphCard canvas {
+    height: 238px;
+    border-radius: 8px;
+  }
+  #mxFilterType {
+    flex-basis: 100%;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 4px !important;
+  }
+  #mxFilterType button:first-child { grid-column: span 2; }
+  #mxFilterFreq,
+  #mxFilterGain {
+    flex: 1 1 calc(100% - 88px);
+    min-width: 0;
+  }
+  #mxFilterFreqLabel,
+  #mxFilterGainLabel {
+    width: 54px !important;
+  }
+  #mxAuditionBtn {
+    flex: 1 1 100%;
+    width: 100%;
+    margin-top: 2px;
+  }
+  #mxBandChips {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  #mxBandChips button {
+    min-height: 48px;
+  }
+  .band-info {
+    padding: 10px;
+    border-radius: 8px;
+  }
+  .band-info p { font-size: 13px; }
+  #mxMode { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #mxLevel { grid-template-columns: 1fr; }
+  #mxDbSteps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  #mxPlayBtn {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+  #mxStopBtn,
+  #mxBypassBtn,
+  #mxPinkBtn {
+    flex: 1 1 calc(33.333% - 6px);
+    min-width: 0;
+    padding-left: 4px;
+    padding-right: 4px;
+    font-size: 13px;
+  }
+  #mxUploadMusicBtn,
+  #mxUploadStemsBtn {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  #mxTracksCard .row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  #mxTracksCard .row .btn {
+    width: 100%;
+    min-width: 0;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .track-grid,
+  #mxTrackControls {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .track-card { padding: 9px; border-radius: 8px; }
+  .track-head { align-items: flex-start; }
+  .track-card .mini {
+    grid-template-columns: 62px minmax(0, 1fr) 42px;
+    gap: 6px;
+  }
+  .freq-picks {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .freq-picks label {
+    min-height: 42px;
+    padding: 7px 6px;
+    font-size: 12px;
+  }
+  .quiz-actions,
+  .answer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .answer-grid button { min-height: 44px; padding-left: 4px; padding-right: 4px; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .app-title { font-size: 17px; }
+  .freq-picks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #mxBandChips { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .answer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .quiz-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lr-answer { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 360px) {
+  .container { padding-left: 8px; padding-right: 8px; }
+  nav.tabs { margin-left: -8px; margin-right: -8px; padding-left: 8px; padding-right: 8px; }
+  .card { padding: 10px; }
+  #mxMode,
+  #mxDbSteps,
+  #mxBandChips,
+  .answer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  #mxTracksCard .row,
+  .quiz-actions {
+    grid-template-columns: 1fr;
+  }
+  #mxStopBtn,
+  #mxBypassBtn,
+  #mxPinkBtn,
+  #mxUploadMusicBtn,
+  #mxUploadStemsBtn {
+    flex-basis: 100%;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     引导流程蒙层：第一步免责声明 → 第二步付费解锁
+     ============================================================ -->
+<div id="gate">
+  <div class="gate-inner">
+
+    <!-- 第 1 步：免责声明（所有人首次打开必读） -->
+    <div class="step active" id="gateStepDisclaimer">
+      <h1 style="font-size:22px;text-align:center;margin-bottom:6px;">🎧 耳朵训练室</h1>
+      <p class="hint" style="text-align:center;">歌手 · 乐手 · 调音师的听觉训练工具</p>
+      <div class="volume-warning">
+        ⚠️ 注意调节音量！<br>注意调节音量！<br>注意调节音量！
+      </div>
+      <div class="card">
+        <h2>使用前请务必阅读</h2>
+        <ul class="disclaim-list">
+          <li><b>请先把设备音量调至较低水平</b>，测试过程中再逐步调高。强烈建议<b>双耳正确佩戴耳机</b>进行全部测试。</li>
+          <li>本工具仅供个人听音训练及设备、听力的<b>自测参考</b>，不构成任何医疗诊断依据。若对自身听力状况有疑虑，请咨询专业医师。</li>
+          <li>因使用不当（音量过大、耳机佩戴不当、长时间高音量聆听等）导致的听力不适或损伤，责任由使用者自行承担，本工具不承担相关责任。</li>
+        </ul>
+        <label class="check">
+          <input type="checkbox" id="agreeCheck">
+          <span>我已阅读并知晓上述风险，自愿继续使用</span>
+        </label>
+      </div>
+      <button class="btn primary" id="agreeBtn" disabled style="width:100%;">同意并继续</button>
+    </div>
+
+    <!-- 第 2 步：付费解锁 / 输入解锁码 -->
+    <div class="step" id="gateStepUnlock">
+      <h1 style="font-size:20px;text-align:center;margin:6px 0 14px;">解锁全部功能</h1>
+      <div class="card">
+        <p style="font-size:14px;">
+          你好！这是一个<b>个人开发的小工具</b>，不是商业公司产品。
+          价格为<b>一次性买断</b>，付一次即可永久使用，没有订阅、没有内购。
+        </p>
+        <div class="qr-wrap"><img id="qrImg" alt="收款二维码"></div>
+        <p class="price-line" id="priceLine">买断价：<b>--</b> 元，永久解锁全部功能</p>
+        <p class="hint" id="contactLine" style="text-align:center;"></p>
+        <p class="hint" style="margin-top:10px;">
+          小提示：由于这是纯网页工具，无法自动确认到账，解锁码需要<b>人工发放</b>，
+          可能要等一小会儿，请耐心～ 收到解锁码后在下方输入即可。
+          解锁状态保存在当前浏览器中，同一设备无需重复输入。
+        </p>
+      </div>
+      <div class="card">
+        <h2>输入解锁码</h2>
+        <div class="row" style="margin-top:8px;">
+          <input type="text" id="unlockInput" class="grow" placeholder="请输入解锁码"
+                 autocomplete="off" autocapitalize="characters">
+          <button class="btn primary" id="unlockBtn">解锁</button>
+        </div>
+        <p class="hint" id="unlockMsg" style="margin-top:8px;"></p>
+      </div>
+      <button class="btn ghost" id="previewBtn" style="width:100%;">先逛逛（功能预览模式）</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================
+     主界面
+     ============================================================ -->
+<div class="container">
+  <header class="app-header">
+    <div class="app-title">🎧 耳朵训练室<small>EQ 频段提升 / 衰减训练</small></div>
+    <div class="header-tools">
+      <div class="zoom-controls" aria-label="页面缩放">
+        <button class="btn ghost small" id="pageZoomOut" type="button" title="缩小页面">-</button>
+        <span id="pageZoomLabel">100%</span>
+        <button class="btn ghost small" id="pageZoomIn" type="button" title="放大页面">+</button>
+        <button class="btn ghost small" id="pageZoomReset" type="button" title="恢复 100%">1:1</button>
+      </div>
+      <span class="badge" id="lockBadge">🔒 未解锁</span>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="eq" class="active">EQ 训练器</button>
+    <button data-tab="tone">频率发声器</button>
+    <button data-tab="lr">左右耳平衡</button>
+  </nav>
+
+  <!-- ================= 模块一：频率发声器 ================= -->
+  <section class="module" id="module-tone">
+    <div class="lock-overlay">
+      <div class="lock-icon">🔒</div>
+      <p>付费解锁后即可使用全部训练功能</p>
+      <button class="btn primary unlock-jump">去解锁</button>
+    </div>
+
+    <div class="card">
+      <h2>频率发声器 · 听力 / 设备自测</h2>
+      <p class="notice">
+        如果你听不到某个频率：可能是设备（耳机 / 音箱）频响范围的限制，
+        也可能是个人听力的自然衰减（尤其是高频），这是常见现象，
+        不代表设备损坏或听力异常。建议更换设备交叉验证。
+      </p>
+      <div style="text-align:center;margin:6px 0 2px;">
+        <span class="big-value" id="toneFreqDisplay">440</span>
+        <span style="color:var(--text-dim);">Hz</span>
+      </div>
+      <canvas id="toneWave" height="90"></canvas>
+      <input type="range" id="toneSlider" min="0" max="1000" step="1" aria-label="频率滑块">
+      <div class="row">
+        <input type="number" id="toneInput" min="20" max="20000" step="1" value="440"
+               class="grow" inputmode="numeric" aria-label="频率数值">
+        <span class="hint">Hz（20 - 20000）</span>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <span class="hint" style="flex:none;">音量</span>
+        <input type="range" id="toneVolume" min="0" max="100" value="30" class="grow" aria-label="音量">
+        <span class="hint" id="toneVolLabel" style="flex:none;width:42px;text-align:right;">30%</span>
+      </div>
+      <p class="hint">建议从低音量开始，逐步调高。极低 / 极高频率下请格外小心音量。</p>
+      <div class="safety-line">
+        <input type="checkbox" id="toneSafety">
+        <span>我已将音量调低，知晓大音量与极端频率可能刺耳 / 伤听力</span>
+      </div>
+      <button class="btn primary" id="tonePlayBtn" disabled style="width:100%;">▶ 播放</button>
+    </div>
+
+    <div class="card" id="toneKnowledge">
+      <h2 id="tkTitle">频段小知识</h2>
+      <p class="hint" id="tkRange"></p>
+      <h3>📡 传播 / 指向性特点</h3><p id="tkProp" style="font-size:14px;"></p>
+      <h3>🎚️ 调音 / 演出实战贴士</h3><p id="tkTip" style="font-size:14px;"></p>
+      <h3>👂 人耳生理小知识</h3><p id="tkEar" style="font-size:14px;"></p>
+    </div>
+  </section>
+
+  <!-- ================= 模块二：EQ 训练 ================= -->
+  <section class="module active" id="module-eq">
+    <div class="lock-overlay">
+      <div class="lock-icon">🔒</div>
+      <p>付费解锁后即可使用全部训练功能</p>
+      <button class="btn primary unlock-jump">去解锁</button>
+    </div>
+
+    <div id="mxSimple">
+      <div class="mx-hero">
+        <div class="mx-topbar">
+          <button class="btn primary" id="mxPlayBtn">播放 / 暂停</button>
+          <button class="btn ghost" id="mxEqToggleBtn">EQ 取消</button>
+          <div class="mx-safety">
+            <label class="check"><input type="checkbox" id="mxSafety"><span>我已调低音量到合适位置</span></label>
+          </div>
+          <div class="hear-pill" id="mxNowHearing">未播放</div>
+        </div>
+        <canvas id="mxCanvas" height="620"></canvas>
+        <div class="mx-tips">
+          <h2>Tips</h2>
+          <p id="mxBandRole"></p>
+          <p id="mxBandPhysics"></p>
+          <p id="mxBandUse"></p>
+        </div>
+      </div>
+
+      <div class="mx-eq-controls">
+        <div class="mx-control-line">
+          <b id="mxBandTitle">105Hz</b>
+          <span id="mxBandTone">拖动图上的控制点；或点击滤波器 / 频段选项卡。</span>
+          <span id="mxGainLabel">0dB</span>
+        </div>
+        <div class="band-chips mx-filter-tabs" id="mxFilterTabs">
+          <button data-filter="highpass">低切</button>
+          <button data-filter="lowshelf">低搁架</button>
+          <button data-filter="bell" class="sel">钟型</button>
+          <button data-filter="highshelf">高搁架</button>
+          <button data-filter="lowpass">高切</button>
+        </div>
+        <div class="mx-bell-tabs" id="mxBellTabs"></div>
+        <div class="row" id="mxBellQRow" style="margin:6px 0 2px;">
+          <span class="hint" style="flex:none;">Q 值</span>
+          <input type="range" id="mxBellQ" min="0" max="100" step="1" class="grow" aria-label="钟型 Q 值">
+          <span class="hint" id="mxBellQLabel" style="flex:none;width:52px;text-align:right;">Q 1.9</span>
+        </div>
+        <div class="band-chips" id="mxBandChips"></div>
+      </div>
+
+      <div class="mx-batch-import">
+        <button class="btn ghost small" id="mxBatchScan" type="button">扫描端口文件夹</button>
+        <button class="btn ghost small" id="mxBatchPickFolder" type="button">选择本地文件夹</button>
+        <input id="mxBatchFolderInput" type="file" webkitdirectory directory multiple hidden>
+        <select id="mxBatchSongSelect" aria-label="批量换歌选择">
+          <option value="">未扫描</option>
+        </select>
+        <button class="btn primary small" id="mxBatchLoad" type="button">一键替换</button>
+        <button class="btn ghost small" id="mxBatchNext" type="button">下一个</button>
+        <div class="mx-batch-status" id="mxBatchStatus">扫描后按文件名排序分组，人声 / 吉他 / 键盘 / 贝斯 / 鼓 五轨同步切换；下拉直接选“第几首”即换。也支持同名、同编号匹配。</div>
+      </div>
+
+      <div class="row" style="margin:8px 0 4px;">
+        <button class="btn ghost small" id="mxMuteAll" type="button">🔇 全部静音</button>
+        <button class="btn ghost small" id="mxSoloClear" type="button" style="display:none;">取消独奏</button>
+        <span class="hint grow" id="mxMixGlobalHint"></span>
+      </div>
+      <div class="mx-mini-mixer" id="mxTrackMix"></div>
+
+      <div class="mx-directivity-panel">
+        <canvas id="mxDirectivityCanvas" height="190"></canvas>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ================= 模块三：左右耳听力平衡测试 ================= -->
+  <section class="module" id="module-lr">
+    <div class="lock-overlay">
+      <div class="lock-icon">🔒</div>
+      <p>付费解锁后即可使用全部训练功能</p>
+      <button class="btn primary unlock-jump">去解锁</button>
+    </div>
+
+    <div class="card">
+      <h2>左右耳听力平衡测试</h2>
+      <p class="notice">
+        ⚠️ 本测试<b>必须双耳佩戴耳机</b>，且请确认耳机左右佩戴正确。开始前请把音量调低。
+      </p>
+      <p class="hint">
+        测试方式：在低 / 中 / 高三个频率（250Hz、1kHz、4kHz）下，每一轮会先后播放<b>两声提示音——
+        第一声在左耳、第二声在右耳</b>，两声音量不同。差值从明显开始逐步缩小，
+        记录你能察觉出差异的最小音量差。
+      </p>
+      <div class="row" style="margin-top:10px;">
+        <span class="hint" style="flex:none;">音量</span>
+        <input type="range" id="lrVolume" min="0" max="100" value="30" class="grow" aria-label="音量">
+        <span class="hint" id="lrVolLabel" style="flex:none;width:42px;text-align:right;">30%</span>
+      </div>
+      <div class="safety-line">
+        <input type="checkbox" id="lrSafety">
+        <span>我已佩戴好耳机并调低音量</span>
+      </div>
+      <button class="btn primary" id="lrStartBtn" disabled style="width:100%;">开始测试</button>
+    </div>
+
+    <!-- 测试进行中 -->
+    <div class="card" id="lrTestCard" style="display:none;">
+      <h2 id="lrProgress">测试中</h2>
+      <p class="hint" id="lrTrialInfo"></p>
+      <p class="hint" style="text-align:center;">🔊 每轮两声提示音：第一声在<b>左耳</b>，第二声在<b>右耳</b></p>
+      <div style="text-align:center;margin:14px 0;">
+        <button class="btn ghost" id="lrReplayBtn">🔊 重听一次</button>
+      </div>
+      <p style="text-align:center;font-size:15px;">哪一声听起来更响？</p>
+      <div class="lr-answer">
+        <button class="btn" data-ans="L">◀ 第一声<br>（左耳）响</button>
+        <button class="btn ghost" data-ans="0">听不出差别</button>
+        <button class="btn" data-ans="R">第二声<br>（右耳）响 ▶</button>
+      </div>
+    </div>
+
+    <!-- 结果总结 -->
+    <div class="card" id="lrResultCard" style="display:none;">
+      <h2>📋 测试结果总结</h2>
+      <table class="result">
+        <thead><tr><th>测试频率</th><th>可察觉的最小差值</th><th>正确率</th><th>参考评价</th></tr></thead>
+        <tbody id="lrResultBody"></tbody>
+      </table>
+      <p class="hint" id="lrResultSummary"></p>
+      <p class="notice" style="margin-top:12px;">
+        本测试结果可能在一定程度上反映您的听力状况，但也可能受耳机左右声道不均衡、
+        佩戴不正、环境噪音等设备与环境因素影响，<b>仅供参考，不作为听力健康的诊断依据</b>。
+        如有疑虑，建议咨询专业医师或使用专业听力检测设备确认。
+      </p>
+      <button class="btn primary" id="lrRestartBtn" style="width:100%;">重新测试</button>
+    </div>
+  </section>
+
+  <footer style="text-align:center;margin-top:30px;">
+    <p class="hint">个人开发的听音训练小工具 · 请科学用耳，避免长时间高音量聆听</p>
+  </footer>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+   ①【可配置区】—— 日常维护只需要改这里
+   ============================================================ */
+
+// 解锁码：人工确认收款后发给用户的固定字符串（区分大小写，输入时会自动去掉首尾空格）
+const UNLOCK_CODE = 'EAR-2026-UNLOCK';
+
+// 付费总开关：false = 暂时关闭付费环节，所有人免费直接使用（免责声明仍会显示）；
+// 将来要恢复收费，把它改回 true 即可，其他代码不用动。
+const PAYMENT_ENABLED = false;
+
+const APP_CONFIG = {
+  // 价格与联系方式配置文件（价格数字、联系方式请改 json，不要改代码）
+  PRICE_CONFIG_URL: 'assets/payment/price-config.json',
+  QRCODE_URL: 'assets/payment/qrcode.png',
+
+  // 当 json 读取失败（例如直接双击 html 以 file:// 打开）时的兜底显示值
+  PRICE_FALLBACK: {
+    price: 3, currencySymbol: '¥',
+    note: '买断制解锁，一次付费永久使用',
+    contact: '付款后请截图联系微信 / 邮箱：请在 price-config.json 中填写联系方式',
+  },
+
+  // localStorage 键名（改了会导致老用户解锁状态失效，一般不要动）
+  LS_DISCLAIMER: 'earTrainer.disclaimerAccepted.v1',
+  LS_UNLOCKED:   'earTrainer.unlocked.v1',
+  LS_PAGE_ZOOM:  'earTrainer.pageZoom.v1',
+};
+
+// 新 EQ 训练频段。波长按 20°C 空气中约 343m/s 计算。
+const EQ_BANDS = [
+  { freq: 30, tag: '30', group: 'sub', role: '次低频下潜与房间能量，更多是体感而不是清晰音高。', tone: '提升会让底鼓/合成低频更沉、更压迫；衰减会减少轰头和系统负担。', use: '只在耳机/音箱能稳定回放时训练。真实混音中常用高通清掉非低音乐器的 30Hz 以下。', def: false },
+  { freq: 60, tag: '60', group: 'sub', role: '底鼓拳头、Bass 基频和舞台低频冲击的核心。', tone: '提升更厚重、更有地板震动；衰减会变轻、低频更紧。', use: '小房间容易驻波，听到忽大忽小时不要急着归因于 EQ。', def: false },
+  { freq: 105, tag: '105', group: 'low', role: 'Bass 主体、人声胸腔、鼓组低频肉感。', tone: '提升会变厚、闷、近；衰减会更干净但可能没底气。', use: '人声近讲效应和 Bass 混浊常在这里打架。', def: true },
+  { freq: 180, tag: '180', group: 'low', role: '温暖度和低中频支撑，决定声音是否有身体。', tone: '提升更暖更满；衰减会更轻、更清爽。', use: '吉他、键盘、人声同时堆积时，这里容易让混音变糊。', def: true },
+  { freq: 250, tag: '250', group: 'lowmid', role: '低中频浑浊区，也是很多乐器箱体共鸣的入口。', tone: '提升会糊、厚、鼻塞；衰减会立刻通透。', use: '清理混音时常先扫 180-300Hz。', def: true },
+  { freq: 500, tag: '500', group: 'mid', role: '箱体声、纸盒感、鼻音和中频密度。', tone: '提升像对着箱子说话；衰减会更开阔但过多会空。', use: '鼓、吉他、人声都可能在这里出现“盒子味”。', def: true },
+  { freq: 1000, tag: '1K', group: 'mid', role: '中频骨架、电话感和音高可辨识度。', tone: '提升会硬、直、喇叭味；衰减会柔和但可能后退。', use: '1k 是判断“中频是否顶脸”的锚点。', def: true },
+  { freq: 2000, tag: '2K', group: 'presence', role: '存在感、咬字、拨弦和敲击的前沿。', tone: '提升更贴脸、更冲；衰减会温和但可能含糊。', use: '人声能不能穿出来，常和 2k 附近有关。', def: true },
+  { freq: 4000, tag: '4K', group: 'presence', role: '人耳高敏区，清晰度、刺耳和疲劳感核心。', tone: '提升会亮、锐、刺；衰减会顺耳但可能失去攻击性。', use: '现场反馈、刺耳吉他和齿音前缘常先查这里。', def: true },
+  { freq: 8000, tag: '8K', group: 'high', role: '齿音、镲片亮度、空气边缘。', tone: '提升会嘶、亮、毛；衰减会更稳但细节减少。', use: 'De-esser 常在 6-9k 工作。', def: true },
+  { freq: 12000, tag: '12K', group: 'air', role: '空气感、光泽、呼吸声和高频泛音。', tone: '提升更通透、更飘；衰减像盖了一层布。', use: '处理时要小心，不要把噪声和齿音一起放大。', def: true },
+  { freq: 16000, tag: '16K', group: 'air', role: '极高频空气和设备解析力测试。', tone: '提升更多是亮边和噪声感；衰减会让空间感收窄。', use: '很多成人或设备对 16k 以上不敏感，训练时可选开关。', def: false },
+];
+
+const AUDIO_FILES = [
+  { id: 'music-1', name: '音乐文件', color: '#38bdf8', gain: 0.45, on: false, source: 'file', url: 'audio/imports/music-1/Come Around Me - Justin Bieber.flac', importPath: 'audio/imports/music-1/' },
+  { id: 'music-2', name: '粉红噪声 / 正弦波', color: '#22d3ee', gain: 0.32, on: false, source: 'generator', generatorMode: 'pink', sineFreq: 440 },
+];
+
+const EQ_TRACKS = [
+  ...AUDIO_FILES,
+  // 默认分轨音源：随网页一并部署，直接指向 imports 里的文件（importPath 扫描优先，url 为直连兜底）
+  { id: 'vocal', name: '人声', color: '#a78bfa', gain: 0.55, on: true, source: 'file', url: 'audio/imports/vocal/小新人声.flac', importPath: 'audio/imports/vocal/' },
+  { id: 'guitar', name: '吉他', color: '#fb923c', gain: 0.46, on: true, source: 'file', url: 'audio/imports/guitar/Eason吉他.flac', importPath: 'audio/imports/guitar/' },
+  { id: 'keys', name: '键盘', color: '#fbbf24', gain: 0.48, on: true, source: 'file', url: 'audio/imports/keys/军哥键盘.flac', importPath: 'audio/imports/keys/' },
+  { id: 'bass', name: '贝斯', color: '#4ade80', gain: 0.62, on: true, source: 'file', url: 'audio/imports/bass/小源bass.flac', importPath: 'audio/imports/bass/' },
+  // 鼓：暂无默认素材（文件夹为空则静音，不影响其他轨播放）；放入文件后扫描即可用
+  { id: 'drums', name: '鼓', color: '#f87171', gain: 0.55, on: true, source: 'file', importPath: 'audio/imports/drums/' },
+];
+
+/* ============================================================
+   ②【频段知识库】—— 文案数据，随当前频率切换显示，可自由修改
+   ============================================================ */
+const FREQ_KNOWLEDGE = [
+  {
+    min: 20, max: 60, title: '次低频（20 - 60Hz）',
+    prop: '波长极长（20Hz 约 17 米），几乎完全无指向性，能绕过障碍物并穿透墙体。更多是"体感震动"而非清晰音高，需要大尺寸单元和足够功率才能有效还原。',
+    tip: '现场调音时这一段极易与房间驻波纠缠，轰头又浑浊；多数人声、吉他类通道可直接用高通滤波（HPF）切掉 40Hz 以下，只给底鼓、贝斯和合成器保留。小型耳机基本无法真实回放这一段。',
+    ear: '人耳对次低频最不敏感（参考等响曲线），需要很大声压级才能"听到"，且更多靠身体感知。听不到 30Hz 以下非常正常，绝大多数耳机也放不出来。',
+  },
+  {
+    min: 60, max: 250, title: '低频（60 - 250Hz）',
+    prop: '指向性仍然很弱，接近全指向，在房间内容易形成驻波（某些位置轰、某些位置空）。这一段决定音乐的"厚度"和"力量感"。',
+    tip: '底鼓的"拳头感"约在 60-100Hz，贝斯基频、人声胸腔共鸣约在 100-250Hz。200-250Hz 堆积过多会"浑浊发闷"，是缩混里最常做衰减的区域之一。',
+    ear: '人耳对低频的音高分辨能力较弱，很难分辨相邻的低音音符。低频听感受聆听位置影响极大，换个位置听感就可能大不相同。',
+  },
+  {
+    min: 250, max: 2000, title: '中频（250Hz - 2kHz）',
+    prop: '指向性开始逐渐增强。这是人声与绝大多数乐器基频所在的核心区域，能量最集中，信息量最大。',
+    tip: '300-500Hz 过多会"箱子味"发闷，1kHz 附近过多会"喇叭味"发冲。人声清晰度的骨架就在这一段——调音时先把中频理顺，再谈两端。',
+    ear: '人耳语言识别主要依赖中频，电话听筒只传 300Hz-3.4kHz 也能听懂讲话就是这个原因。这一段的听力通常最稳定，随年龄衰减最慢。',
+  },
+  {
+    min: 2000, max: 6000, title: '中高频（2k - 6kHz）',
+    prop: '指向性明显增强，衰减受障碍物影响开始变大。这一段是"清晰度"和"存在感"的关键，也是人耳最敏感的区域。',
+    tip: '3-4kHz 提升能让人声"跳出来"，但过量会刺耳、听感疲劳；齿音（S 音）常在 4-8kHz，处理刺耳先查这一段。现场啸叫也高发于此，拉反馈时优先排查。',
+    ear: '人耳外耳道共振恰好落在 3-4kHz 附近，因此这一段最灵敏、也最容易被大音量损伤——噪声性听力损失常最先出现在 4kHz 附近（听力图上的"4k 凹陷"）。',
+  },
+  {
+    min: 6000, max: 12000, title: '高频（6k - 12kHz）',
+    prop: '指向性很强，像手电筒光束一样直射，容易被人体、障碍物遮挡吸收，空气湿度对其传播衰减也有影响。',
+    tip: '这一段决定"空气感"和"光泽度"：镲片、弦乐泛音、人声气声都在这里。提升过度会"发毛发脆"，衰减过度则"蒙一层布"。齿音消除器（De-esser）常工作在 6-9kHz。',
+    ear: '高频是随年龄衰减最明显的区域。长期大音量用耳（尤其入耳式耳机）会加速这一段的退化，听不清高频细节时请先降低音量、缩短聆听时间。',
+  },
+  {
+    min: 12000, max: 20001, title: '极高频（12k - 20kHz）',
+    prop: '指向性极强、衰减极快，稍微偏离音箱轴线或隔一点障碍就明显变弱。对音乐主要贡献"空间感、开阔感"等微妙泛音信息。',
+    tip: '这一段"宁缺毋滥"：轻微提升可增加通透感，过量会放大嘶声和数字毛刺。很多监听环境下 16kHz 以上的内容本来就很少，调整时要靠对比而不是想象。',
+    ear: '成年人听不到 16kHz 以上非常普遍：儿童可听到接近 20kHz，30 岁左右常降到 16-17kHz，50 岁后普遍在 12-14kHz 附近。这是自然生理现象，不代表听力异常。',
+  },
+];
+
+/* ============================================================
+   ③【音频引擎层】AudioEngine
+   统一管理 AudioContext（移动端需用户交互后才能启动，
+   iOS Safari 有自动播放限制，这里做了懒创建 + resume 兜底）
+   ============================================================ */
+const AudioEngine = {
+  ctx: null,
+
+  /** 获取（并在需要时创建 / 唤醒）AudioContext，必须在用户手势回调里首次调用 */
+  ensure() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AC();
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    return this.ctx;
+  },
+
+  /** 解码音频数据（兼容旧版 iOS Safari 的回调式 decodeAudioData） */
+  decode(arrayBuffer) {
+    const ctx = this.ensure();
+    return new Promise((resolve, reject) => {
+      const p = ctx.decodeAudioData(arrayBuffer, resolve, reject);
+      if (p && typeof p.then === 'function') p.then(resolve, reject);
+    });
+  },
+
+  /** 平滑设置增益，避免爆音 */
+  smooth(param, value, time = 0.03) {
+    const ctx = this.ensure();
+    param.setTargetAtTime(value, ctx.currentTime, time);
+  },
+};
+
+// 移动端兜底：首次任意触摸/点击时唤醒 AudioContext，避免"点了没声音"
+['touchend', 'pointerdown'].forEach(evt => {
+  document.addEventListener(evt, function unlockOnce() {
+    try { AudioEngine.ensure(); } catch (e) { /* 忽略 */ }
+    document.removeEventListener(evt, unlockOnce);
+  }, { once: true, passive: true });
+});
+
+// 各模块把自己的"停止播放"函数注册进来，切换标签页时统一停止，互不干扰
+const StopRegistry = [];
+function stopAllAudio() { StopRegistry.forEach(fn => { try { fn(); } catch (e) {} }); }
+
+/* ------- 小工具 ------- */
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+const dbToGain = db => Math.pow(10, db / 20);
+const fmtFreq = f => f >= 1000 ? (f / 1000).toFixed(f % 1000 === 0 ? 0 : 1) + 'k' : Math.round(f) + '';
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+const PageZoom = {
+  value: 1,
+  min: 0.7,
+  max: 1.6,
+  step: 0.1,
+
+  init() {
+    const saved = parseFloat(lsGet(APP_CONFIG.LS_PAGE_ZOOM));
+    if (Number.isFinite(saved)) this.value = this.clamp(saved);
+
+    $('#pageZoomOut').addEventListener('click', () => this.set(this.value - this.step));
+    $('#pageZoomIn').addEventListener('click', () => this.set(this.value + this.step));
+    $('#pageZoomReset').addEventListener('click', () => this.set(1));
+    this.apply(false);
+  },
+
+  clamp(value) {
+    const rounded = Math.round(value * 100) / 100;
+    return Math.min(this.max, Math.max(this.min, rounded));
+  },
+
+  set(value) {
+    this.value = this.clamp(value);
+    this.apply(true);
+  },
+
+  apply(save) {
+    document.body.style.zoom = this.value === 1 ? '' : String(this.value);
+    $('#pageZoomLabel').textContent = Math.round(this.value * 100) + '%';
+    $('#pageZoomOut').disabled = this.value <= this.min;
+    $('#pageZoomIn').disabled = this.value >= this.max;
+    if (save) lsSet(APP_CONFIG.LS_PAGE_ZOOM, String(this.value));
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
+  },
+};
+
+/* ============================================================
+   ④【付费解锁 & 引导流程层】Gate
+   流程：免责声明 → 解锁码 / 预览 → 主界面
+   ============================================================ */
+const Gate = {
+  // 付费开关关闭时视为人人已解锁
+  unlocked: !PAYMENT_ENABLED || lsGet(APP_CONFIG.LS_UNLOCKED) === 'yes',
+  priceCfg: APP_CONFIG.PRICE_FALLBACK,
+
+  async init() {
+    // 动态读取价格配置（价格数字不硬编码在 HTML 里）
+    try {
+      const res = await fetch(APP_CONFIG.PRICE_CONFIG_URL, { cache: 'no-store' });
+      if (res.ok) this.priceCfg = Object.assign({}, APP_CONFIG.PRICE_FALLBACK, await res.json());
+    } catch (e) {
+      // file:// 直接打开时 fetch 会失败，使用兜底配置
+      console.warn('价格配置读取失败，使用默认值', e);
+    }
+    $('#qrImg').src = APP_CONFIG.QRCODE_URL;
+    const sym = this.priceCfg.currencySymbol || '¥';
+    $('#priceLine').innerHTML =
+      `买断价：<b>${sym}${this.priceCfg.price}</b> 元，永久解锁全部功能<br>` +
+      `<span class="hint">${this.priceCfg.note || ''}</span>`;
+    $('#contactLine').textContent = this.priceCfg.contact || '';
+
+    // 免责声明勾选
+    $('#agreeCheck').addEventListener('change', e => { $('#agreeBtn').disabled = !e.target.checked; });
+    $('#agreeBtn').addEventListener('click', () => {
+      lsSet(APP_CONFIG.LS_DISCLAIMER, 'yes');
+      if (this.unlocked) this.enterApp();
+      else this.showStep('gateStepUnlock');
+    });
+
+    // 解锁码验证
+    const tryUnlock = () => {
+      const code = $('#unlockInput').value.trim();
+      if (code === UNLOCK_CODE) {
+        lsSet(APP_CONFIG.LS_UNLOCKED, 'yes');
+        this.unlocked = true;
+        $('#unlockMsg').textContent = '✅ 解锁成功！欢迎使用～';
+        $('#unlockMsg').style.color = 'var(--ok)';
+        setTimeout(() => this.enterApp(), 500);
+      } else {
+        $('#unlockMsg').textContent = '❌ 解锁码不正确，请检查后重试（注意大小写和空格）。';
+        $('#unlockMsg').style.color = 'var(--danger)';
+      }
+    };
+    $('#unlockBtn').addEventListener('click', tryUnlock);
+    $('#unlockInput').addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+
+    // 预览模式：进主界面但保持锁定
+    $('#previewBtn').addEventListener('click', () => this.enterApp());
+
+    // 各锁定蒙层里的"去解锁"按钮 & 顶部徽章
+    $$('.unlock-jump').forEach(b => b.addEventListener('click', () => this.reopenUnlock()));
+    $('#lockBadge').addEventListener('click', () => { if (!this.unlocked) this.reopenUnlock(); });
+
+    // 决定初始展示哪一步
+    if (lsGet(APP_CONFIG.LS_DISCLAIMER) === 'yes') {
+      if (this.unlocked) this.enterApp();
+      else this.showStep('gateStepUnlock');
+    } // 否则停留在免责声明步骤
+  },
+
+  showStep(id) {
+    $$('#gate .step').forEach(s => s.classList.remove('active'));
+    $('#' + id).classList.add('active');
+    $('#gate').style.display = 'block';
+    $('#gate').scrollTop = 0;
+  },
+
+  reopenUnlock() {
+    if (!PAYMENT_ENABLED) return; // 付费关闭时没有解锁页可去
+    this.showStep('gateStepUnlock');
+  },
+
+  enterApp() {
+    $('#gate').style.display = 'none';
+    this.applyLockState();
+  },
+
+  /** 根据解锁状态刷新界面：蒙层显隐 + 徽章 */
+  applyLockState() {
+    $$('section.module').forEach(sec => sec.classList.toggle('unlocked', this.unlocked));
+    const badge = $('#lockBadge');
+    if (!PAYMENT_ENABLED) {
+      badge.style.display = 'none'; // 付费关闭期间不显示解锁徽章
+      return;
+    }
+    if (this.unlocked) {
+      badge.textContent = '✅ 已解锁';
+      badge.classList.add('unlocked');
+    } else {
+      badge.textContent = '🔒 未解锁 · 点此输入解锁码';
+    }
+  },
+};
+
+/* ============================================================
+   ⑤【UI 公共层】标签页切换
+   ============================================================ */
+$$('nav.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    stopAllAudio(); // 切换模块时停止所有声音，模块间互不干扰
+    $$('nav.tabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    $$('section.module').forEach(s => s.classList.remove('active'));
+    $('#module-' + btn.dataset.tab).classList.add('active');
+    // 隐藏状态下 canvas 宽度为 0，切换显示后需触发一次重绘
+    window.dispatchEvent(new Event('resize'));
+  });
+});
+
+// 供其他模块跳转标签页使用
+function switchToTab(name) {
+  const b = $(`nav.tabs button[data-tab="${name}"]`);
+  if (b) b.click();
+}
+
+/* ============================================================
+   ⑥【模块一：频率发声器】ToneModule
+   OscillatorNode 正弦波实时发声 + 频段知识卡片
+   ============================================================ */
+const ToneModule = (() => {
+  const SLIDER_MAX = 1000;
+  let osc = null, gain = null, playing = false, freq = 440, phase = 0;
+
+  const slider = $('#toneSlider'), input = $('#toneInput'),
+        display = $('#toneFreqDisplay'), volSlider = $('#toneVolume'),
+        playBtn = $('#tonePlayBtn'), canvas = $('#toneWave');
+
+  // 频率 <-> 滑块位置：对数映射（20Hz - 20000Hz 共 3 个十倍频程）
+  const sliderToFreq = v => 20 * Math.pow(1000, v / SLIDER_MAX);
+  const freqToSlider = f => SLIDER_MAX * Math.log(f / 20) / Math.log(1000);
+
+  function targetGain() {
+    // 0.25 的整体安全系数：即使音量拉满也不至于过响
+    return (volSlider.value / 100) * 0.25;
+  }
+
+  function setFreq(f, from) {
+    freq = Math.min(20000, Math.max(20, Math.round(f)));
+    display.textContent = freq;
+    if (from !== 'slider') slider.value = freqToSlider(freq);
+    if (from !== 'input') input.value = freq;
+    if (osc) AudioEngine.smooth(osc.frequency, freq, 0.01);
+    updateKnowledge();
+  }
+
+  function start() {
+    if (!Gate.unlocked) return;
+    const ctx = AudioEngine.ensure();
+    gain = ctx.createGain();
+    gain.gain.value = 0;
+    osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    AudioEngine.smooth(gain.gain, targetGain()); // 淡入防爆音
+    playing = true;
+    playBtn.textContent = '⏹ 停止';
+    playBtn.classList.add('playing');
+    requestAnimationFrame(drawWave);
+  }
+
+  function stop() {
+    if (!playing) return;
+    playing = false;
+    const ctx = AudioEngine.ctx;
+    if (gain && ctx) {
+      AudioEngine.smooth(gain.gain, 0, 0.02); // 淡出防爆音
+      const o = osc, g = gain;
+      setTimeout(() => { try { o.stop(); o.disconnect(); g.disconnect(); } catch (e) {} }, 120);
+    }
+    osc = null; gain = null;
+    playBtn.textContent = '▶ 播放';
+    playBtn.classList.remove('playing');
+  }
+
+  /* 播放中的波形视觉反馈（示意动画，非真实采样） */
+  function drawWave() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+    const c = canvas.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w, h);
+    c.strokeStyle = playing ? '#38bdf8' : '#2e3f5c';
+    c.lineWidth = 2;
+    c.beginPath();
+    // 画面上的可视周期数随频率对数变化，仅作示意
+    const cycles = 2 + 10 * (Math.log(freq / 20) / Math.log(1000));
+    for (let x = 0; x <= w; x++) {
+      const y = h / 2 + Math.sin(phase + (x / w) * cycles * 2 * Math.PI) * (h / 2 - 8) * (playing ? 1 : 0.25);
+      x === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+    }
+    c.stroke();
+    if (playing) { phase += 0.12; requestAnimationFrame(drawWave); }
+  }
+
+  /* 频段知识卡片：根据当前频率匹配区间 */
+  function updateKnowledge() {
+    const k = FREQ_KNOWLEDGE.find(k => freq >= k.min && freq < k.max) || FREQ_KNOWLEDGE[FREQ_KNOWLEDGE.length - 1];
+    $('#tkTitle').textContent = '频段小知识 · ' + k.title;
+    $('#tkRange').textContent = `当前频率 ${freq} Hz 落在此区间`;
+    $('#tkProp').textContent = k.prop;
+    $('#tkTip').textContent = k.tip;
+    $('#tkEar').textContent = k.ear;
+  }
+
+  /* 事件绑定 */
+  slider.addEventListener('input', () => setFreq(sliderToFreq(+slider.value), 'slider'));
+  input.addEventListener('change', () => setFreq(+input.value || 440, 'input'));
+  volSlider.addEventListener('input', () => {
+    $('#toneVolLabel').textContent = volSlider.value + '%';
+    if (gain) AudioEngine.smooth(gain.gain, targetGain());
+  });
+  $('#toneSafety').addEventListener('change', e => { playBtn.disabled = !e.target.checked; });
+  playBtn.addEventListener('click', () => playing ? stop() : start());
+
+  window.addEventListener('resize', () => { if (!playing) drawWave(); });
+  StopRegistry.push(stop);
+  setFreq(440);
+  drawWave();
+  return { stop };
+})();
+
+/* ============================================================
+   ⑦【模块二：极简 EQ 训练器】MxEqModule
+   单屏大 EQ 图 + 默认分轨循环 + 小型分轨 mute / 音量。
+   ============================================================ */
+const MxEqModule = (() => {
+  // （内置合成鼓已移除，原 BPM / 步进调度常量一并清理）
+  const SPEED_OF_SOUND = 343;
+  const DEFAULT_Q = 1.9;
+  const DEFAULT_BELL_GAIN = 31;   // 钟型点亮后的默认提升量（dB）
+  // 高低切 4 级串联 = 48dB/oct（8 阶巴特沃斯的各级 Q 值，通带平直无隆起）。
+  // 斜率远大于钟型最大提升量，因此被高低切掉的频段无法被其他 EQ 抬回来
+  const CUT_STAGE_QS = [0.5098, 0.6013, 0.9000, 2.5629];
+  // 钟型 Q 滑杆映射：0.3 - 10 对数分布
+  const bellQToSlider = q => Math.round(100 * Math.log(q / 0.3) / Math.log(10 / 0.3));
+  const bellSliderToQ = v => +(0.3 * Math.pow(10 / 0.3, v / 100)).toFixed(2);
+  const MAX_FREQ = 20000;
+
+  let ctx = null, master = null, analyser = null, rtaData = null, raf = null;
+  let playing = false, paused = false, eqEnabled = true, dragging = false;
+  const soloIds = new Set();   // 处于独奏的轨道（非空时只有这些轨出声，可多选）
+  let allMuted = false;        // 一键全部静音
+  let startedAt = 0, pauseOffset = 0;
+  let selectedBand = EQ_BANDS[2];
+  let selectedFilter = 'bell';
+  const filters = {
+    highpass:  { label: '低切',   type: 'highpass',  freq: 30,    gain: 0,  q: 0.707, color: '#4ade80', enabled: false },
+    lowshelf:  { label: '低搁架', type: 'lowshelf',  freq: 105,   gain: 0,  q: 0.707, color: '#38bdf8', enabled: false, touched: false },
+    // 默认不启用（打开页面即纯原声）；点亮后默认 +31dB，一耳朵就能听出该频段的"性格"
+    bell:      { label: '钟型 1', shortLabel: '钟1', type: 'peaking', freq: 105, gain: DEFAULT_BELL_GAIN, q: DEFAULT_Q, color: '#fb923c', enabled: false, touched: false },
+    bell2:     { label: '钟型 2', shortLabel: '钟2', type: 'peaking', freq: 250, gain: DEFAULT_BELL_GAIN, q: DEFAULT_Q, color: '#f97316', enabled: false, touched: false },
+    bell3:     { label: '钟型 3', shortLabel: '钟3', type: 'peaking', freq: 500, gain: DEFAULT_BELL_GAIN, q: DEFAULT_Q, color: '#eab308', enabled: false, touched: false },
+    bell4:     { label: '钟型 4', shortLabel: '钟4', type: 'peaking', freq: 1000, gain: DEFAULT_BELL_GAIN, q: DEFAULT_Q, color: '#22c55e', enabled: false, touched: false },
+    bell5:     { label: '钟型 5', shortLabel: '钟5', type: 'peaking', freq: 2000, gain: DEFAULT_BELL_GAIN, q: DEFAULT_Q, color: '#38bdf8', enabled: false, touched: false },
+    bell6:     { label: '钟型 6', shortLabel: '钟6', type: 'peaking', freq: 4000, gain: DEFAULT_BELL_GAIN, q: DEFAULT_Q, color: '#c084fc', enabled: false, touched: false },
+    highshelf: { label: '高搁架', type: 'highshelf', freq: 12000, gain: 0,  q: 0.707, color: '#fbbf24', enabled: false, touched: false },
+    lowpass:   { label: '高切',   type: 'lowpass',   freq: 16000, gain: 0,  q: 0.707, color: '#a78bfa', enabled: false },
+  };
+  const bellIds = ['bell', 'bell2', 'bell3', 'bell4', 'bell5', 'bell6'];
+
+  const trackDefs = EQ_TRACKS.map(t => Object.assign({}, t));
+  const trackState = {};
+  const trackNodes = {};
+  const fileBuffers = {};
+  const fileSources = {};
+  const generatorSources = {};
+  let pinkNoiseBuffer = null;
+  const folderCache = {};
+  let batchChoices = [];
+  const batchTrackIds = ['vocal', 'guitar', 'keys', 'bass', 'drums'];
+  const canvas = $('#mxCanvas');
+  const directivityCanvas = $('#mxDirectivityCanvas');
+
+  const hzLabel = f => f >= 1000 ? (f / 1000).toFixed(f % 1000 ? 1 : 0) + 'kHz' : Math.round(f) + 'Hz';
+  const fmtDb = v => (v > 0 ? '+' : '') + v + 'dB';
+  const trackById = id => trackDefs.find(t => t.id === id);
+  const trackStatusText = t => t.source === 'generator' ? '粉红噪声，可切换正弦波'
+    : '默认扫描文件夹，可单独导入';
+  const clampSineFreq = value => Math.max(20, Math.min(20000, +value || 440));
+  const sineFreqToSlider = freq => Math.round((Math.log10(clampSineFreq(freq) / 20) / Math.log10(20000 / 20)) * 1000);
+  const sineSliderToFreq = value => Math.round(20 * Math.pow(20000 / 20, (+value || 0) / 1000));
+  const wavelength = f => SPEED_OF_SOUND / f;
+  const FREQ_AXIS = [
+    { f: 0, n: 0 },
+    { f: 80, n: 0.06 },
+    { f: 1000, n: 0.58 },
+    { f: 2000, n: 0.68 },
+    { f: 4500, n: 0.78 },
+    { f: 8000, n: 0.86 },
+    { f: 12000, n: 0.93 },
+    { f: MAX_FREQ, n: 1 },
+  ];
+  const FREQ_AXIS_SLOPES = buildAxisSlopes(FREQ_AXIS);
+  const xOfFreq = (f, x, w) => x + freqToNorm(f) * w;
+  const yOfDb = (db, y, h) => y + h / 2 - (db / 39) * (h / 2 - 14);
+
+  function buildAxisSlopes(points) {
+    const delta = [];
+    for (let i = 0; i < points.length - 1; i++) {
+      delta.push((points[i + 1].n - points[i].n) / (points[i + 1].f - points[i].f));
+    }
+    const slopes = points.map((_, i) => {
+      if (i === 0) return delta[0];
+      if (i === points.length - 1) return delta[delta.length - 1];
+      return (delta[i - 1] + delta[i]) / 2;
+    });
+    for (let i = 0; i < delta.length; i++) {
+      if (delta[i] === 0) {
+        slopes[i] = 0;
+        slopes[i + 1] = 0;
+        continue;
+      }
+      const a = slopes[i] / delta[i];
+      const b = slopes[i + 1] / delta[i];
+      const sum = a * a + b * b;
+      if (sum > 9) {
+        const tau = 3 / Math.sqrt(sum);
+        slopes[i] = tau * a * delta[i];
+        slopes[i + 1] = tau * b * delta[i];
+      }
+    }
+    return slopes;
+  }
+
+  function axisNormAtSegment(index, freq) {
+    const a = FREQ_AXIS[index], b = FREQ_AXIS[index + 1];
+    const h = b.f - a.f;
+    const t = h === 0 ? 0 : (freq - a.f) / h;
+    const t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * a.n
+      + (t3 - 2 * t2 + t) * h * FREQ_AXIS_SLOPES[index]
+      + (-2 * t3 + 3 * t2) * b.n
+      + (t3 - t2) * h * FREQ_AXIS_SLOPES[index + 1];
+  }
+
+  function freqToNorm(freq) {
+    const f = Math.max(0, Math.min(MAX_FREQ, freq));
+    for (let i = 0; i < FREQ_AXIS.length - 1; i++) {
+      const a = FREQ_AXIS[i], b = FREQ_AXIS[i + 1];
+      if (f >= a.f && f <= b.f) {
+        return Math.max(0, Math.min(1, axisNormAtSegment(i, f)));
+      }
+    }
+    return 1;
+  }
+
+  function normToFreq(norm) {
+    const n = Math.max(0, Math.min(1, norm));
+    for (let i = 0; i < FREQ_AXIS.length - 1; i++) {
+      const a = FREQ_AXIS[i], b = FREQ_AXIS[i + 1];
+      if (n >= a.n && n <= b.n) {
+        let lo = a.f, hi = b.f;
+        for (let j = 0; j < 18; j++) {
+          const mid = (lo + hi) / 2;
+          if (axisNormAtSegment(i, mid) < n) lo = mid;
+          else hi = mid;
+        }
+        return (lo + hi) / 2;
+      }
+    }
+    return MAX_FREQ;
+  }
+
+  trackDefs.forEach(t => {
+    trackState[t.id] = {
+      enabled: t.on,
+      mix: t.gain,
+      status: trackStatusText(t),
+      statusState: '',
+      currentUrl: t.importPath || t.url || '',
+      loadedName: '',
+      folderFiles: [],
+      generatorMode: t.generatorMode || 'pink',
+      sineFreq: t.sineFreq || 440,
+    };
+  });
+
+  function ensureAudio() {
+    if (ctx) {
+      AudioEngine.ensure();
+      return;
+    }
+    ctx = AudioEngine.ensure();
+    master = ctx.createGain();
+    master.gain.value = 0.62;
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.82;
+    rtaData = new Uint8Array(analyser.frequencyBinCount);
+    master.connect(analyser).connect(ctx.destination);
+    trackDefs.forEach(buildTrack);
+  }
+
+  function buildTrack(def) {
+    const input = ctx.createGain();
+    // 高低切各用 CUT_STAGES 级串联（48dB/oct）：斜率远大于钟型最大提升量，
+    // 被切掉的频段无法再被其他 EQ 抬回来（高低切优先）
+    const hps = CUT_STAGE_QS.map(() => {
+      const f = ctx.createBiquadFilter(); f.type = 'highpass'; return f;
+    });
+    const lps = CUT_STAGE_QS.map(() => {
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; return f;
+    });
+    const lowshelf = ctx.createBiquadFilter();
+    const bells = bellIds.map(() => ctx.createBiquadFilter());
+    const highshelf = ctx.createBiquadFilter();
+    const output = ctx.createGain();
+    lowshelf.type = 'lowshelf';
+    bells.forEach(bell => { bell.type = 'peaking'; });
+    highshelf.type = 'highshelf';
+    let cursor = input;
+    hps.forEach(f => { cursor = cursor.connect(f); });
+    cursor = cursor.connect(lowshelf);
+    bells.forEach(bell => { cursor = cursor.connect(bell); });
+    cursor = cursor.connect(highshelf);
+    lps.forEach(f => { cursor = cursor.connect(f); });
+    cursor.connect(output).connect(master);
+    trackNodes[def.id] = { input, hps, lowshelf, bells, bell: bells[0], highshelf, lps, output };
+    applyTrack(def.id);
+  }
+
+  function shortSourceName(value) {
+    if (!value) return '';
+    try {
+      const clean = value instanceof File ? value.name : String(value).split('?')[0].split('#')[0];
+      return decodeURIComponent(clean.split('/').filter(Boolean).pop() || clean);
+    } catch (e) {
+      return String(value);
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[ch]));
+  }
+
+  const AUDIO_EXT = 'wav|wave|mp3|flac|m4a|aac|ogg|oga|opus|aif|aiff|caf|webm|mp4';
+  const AUDIO_EXT_RE = new RegExp(`\\.(${AUDIO_EXT})(?:[?#].*)?$`, 'i');
+
+  function isAudioFileName(name) {
+    const clean = (() => {
+      try { return decodeURIComponent(String(name || '')).split('?')[0].split('#')[0]; }
+      catch (e) { return String(name || '').split('?')[0].split('#')[0]; }
+    })();
+    return AUDIO_EXT_RE.test(clean);
+  }
+
+  function looksLikeFolderUrl(url) {
+    const clean = String(url || '').split('?')[0].split('#')[0];
+    return /\/$/.test(clean) || !/\/?[^/]+\.[a-z0-9]{2,5}$/i.test(clean);
+  }
+
+  function normalizeAudioUrlInput(value) {
+    let clean = String(value || '').trim().replace(/^['"]|['"]$/g, '').replace(/\\/g, '/');
+    if (!clean) return '';
+    if (/^blob:|^https?:/i.test(clean)) return clean;
+    if (/^file:\/\//i.test(clean)) {
+      try { clean = decodeURIComponent(new URL(clean).pathname); } catch (e) { clean = clean.replace(/^file:\/\//i, ''); }
+    }
+    const audioIndex = clean.indexOf('/audio/');
+    if (audioIndex >= 0) clean = clean.slice(audioIndex + 1);
+    const projectIndex = clean.indexOf('/ear-training codex/');
+    if (projectIndex >= 0) clean = clean.slice(projectIndex + '/ear-training codex/'.length);
+    clean = clean.replace(/^\.\//, '').replace(/^\/+audio\//, 'audio/');
+    if (clean.startsWith('/')) clean = clean.slice(1);
+    return encodeURI(clean).replace(/%25([0-9A-Fa-f]{2})/g, '%$1').replace(/#/g, '%23');
+  }
+
+  function ensureFolderUrl(url) {
+    const clean = normalizeAudioUrlInput(url);
+    return clean && !/[?#]/.test(clean) && !clean.endsWith('/') ? clean + '/' : clean;
+  }
+
+  function naturalCompare(a, b) {
+    return String(a).localeCompare(String(b), 'zh-Hans-u-kn-true', { numeric: true, sensitivity: 'base' });
+  }
+
+  function filenameStem(name) {
+    return shortSourceName(name).replace(/\.[^.]+$/, '');
+  }
+
+  function normalizedStem(name) {
+    return filenameStem(name).trim().toLowerCase();
+  }
+
+  function trailingNumberKey(name) {
+    const match = normalizedStem(name).match(/(\d+)\D*$/);
+    return match ? match[1].replace(/^0+(?=\d)/, '') : '';
+  }
+
+  function parseDirectoryFiles(folderUrl, html) {
+    const baseUrl = ensureFolderUrl(folderUrl);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const seen = new Set();
+    const files = [];
+
+    const addRawPath = rawPath => {
+      const href = (rawPath || '').trim();
+      if (!href || href === '../' || href === './' || href.startsWith('?') || href.startsWith('#')) return;
+      if (!isAudioFileName(href)) return;
+      let url;
+      try {
+        url = new URL(href, new URL(baseUrl, window.location.href)).href;
+      } catch (e) {
+        return;
+      }
+      const name = shortSourceName(url);
+      if (!name || seen.has(url)) return;
+      seen.add(url);
+      files.push({ name, url });
+    };
+
+    Array.from(doc.querySelectorAll('a[href], audio[src], source[src]')).forEach(el => {
+      addRawPath(el.getAttribute('href') || el.getAttribute('src') || '');
+    });
+
+    const quotedLink = new RegExp(`(?:href|src)=["']([^"']+\\.(${AUDIO_EXT})(?:[?#][^"']*)?)["']`, 'ig');
+    let match;
+    while ((match = quotedLink.exec(html))) addRawPath(match[1]);
+
+    // 宽松正则只作为最后兜底（纯文本目录列表等）：它不认空格，
+    // 会把"Come Around Me - Justin Bieber.flac"这类链接文字错截成"Bieber.flac"，
+    // 所以只有上面两道正规解析都一无所获时才启用
+    if (!files.length) {
+      const looseLink = new RegExp(`([^\\s<>"']+\\.(${AUDIO_EXT})(?:[?#][^\\s<>"']*)?)`, 'ig');
+      while ((match = looseLink.exec(html))) addRawPath(match[1]);
+    }
+
+    return files.sort((a, b) => naturalCompare(a.name, b.name));
+  }
+
+  function updateTrackFileSelect(id) {
+    const s = trackState[id];
+    const select = document.querySelector(`[data-track-select="${id}"]`);
+    if (!s || !select) return;
+    select.innerHTML = '';
+    const files = s.folderFiles || [];
+    if (!files.length) {
+      select.style.display = 'none';
+      return;
+    }
+    files.forEach(file => {
+      const opt = document.createElement('option');
+      opt.value = file.url;
+      opt.textContent = file.name;
+      select.appendChild(opt);
+    });
+    select.style.display = '';
+    if (s.selectedFileUrl) select.value = s.selectedFileUrl;
+  }
+
+  function folderUrlForTrack(id) {
+    const def = trackById(id);
+    const s = trackState[id];
+    const current = s && s.currentUrl ? normalizeAudioUrlInput(s.currentUrl) : '';
+    if (current && looksLikeFolderUrl(current)) return ensureFolderUrl(current);
+    return ensureFolderUrl(def && def.importPath ? def.importPath : current);
+  }
+
+  function trackIdFromPath(path) {
+    const parts = String(path || '').toLowerCase().split(/[\\/]+/);
+    const aliases = {
+      vocal: ['vocal', 'voice', 'vox', 'sing', '人声', 'vocal人声'],
+      guitar: ['guitar', 'gtr', '吉他'],
+      keys: ['keys', 'key', 'keyboard', 'piano', 'keys键盘', '键盘', '钢琴'],
+      bass: ['bass', '贝斯', '低音'],
+      drums: ['drums', 'drum', 'beat', '鼓', '架子鼓'],
+    };
+    return batchTrackIds.find(id => parts.some(part => aliases[id].some(alias => part.includes(alias)))) || '';
+  }
+
+  function fileEntryFromLocalFile(file) {
+    return {
+      name: file.name,
+      url: URL.createObjectURL(file),
+      file,
+    };
+  }
+
+  function setTrackFolderFiles(id, files, statusText = '') {
+    const sorted = files.filter(Boolean).sort((a, b) => naturalCompare(a.name, b.name));
+    const s = trackState[id];
+    if (!s) return;
+    s.folderFiles = sorted;
+    folderCache[id] = sorted;
+    if (sorted.length && !sorted.some(file => file.url === s.selectedFileUrl)) {
+      s.selectedFileUrl = sorted[0].url;
+    }
+    updateTrackFileSelect(id);
+    setTrackStatus(id, statusText || (sorted.length ? `已识别 ${sorted.length} 个音频` : '没有识别到音频'), sorted.length ? 'ok' : 'warn');
+  }
+
+  function importLocalFolderFiles(fileList) {
+    const grouped = {};
+    batchTrackIds.forEach(id => { grouped[id] = []; });
+    Array.from(fileList || []).forEach(file => {
+      const rel = file.webkitRelativePath || file.name;
+      if (!isAudioFileName(rel)) return;
+      const id = trackIdFromPath(rel);
+      if (!id) return;
+      grouped[id].push(fileEntryFromLocalFile(file));
+    });
+
+    let total = 0;
+    batchTrackIds.forEach(id => {
+      total += grouped[id].length;
+      setTrackFolderFiles(id, grouped[id], grouped[id].length ? `本地识别 ${grouped[id].length} 个音频` : '本地文件夹未找到该轨道');
+    });
+    buildBatchChoices();
+    $('#mxBatchStatus').textContent = total
+      ? `本地文件夹已识别 ${total} 个音频，已按轨道归类。`
+      : '没有识别到音频：请确认文件在 vocal / guitar / keys / bass / drums 等文件夹里。';
+  }
+
+  function setTrackStatus(id, text, state = '') {
+    const s = trackState[id];
+    if (s) {
+      s.status = text;
+      s.statusState = state;
+    }
+    const el = document.querySelector(`[data-track-status="${id}"]`);
+    if (el) {
+      el.textContent = text;
+      el.dataset.state = state;
+    }
+  }
+
+  function setTrackBuffer(id, buffer, sourceName, sourceUrl = '') {
+    const s = trackState[id];
+    fileBuffers[id] = buffer;
+    if (s) {
+      s.loadedName = sourceName || '音频文件';
+      s.selectedFileUrl = sourceUrl || s.selectedFileUrl || '';
+      if (sourceUrl) s.currentUrl = sourceUrl;
+    }
+    setTrackStatus(id, `已加载：${sourceName || '音频文件'}`, 'ok');
+    if (playing) {
+      const offset = Math.max(0, ctx.currentTime - startedAt);
+      stopFileSource(id);
+      startFileSource(id, offset);
+    }
+  }
+
+  /** 目录列表解析不到文件时的兜底：读 audio/imports/manifest.json
+      （由项目根目录的"更新音频清单.command"脚本生成，任何静态服务器都可用） */
+  async function manifestFolderFiles(folderUrl) {
+    const clean = ensureFolderUrl(folderUrl);
+    const match = clean.match(/^(.*imports\/)([^/?#]+)\/$/);
+    if (!match) return [];
+    const base = match[1];
+    let key;
+    try { key = decodeURIComponent(match[2]); } catch (e) { key = match[2]; }
+    try {
+      const res = await fetch(base + 'manifest.json', { cache: 'no-store' });
+      if (!res.ok) return [];
+      const data = JSON.parse(await res.text());   // SPA 服务器的 HTML 兜底页会在这里抛错，正好排除
+      const names = Array.isArray(data[key]) ? data[key] : [];
+      const folderAbs = new URL(base + match[2] + '/', window.location.href);
+      return names.filter(isAudioFileName).map(name => ({
+        name,
+        url: new URL(encodeURIComponent(name), folderAbs).href,
+      })).sort((a, b) => naturalCompare(a.name, b.name));
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /** 把扫描到的文件夹结果写入轨道状态（目录列表和 manifest 两条路共用） */
+  function applyScannedFolder(id, cleanUrl, files, options = {}) {
+    const s = trackState[id];
+    if (s) {
+      s.folderFiles = files;
+      s.currentUrl = ensureFolderUrl(cleanUrl);
+    }
+    folderCache[id] = files;
+    updateTrackFileSelect(id);
+    if (!files.length) {
+      setTrackStatus(id, '文件夹里没有可用音频', options.quiet ? '' : 'warn');
+      return Promise.resolve({ ok: false, files });
+    }
+    const selected = files.find(file => file.url === (s && s.selectedFileUrl)) || files[0];
+    if (s) s.selectedFileUrl = selected.url;
+    updateTrackFileSelect(id);
+    if (options.loadFirst === false) {
+      setTrackStatus(id, `已扫描 ${files.length} 个文件`, 'ok');
+      return Promise.resolve({ ok: true, files });
+    }
+    setTrackStatus(id, `已扫描 ${files.length} 个，加载：${selected.name}`, 'loading');
+    return loadTrackFromUrl(id, selected.url, Object.assign({}, options, { status: false }));
+  }
+
+  async function loadTrackFromUrl(id, url, options = {}) {
+    const cleanUrl = normalizeAudioUrlInput(url);
+    if (!cleanUrl) return { ok: false, error: new Error('empty url') };
+    const isFolderUrl = looksLikeFolderUrl(cleanUrl);
+    if (!isFolderUrl) ensureAudio();
+    if (options.status !== false) setTrackStatus(id, `加载中：${shortSourceName(cleanUrl)}`, 'loading');
+    try {
+      const res = await fetch(cleanUrl, isFolderUrl ? { cache: 'no-store' } : {});
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText || ''}`.trim());
+      const type = res.headers.get('content-type') || '';
+      if (isFolderUrl || type.includes('text/html')) {
+        // 先按目录列表解析；解析不到（如 Vite/SPA 服务器没有目录列表）就用 manifest.json 兜底
+        let files = parseDirectoryFiles(res.url || cleanUrl, await res.text());
+        if (!files.length) files = await manifestFolderFiles(cleanUrl);
+        return applyScannedFolder(id, cleanUrl, files, options);
+      }
+      const buffer = await AudioEngine.decode(await res.arrayBuffer());
+      setTrackBuffer(id, buffer, shortSourceName(cleanUrl), cleanUrl);
+      return { ok: true };
+    } catch (e) {
+      // 文件夹 fetch 直接失败（如目录 URL 返回 404）时也尝试 manifest 兜底
+      if (looksLikeFolderUrl(cleanUrl)) {
+        const files = await manifestFolderFiles(cleanUrl);
+        if (files.length) return applyScannedFolder(id, cleanUrl, files, options);
+      }
+      if (!options.quiet) {
+        setTrackStatus(id, `加载失败：${shortSourceName(cleanUrl)}`, 'bad');
+        console.warn('轨道加载失败', id, cleanUrl, e);
+      }
+      return { ok: false, error: e };
+    }
+  }
+
+  async function loadTrackFromFile(id, file) {
+    if (!file) return { ok: false };
+    ensureAudio();
+    setTrackStatus(id, `解码中：${file.name}`, 'loading');
+    try {
+      const buffer = await AudioEngine.decode(await file.arrayBuffer());
+      setTrackBuffer(id, buffer, file.name, '');
+      return { ok: true };
+    } catch (e) {
+      setTrackStatus(id, `解码失败：${file.name}`, 'bad');
+      console.warn('本地音频解码失败', id, file.name, e);
+      return { ok: false, error: e };
+    }
+  }
+
+  function loadTrackEntry(id, entry, options = {}) {
+    if (!entry) return Promise.resolve({ ok: false });
+    return entry.file ? loadTrackFromFile(id, entry.file) : loadTrackFromUrl(id, entry.url, options);
+  }
+
+  function defaultTrackUrls(def) {
+    const s = def && trackState[def.id];
+    return [s && s.selectedFileUrl, def.importPath, def.url].filter(Boolean);
+  }
+
+  async function loadTrackDefaults(def) {
+    if (!def || fileBuffers[def.id]) return { ok: true, skipped: true };
+    const urls = defaultTrackUrls(def);
+    for (const url of urls) {
+      const result = await loadTrackFromUrl(def.id, url, { quiet: true, status: false });
+      if (result.ok) return result;
+    }
+    if (urls.length) setTrackStatus(def.id, '未加载，可导入文件 / URL', 'warn');
+    return { ok: false };
+  }
+
+  async function scanDefaultTrackFolders() {
+    const fileTracks = trackDefs.filter(t => t.source === 'file' || t.id === 'drums');
+    await Promise.all(fileTracks.map(def => {
+      const folderUrl = folderUrlForTrack(def.id);
+      if (!folderUrl) return Promise.resolve({ ok: false });
+      return loadTrackFromUrl(def.id, folderUrl, { quiet: true, status: false, loadFirst: false });
+    }));
+  }
+
+  async function loadDefaultTracks() {
+    ensureAudio();
+    await Promise.all(trackDefs.filter(t => t.source === 'file' || t.id === 'drums').map(loadTrackDefaults));
+  }
+
+  function startFileSource(id, offset = 0) {
+    if (fileSources[id] || !trackNodes[id] || !fileBuffers[id]) return;
+    const src = ctx.createBufferSource();
+    src.buffer = fileBuffers[id];
+    src.loop = true;
+    src.connect(trackNodes[id].input);
+    src.start(0, src.buffer.duration ? offset % src.buffer.duration : 0);
+    fileSources[id] = src;
+  }
+
+  function startFileSources(offset = 0) {
+    Object.keys(fileBuffers).forEach(id => startFileSource(id, offset));
+  }
+
+  function stopFileSource(id) {
+    const src = fileSources[id];
+    if (!src) return;
+    try { src.stop(); src.disconnect(); } catch (e) {}
+    delete fileSources[id];
+  }
+
+  function stopFileSources() {
+    Object.keys(fileSources).forEach(stopFileSource);
+  }
+
+  function createPinkNoiseBuffer() {
+    const length = Math.max(1, Math.floor(ctx.sampleRate * 4));
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+    for (let i = 0; i < length; i++) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + white * 0.0555179;
+      b1 = 0.99332 * b1 + white * 0.0750759;
+      b2 = 0.96900 * b2 + white * 0.1538520;
+      b3 = 0.86650 * b3 + white * 0.3104856;
+      b4 = 0.55000 * b4 + white * 0.5329522;
+      b5 = -0.7616 * b5 - white * 0.0168980;
+      data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+      b6 = white * 0.115926;
+    }
+    return buffer;
+  }
+
+  function getPinkNoiseBuffer() {
+    if (!pinkNoiseBuffer) pinkNoiseBuffer = createPinkNoiseBuffer();
+    return pinkNoiseBuffer;
+  }
+
+  function startGeneratorSource(id) {
+    const def = trackById(id);
+    const s = trackState[id], n = trackNodes[id];
+    if (!def || def.source !== 'generator' || !s || !n || generatorSources[id]) return;
+    if (s.generatorMode === 'sine') {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = Math.max(20, Math.min(20000, s.sineFreq || 440));
+      osc.connect(n.input);
+      osc.start();
+      generatorSources[id] = { node: osc, mode: 'sine' };
+      return;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = getPinkNoiseBuffer();
+    src.loop = true;
+    src.connect(n.input);
+    src.start();
+    generatorSources[id] = { node: src, mode: 'pink' };
+  }
+
+  function startGeneratorSources() {
+    trackDefs.filter(t => t.source === 'generator').forEach(t => startGeneratorSource(t.id));
+  }
+
+  function stopGeneratorSource(id) {
+    const item = generatorSources[id];
+    if (!item) return;
+    try { item.node.stop(); item.node.disconnect(); } catch (e) {}
+    delete generatorSources[id];
+  }
+
+  function stopGeneratorSources() {
+    Object.keys(generatorSources).forEach(stopGeneratorSource);
+  }
+
+  function restartGeneratorSource(id) {
+    if (!playing) return;
+    stopGeneratorSource(id);
+    startGeneratorSource(id);
+  }
+
+  function applyTrack(id) {
+    const s = trackState[id], n = trackNodes[id];
+    if (!s || !n) return;
+    // 独奏优先：有独奏时只有独奏轨出声；否则按开关 + 全部静音判定
+    const audible = soloIds.size ? soloIds.has(id) : (s.enabled && !allMuted);
+    AudioEngine.smooth(n.output.gain, audible ? s.mix : 0, 0.025);
+    n.hps.forEach((node, i) =>
+      applyFilterNode(node, filters.highpass, eqEnabled && filters.highpass.enabled, CUT_STAGE_QS[i]));
+    applyFilterNode(n.lowshelf, filters.lowshelf, eqEnabled && filters.lowshelf.enabled);
+    (n.bells || [n.bell]).forEach((node, index) => {
+      const id = bellIds[index];
+      applyFilterNode(node, filters[id], eqEnabled && filters[id].enabled);
+    });
+    applyFilterNode(n.highshelf, filters.highshelf, eqEnabled && filters.highshelf.enabled);
+    n.lps.forEach((node, i) =>
+      applyFilterNode(node, filters.lowpass, eqEnabled && filters.lowpass.enabled, CUT_STAGE_QS[i]));
+  }
+
+  function applyFilterNode(node, filter, enabled, qOverride) {
+    if (!node) return;
+    node.type = filter.type;
+    const bypassFreq = filter.type === 'highpass' ? 10 : filter.type === 'lowpass' ? MAX_FREQ : filter.freq;
+    AudioEngine.smooth(node.frequency, enabled ? filter.freq : bypassFreq, 0.02);
+    if (node.Q) AudioEngine.smooth(node.Q, qOverride || filter.q || 0.707, 0.02);
+    if (node.gain) AudioEngine.smooth(node.gain, enabled ? filter.gain : 0, 0.02);
+  }
+
+  function applyAll() {
+    trackDefs.forEach(t => applyTrack(t.id));
+    updateMixUi();
+    updateStatus();
+    updateBandInfo();
+    drawCanvas();
+  }
+
+  /** 刷新独奏按钮 / 全部静音按钮的视觉状态 */
+  function updateMixUi() {
+    $$('[data-track-solo]').forEach(btn => {
+      btn.classList.toggle('on', soloIds.has(btn.dataset.trackSolo));
+    });
+    const muteBtn = $('#mxMuteAll');
+    if (muteBtn) {
+      muteBtn.textContent = allMuted ? '🔊 取消全部静音' : '🔇 全部静音';
+      muteBtn.classList.toggle('primary', allMuted);
+    }
+    const clearBtn = $('#mxSoloClear');
+    if (clearBtn) clearBtn.style.display = soloIds.size ? '' : 'none';
+    const hint = $('#mxMixGlobalHint');
+    if (hint) {
+      hint.textContent = soloIds.size
+        ? `独奏中：${[...soloIds].map(id => (trackById(id) || {}).name || id).join('、')}`
+        : (allMuted ? '已全部静音' : '');
+    }
+  }
+
+  async function togglePlay() {
+    if (!Gate.unlocked) return;
+    if (playing) { pause(); return; }
+    if (!$('#mxSafety').checked) {
+      $('#mxNowHearing').textContent = '请先调低系统音量，再勾选确认';
+      $('#mxNowHearing').className = 'hear-pill flat';
+      return;
+    }
+    ensureAudio();
+    await loadDefaultTracks();
+    const offset = paused ? pauseOffset : 0;
+    startFileSources(offset);
+    startGeneratorSources();
+    playing = true;
+    paused = false;
+    startedAt = ctx.currentTime - offset;
+    applyAll();
+    startDrawLoop();
+  }
+
+  function pause() {
+    if (!playing) return;
+    pauseOffset = Math.max(0, ctx.currentTime - startedAt);
+    stopFileSources();
+    stopGeneratorSources();
+    playing = false;
+    paused = true;
+    stopDrawLoop();
+    updateStatus();
+    drawCanvas();
+  }
+
+  function stop() {
+    stopFileSources();
+    stopGeneratorSources();
+    playing = false;
+    paused = false;
+    pauseOffset = 0;
+    stopDrawLoop();
+    updateStatus();
+    drawCanvas();
+  }
+
+  function startDrawLoop() {
+    if (raf) return;
+    const tick = () => {
+      raf = null;
+      drawCanvas();
+      if (playing) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+  }
+
+  function stopDrawLoop() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = null;
+  }
+
+  /* 内置合成鼓已移除：鼓轨为普通文件轨，drums 文件夹为空时静音，
+     放入音频文件并扫描后即可出声 */
+
+  function isBellId(id) {
+    return bellIds.includes(id);
+  }
+
+  function visibleHandleIds() {
+    return Object.keys(filters).filter(id => !isBellId(id) || filters[id].enabled || filters[id].touched || id === selectedFilter);
+  }
+
+  function firstActiveBellId() {
+    return bellIds.find(id => filters[id].enabled) || '';
+  }
+
+  function firstFreeBellId() {
+    return bellIds.find(id => !filters[id].enabled) || bellIds[bellIds.length - 1];
+  }
+
+  function enableBell(id, freq = selectedBand.freq) {
+    const f = filters[id];
+    if (!f) return;
+    f.freq = freq;
+    f.enabled = true;
+    f.touched = true;
+    selectedFilter = id;
+    selectedBand = nearestBand(f.freq);
+    applyAll();
+  }
+
+  function selectBellSlot(id) {
+    if (!filters[id]) return;
+    if (selectedFilter === id && filters[id].enabled) {
+      filters[id].enabled = false;
+      applyAll();
+      return;
+    }
+    enableBell(id, filters[id].touched ? filters[id].freq : selectedBand.freq);
+  }
+
+  function addBellSlot() {
+    const id = firstFreeBellId();
+    enableBell(id, selectedBand.freq);
+  }
+
+  function setBand(band) {
+    const f = filters[selectedFilter];
+    if (isBellId(selectedFilter)) {
+      const existingBell = bellIds.find(id => filters[id].enabled && Math.round(filters[id].freq) === band.freq);
+      if (existingBell && existingBell !== selectedFilter) {
+        selectedFilter = existingBell;
+        filters[existingBell].enabled = false;
+        selectedBand = band;
+        applyAll();
+        return;
+      }
+    }
+    const sameBand = f.enabled && Math.round(f.freq) === band.freq;
+    selectedBand = band;
+    if (sameBand) {
+      f.enabled = false;
+      applyAll();
+      return;
+    }
+    f.freq = band.freq;
+    f.enabled = true;
+    f.touched = true;
+    applyAll();
+  }
+
+  function nearestBand(freq) {
+    return EQ_BANDS.reduce((best, b) => Math.abs(b.freq - freq) < Math.abs(best.freq - freq) ? b : best, EQ_BANDS[0]);
+  }
+
+  function selectFilter(id) {
+    if (!filters[id]) return;
+    if (id === 'bell') {
+      const target = isBellId(selectedFilter) ? selectedFilter : (firstActiveBellId() || 'bell');
+      if (isBellId(selectedFilter) && filters[target].enabled) {
+        filters[target].enabled = false;
+        applyAll();
+        return;
+      }
+      selectedFilter = target;
+      filters[target].enabled = true;
+      filters[target].touched = true;
+      selectedBand = nearestBand(filters[target].freq);
+      applyAll();
+      return;
+    }
+    if (selectedFilter === id && filters[id].enabled) {
+      filters[id].enabled = false;
+      applyAll();
+      return;
+    }
+    selectedFilter = id;
+    const f = filters[id];
+    f.enabled = true;
+    if ((id === 'lowshelf' || id === 'highshelf') && !f.touched) {
+      f.gain = 6;
+      f.touched = true;
+    }
+    selectedBand = nearestBand(f.freq);
+    applyAll();
+  }
+
+  function renderBands() {
+    const wrap = $('#mxBandChips');
+    wrap.innerHTML = '';
+    EQ_BANDS.forEach(b => {
+      const btn = document.createElement('button');
+      btn.dataset.freq = b.freq;
+      btn.innerHTML = `${b.tag}<br>${hzLabel(b.freq)}`;
+      btn.addEventListener('click', () => setBand(b));
+      wrap.appendChild(btn);
+    });
+  }
+
+  function renderBellTabs() {
+    const wrap = $('#mxBellTabs');
+    wrap.innerHTML = '';
+    bellIds.forEach(id => {
+      const btn = document.createElement('button');
+      btn.dataset.bell = id;
+      btn.addEventListener('click', () => selectBellSlot(id));
+      wrap.appendChild(btn);
+    });
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'add';
+    add.textContent = '+ 钟型';
+    add.addEventListener('click', addBellSlot);
+    wrap.appendChild(add);
+    updateBellTabs();
+  }
+
+  function updateBellTabs() {
+    $$('#mxBellTabs [data-bell]').forEach(btn => {
+      const f = filters[btn.dataset.bell];
+      btn.innerHTML = f.enabled
+        ? `${f.shortLabel}<br>${hzLabel(Math.round(f.freq))} ${fmtDb(Math.round(f.gain))}`
+        : `${f.shortLabel}<br>Off`;
+      btn.classList.toggle('sel', btn.dataset.bell === selectedFilter && f.enabled);
+      btn.classList.toggle('off', !f.enabled);
+      btn.style.borderColor = f.enabled ? f.color : '';
+      btn.style.color = f.enabled ? f.color : '';
+    });
+    // 同步 Q 滑杆到当前选中的钟型（非钟型滤波器时隐藏）
+    const qRow = $('#mxBellQRow');
+    if (qRow) {
+      const isBell = isBellId(selectedFilter);
+      qRow.style.display = isBell ? '' : 'none';
+      if (isBell) {
+        const f = filters[selectedFilter];
+        $('#mxBellQ').value = bellQToSlider(f.q);
+        $('#mxBellQLabel').textContent = 'Q ' + (+f.q).toFixed(1);
+      }
+    }
+  }
+
+  function renderTrackMix() {
+    const wrap = $('#mxTrackMix');
+    wrap.innerHTML = '';
+    trackDefs.forEach(t => {
+      const s = trackState[t.id];
+      const card = document.createElement('div');
+      card.className = 'mx-mini-track';
+      const sourceControls = t.source === 'generator' ? `
+        <div class="mx-generator-controls">
+          <select data-generator-mode="${t.id}" aria-label="${escapeHtml(t.name)} 类型">
+            <option value="pink" ${s.generatorMode === 'pink' ? 'selected' : ''}>粉红噪声</option>
+            <option value="sine" ${s.generatorMode === 'sine' ? 'selected' : ''}>正弦波</option>
+          </select>
+          <input type="number" min="20" max="20000" step="1" value="${Math.round(s.sineFreq || 440)}" data-sine-freq="${t.id}" aria-label="正弦波频率">
+          <span>Hz</span>
+          <div class="mx-generator-slider">
+            <span>20</span>
+            <input type="range" min="0" max="1000" step="1" value="${sineFreqToSlider(s.sineFreq || 440)}" data-sine-slider="${t.id}" aria-label="拖动选择正弦波频率">
+            <span>20k</span>
+          </div>
+        </div>` : `
+        <div class="mx-track-import">
+          <button class="btn ghost small" type="button" data-track-file-btn="${t.id}">导入</button>
+          <input type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.aac,.ogg" data-track-file="${t.id}" hidden>
+          <input type="text" data-track-url="${t.id}" value="${escapeHtml(s.currentUrl || t.importPath || t.url || '')}" aria-label="${escapeHtml(t.name)} URL">
+          <button class="btn ghost small" type="button" data-track-url-load="${t.id}">URL</button>
+        </div>
+        <div class="mx-track-select-row">
+          <select data-track-select="${t.id}" aria-label="${escapeHtml(t.name)} 文件选择" style="display:none;"></select>
+          <button class="btn ghost small" type="button" data-track-folder-scan="${t.id}">扫描</button>
+        </div>`;
+      card.innerHTML = `
+        <div class="mx-track-head">
+          <b style="color:${t.color}">${t.name}</b>
+          <span class="mx-track-ctl">
+            <button type="button" class="mx-solo" data-track-solo="${t.id}" title="独奏：只听这一轨（可多选，再点取消）">S</button>
+            <input type="checkbox" data-track-on="${t.id}" ${s.enabled ? 'checked' : ''} title="开 / 关此轨" aria-label="${escapeHtml(t.name)} 开关">
+          </span>
+        </div>
+        <div class="mini"><input type="range" min="0" max="100" value="${Math.round(s.mix * 100)}" data-track-mix="${t.id}"><output>${Math.round(s.mix * 100)}%</output></div>
+        ${sourceControls}
+        <div class="mx-track-status" data-track-status="${t.id}" data-state="${escapeHtml(s.statusState || '')}">${escapeHtml(s.status || '')}</div>`;
+      wrap.appendChild(card);
+      updateTrackFileSelect(t.id);
+    });
+    $$('[data-track-on]').forEach(i => i.addEventListener('change', () => {
+      trackState[i.dataset.trackOn].enabled = i.checked;
+      applyAll();
+    }));
+    // 独奏按钮：非空独奏集 = 只有独奏轨出声；点亮独奏时自动解除全部静音
+    $$('[data-track-solo]').forEach(btn => btn.addEventListener('click', () => {
+      const id = btn.dataset.trackSolo;
+      if (soloIds.has(id)) soloIds.delete(id);
+      else soloIds.add(id);
+      if (soloIds.size) allMuted = false;
+      applyAll();
+    }));
+    $$('[data-track-mix]').forEach(i => i.addEventListener('input', () => {
+      trackState[i.dataset.trackMix].mix = +i.value / 100;
+      i.nextElementSibling.textContent = i.value + '%';
+      applyAll();
+    }));
+    $$('[data-generator-mode]').forEach(sel => sel.addEventListener('change', () => {
+      const id = sel.dataset.generatorMode;
+      const s = trackState[id];
+      if (!s) return;
+      s.generatorMode = sel.value;
+      setTrackStatus(id, sel.value === 'sine' ? `正弦波 ${Math.round(s.sineFreq || 440)}Hz` : '粉红噪声', 'ok');
+      restartGeneratorSource(id);
+    }));
+    const setSineFreq = (id, value, source) => {
+      const s = trackState[id];
+      if (!s) return;
+      s.sineFreq = clampSineFreq(value);
+      const number = document.querySelector(`[data-sine-freq="${id}"]`);
+      const slider = document.querySelector(`[data-sine-slider="${id}"]`);
+      if (number && source !== 'number') number.value = Math.round(s.sineFreq);
+      if (slider && source !== 'slider') slider.value = sineFreqToSlider(s.sineFreq);
+      const gen = generatorSources[id];
+      if (gen && gen.mode === 'sine' && gen.node.frequency) {
+        AudioEngine.smooth(gen.node.frequency, s.sineFreq, 0.02);
+      }
+      if (s.generatorMode === 'sine') setTrackStatus(id, `正弦波 ${Math.round(s.sineFreq)}Hz`, 'ok');
+    };
+    $$('[data-sine-freq]').forEach(input => input.addEventListener('input', () => {
+      setSineFreq(input.dataset.sineFreq, input.value, 'number');
+    }));
+    $$('[data-sine-slider]').forEach(input => input.addEventListener('input', () => {
+      setSineFreq(input.dataset.sineSlider, sineSliderToFreq(input.value), 'slider');
+    }));
+    $$('[data-track-file-btn]').forEach(btn => btn.addEventListener('click', () => {
+      const input = document.querySelector(`[data-track-file="${btn.dataset.trackFileBtn}"]`);
+      if (input) input.click();
+    }));
+    $$('[data-track-file]').forEach(i => i.addEventListener('change', () => {
+      const file = i.files && i.files[0];
+      loadTrackFromFile(i.dataset.trackFile, file);
+      i.value = '';
+    }));
+    $$('[data-track-url]').forEach(i => i.addEventListener('input', () => {
+      const s = trackState[i.dataset.trackUrl];
+      if (s) s.currentUrl = i.value.trim();
+    }));
+    $$('[data-track-url]').forEach(i => i.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      loadTrackFromUrl(i.dataset.trackUrl, i.value.trim());
+    }));
+    $$('[data-track-url-load]').forEach(btn => btn.addEventListener('click', () => {
+      const id = btn.dataset.trackUrlLoad;
+      const input = document.querySelector(`[data-track-url="${id}"]`);
+      loadTrackFromUrl(id, input ? input.value.trim() : '');
+    }));
+    $$('[data-track-folder-scan]').forEach(btn => btn.addEventListener('click', () => {
+      const id = btn.dataset.trackFolderScan;
+      const input = document.querySelector(`[data-track-url="${id}"]`);
+      const value = input && looksLikeFolderUrl(input.value.trim()) ? input.value.trim() : folderUrlForTrack(id);
+      loadTrackFromUrl(id, ensureFolderUrl(value));
+    }));
+    $$('[data-track-select]').forEach(sel => sel.addEventListener('change', () => {
+      const s = trackState[sel.dataset.trackSelect];
+      if (s) s.selectedFileUrl = sel.value;
+      const entry = s && (s.folderFiles || []).find(file => file.url === sel.value);
+      loadTrackEntry(sel.dataset.trackSelect, entry || { url: sel.value });
+    }));
+  }
+
+  function addBatchChoice(map, mode, key, label, trackId, file) {
+    const id = `${mode}:${key}`;
+    if (!map[id]) map[id] = { id, mode, key, label, files: {} };
+    map[id].files[trackId] = file;
+  }
+
+  async function scanBatchFolders() {
+    $('#mxBatchStatus').textContent = '正在扫描分轨文件夹...';
+    await Promise.all(batchTrackIds.map(id => loadTrackFromUrl(id, folderUrlForTrack(id), { quiet: true, status: false, loadFirst: false })));
+    buildBatchChoices();
+    // 一个文件都没扫到时，准确告诉用户原因和出路
+    const total = batchTrackIds.reduce((sum, id) => sum + (folderCache[id] || []).length, 0);
+    if (!total) {
+      $('#mxBatchStatus').textContent = window.location.protocol === 'file:'
+        ? '扫描失败：页面是双击打开的（file://），浏览器禁止网页读取本地文件夹。请点"选择本地文件夹"手动选 imports 文件夹，或双击项目里的"启动本地服务器.command"（Windows 用 .bat）后用 http 地址打开页面。'
+        : '扫描不到文件：当前服务器不提供目录列表，且缺少 audio/imports/manifest.json。双击项目里的"更新音频清单.command"（Windows 用 .bat）生成清单后重扫，或点"选择本地文件夹"。';
+    }
+  }
+
+  function buildBatchChoices() {
+    const byExact = {};
+    const byNumber = {};
+    const byIndex = {};
+    batchTrackIds.forEach(id => {
+      const files = folderCache[id] || [];
+      files.forEach((file, index) => {
+        const exactKey = normalizedStem(file.name);
+        const numberKey = trailingNumberKey(file.name);
+        if (exactKey) addBatchChoice(byExact, 'same', exactKey, `同名 · ${filenameStem(file.name)}`, id, file);
+        if (numberKey) addBatchChoice(byNumber, 'num', numberKey, `编号 ${numberKey}（如 人声${numberKey}/键盘${numberKey}）`, id, file);
+        addBatchChoice(byIndex, 'idx', String(index), `第 ${index + 1} 首（按文件名排序）`, id, file);
+      });
+    });
+
+    const sortChoices = choices => choices
+      .filter(choice => Object.keys(choice.files).length >= 2)
+      .sort((a, b) => Object.keys(b.files).length - Object.keys(a.files).length || naturalCompare(a.label, b.label));
+    const sortIndexChoices = choices => choices
+      .filter(choice => Object.keys(choice.files).length >= 2)
+      .sort((a, b) => +a.key - +b.key);
+
+    batchChoices = [
+      ...sortIndexChoices(Object.values(byIndex)),
+      ...sortChoices(Object.values(byExact)),
+      ...sortChoices(Object.values(byNumber)),
+    ];
+
+    const seen = new Set();
+    batchChoices = batchChoices.filter(choice => {
+      const signature = batchTrackIds.map(id => choice.files[id] ? choice.files[id].url : '').join('|');
+      if (seen.has(signature)) return false;
+      seen.add(signature);
+      return true;
+    });
+
+    renderBatchChoices();
+  }
+
+  function renderBatchChoices() {
+    const select = $('#mxBatchSongSelect');
+    select.innerHTML = '';
+    if (!batchChoices.length) {
+      select.innerHTML = '<option value="">没有可批量匹配的文件</option>';
+      $('#mxBatchStatus').textContent = '没有找到可批量匹配的文件。先把音频放进五个乐器文件夹，再扫描。';
+      return;
+    }
+    batchChoices.forEach((choice, index) => {
+      const loaded = Object.keys(choice.files).length;
+      const opt = document.createElement('option');
+      opt.value = String(index);
+      opt.textContent = `${choice.label} · ${loaded}/${batchTrackIds.length} 轨`;
+      select.appendChild(opt);
+    });
+    select.value = '0';
+    $('#mxBatchStatus').textContent =
+      `已生成 ${batchChoices.length} 个候选（按文件名排序，人声/吉他/键盘/贝斯/鼓五轨同步切换）；` +
+      `下拉选“第几首”即切换，或点“下一个”按顺序换。`;
+  }
+
+  async function loadBatchChoice() {
+    const index = +$('#mxBatchSongSelect').value;
+    const choice = batchChoices[index];
+    if (!choice) {
+      $('#mxBatchStatus').textContent = '请先扫描并选择一个候选。';
+      return;
+    }
+    $('#mxBatchStatus').textContent = `正在替换：${choice.label}`;
+    const results = await Promise.all(batchTrackIds.map(async id => {
+      const file = choice.files[id];
+      if (!file) {
+        setTrackStatus(id, '本组没有对应文件', 'warn');
+        return false;
+      }
+      const s = trackState[id];
+      if (s) s.selectedFileUrl = file.url;
+      updateTrackFileSelect(id);
+      const result = await loadTrackEntry(id, file, { status: false });
+      return result.ok;
+    }));
+    const ok = results.filter(Boolean).length;
+    $('#mxBatchStatus').textContent = `已替换 ${ok}/${batchTrackIds.length} 轨：${choice.label}`;
+  }
+
+  function loadNextBatchChoice() {
+    if (!batchChoices.length) {
+      $('#mxBatchStatus').textContent = '请先扫描文件夹。';
+      return;
+    }
+    const select = $('#mxBatchSongSelect');
+    const next = ((+select.value || 0) + 1) % batchChoices.length;
+    select.value = String(next);
+    loadBatchChoice();
+  }
+
+  function physicsText(b) {
+    const wl = wavelength(b.freq);
+    const dir = b.freq < 180 ? '近似全向，低频会绕射并更容易激发房间驻波'
+      : b.freq < 1000 ? '方向性开始出现，但房间反射仍然很明显'
+      : b.freq < 4000 ? '指向性明显增强，离轴会变暗'
+      : '强指向，高频像窄光束，遮挡和离轴衰减更快';
+    return `波长约 ${wl >= 1 ? wl.toFixed(2) + 'm' : Math.round(wl * 100) + 'cm'}；${dir}。`;
+  }
+
+  function updateBandInfo() {
+    const b = selectedBand;
+    const f = filters[selectedFilter];
+    $$('#mxFilterTabs button').forEach(btn => {
+      if (btn.dataset.filter === 'bell') {
+        const anyBell = bellIds.some(id => filters[id].enabled);
+        const selBell = isBellId(selectedFilter) && filters[selectedFilter].enabled;
+        btn.classList.toggle('sel', selBell);
+        // 有钟型在作用但当前没选中钟型 → 亮绿点，表示"仍在作用"
+        btn.classList.toggle('on', anyBell && !selBell);
+        btn.classList.toggle('off', !anyBell);
+        return;
+      }
+      const filter = filters[btn.dataset.filter];
+      const isSel = btn.dataset.filter === selectedFilter && filter.enabled;
+      btn.classList.toggle('sel', isSel);
+      // 已启用但未选中（如低切开着、正在调钟型）→ 亮绿点而不是灰暗
+      btn.classList.toggle('on', filter.enabled && !isSel);
+      btn.classList.toggle('off', !filter.enabled);
+    });
+    $$('#mxBandChips button').forEach(btn => {
+      const exactBand = f.enabled && Math.round(f.freq) === +btn.dataset.freq;
+      const activeBellBand = bellIds.some(id => filters[id].enabled && Math.round(filters[id].freq) === +btn.dataset.freq);
+      btn.classList.toggle('sel', exactBand || activeBellBand);
+      btn.classList.toggle('off', !exactBand && !activeBellBand && !f.enabled && b.freq === +btn.dataset.freq);
+    });
+    updateBellTabs();
+    $('#mxBandTitle').textContent = `${f.label} · ${f.enabled ? hzLabel(Math.round(f.freq)) : '已取消'}`;
+    $('#mxBandTone').textContent = selectedFilter === 'highpass' ? '拖动低切点控制低频被切掉的位置。'
+      : selectedFilter === 'lowpass' ? '拖动高切点控制高频被切掉的位置。'
+      : `${b.tone} 拖动控制点可改变 F 和 G。`;
+    $('#mxBandRole').innerHTML = `<b>听什么：</b>${b.role}`;
+    $('#mxBandPhysics').innerHTML = `<b>指向 / 传播：</b>${physicsText(b)}`;
+    $('#mxBandUse').innerHTML = `<b>提示：</b>${b.use}`;
+    $('#mxGainLabel').textContent = !f.enabled ? 'Off' : (selectedFilter === 'highpass' || selectedFilter === 'lowpass') ? 'Cut' : fmtDb(Math.round(f.gain));
+  }
+
+  function updateStatus() {
+    $('#mxPlayBtn').textContent = playing ? '暂停' : paused ? '继续播放' : '播放';
+    $('#mxPlayBtn').classList.toggle('playing', playing);
+    $('#mxPlayBtn').disabled = !playing && !$('#mxSafety').checked;
+    $('#mxEqToggleBtn').textContent = eqEnabled ? 'EQ 取消' : 'EQ 作用';
+    $('#mxEqToggleBtn').classList.toggle('primary', !eqEnabled);
+    $('#mxEqToggleBtn').classList.toggle('ghost', eqEnabled);
+    const el = $('#mxNowHearing');
+    if (playing) {
+      const f = filters[selectedFilter];
+      el.textContent = eqEnabled ? `正在听：${activeFilterCount()} 个 EQ 点` : '正在听：原声';
+      el.className = eqEnabled && activeFilterCount() ? 'hear-pill proc' : 'hear-pill flat';
+    } else {
+      el.textContent = !$('#mxSafety').checked ? '请先调低音量并勾选确认' : paused ? '已暂停' : '未播放';
+      el.className = 'hear-pill';
+    }
+  }
+
+  function graphMetrics() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const padL = 46, padR = 16, padT = 28;
+    return {
+      w, h, padL, padR, padT,
+      graphY: padT,
+      graphW: w - padL - padR,
+      graphH: h - padT - 38,
+    };
+  }
+
+  function biquadCoefficients(filter) {
+    const sampleRate = ctx ? ctx.sampleRate : 48000;
+    const nyquist = sampleRate / 2;
+    const f0 = Math.max(1, Math.min(nyquist * 0.98, filter.freq));
+    const w0 = 2 * Math.PI * f0 / sampleRate;
+    const cos = Math.cos(w0);
+    const sin = Math.sin(w0);
+    const q = Math.max(0.001, filter.q || 0.707);
+    const alpha = sin / (2 * q);
+    const gain = filter.gain || 0;
+    const A = Math.pow(10, gain / 40);
+    let b0 = 1, b1 = 0, b2 = 0, a0 = 1, a1 = 0, a2 = 0;
+
+    if (filter.type === 'lowpass') {
+      b0 = (1 - cos) / 2; b1 = 1 - cos; b2 = (1 - cos) / 2;
+      a0 = 1 + alpha; a1 = -2 * cos; a2 = 1 - alpha;
+    } else if (filter.type === 'highpass') {
+      b0 = (1 + cos) / 2; b1 = -(1 + cos); b2 = (1 + cos) / 2;
+      a0 = 1 + alpha; a1 = -2 * cos; a2 = 1 - alpha;
+    } else if (filter.type === 'peaking') {
+      b0 = 1 + alpha * A; b1 = -2 * cos; b2 = 1 - alpha * A;
+      a0 = 1 + alpha / A; a1 = -2 * cos; a2 = 1 - alpha / A;
+    } else {
+      const shelfAlpha = sin / 2 * Math.sqrt(2);
+      const beta = 2 * Math.sqrt(A) * shelfAlpha;
+      if (filter.type === 'lowshelf') {
+        b0 = A * ((A + 1) - (A - 1) * cos + beta);
+        b1 = 2 * A * ((A - 1) - (A + 1) * cos);
+        b2 = A * ((A + 1) - (A - 1) * cos - beta);
+        a0 = (A + 1) + (A - 1) * cos + beta;
+        a1 = -2 * ((A - 1) + (A + 1) * cos);
+        a2 = (A + 1) + (A - 1) * cos - beta;
+      } else if (filter.type === 'highshelf') {
+        b0 = A * ((A + 1) + (A - 1) * cos + beta);
+        b1 = -2 * A * ((A - 1) + (A + 1) * cos);
+        b2 = A * ((A + 1) + (A - 1) * cos - beta);
+        a0 = (A + 1) - (A - 1) * cos + beta;
+        a1 = 2 * ((A - 1) - (A + 1) * cos);
+        a2 = (A + 1) - (A - 1) * cos - beta;
+      }
+    }
+
+    const coef = { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0, sampleRate };
+    return Object.values(coef).every(Number.isFinite)
+      ? coef
+      : { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0, sampleRate };
+  }
+
+  function biquadDbAt(coef, freq) {
+    const f = Math.max(1, Math.min(coef.sampleRate / 2 * 0.98, freq));
+    const w = 2 * Math.PI * f / coef.sampleRate;
+    const cos1 = Math.cos(w), sin1 = Math.sin(w);
+    const cos2 = Math.cos(2 * w), sin2 = Math.sin(2 * w);
+    const br = coef.b0 + coef.b1 * cos1 + coef.b2 * cos2;
+    const bi = -coef.b1 * sin1 - coef.b2 * sin2;
+    const ar = 1 + coef.a1 * cos1 + coef.a2 * cos2;
+    const ai = -coef.a1 * sin1 - coef.a2 * sin2;
+    const mag = Math.sqrt((br * br + bi * bi) / Math.max(1e-12, ar * ar + ai * ai));
+    const db = 20 * Math.log10(Math.max(1e-8, mag));
+    return Number.isFinite(db) ? db : 0;
+  }
+
+  function combinedDb(freq) {
+    if (!eqEnabled) return 0;
+    return combinedDbFromCoefficients(freq, activeCoefficients());
+  }
+
+  function activeCoefficients() {
+    if (!eqEnabled) return [];
+    const out = [];
+    Object.values(filters).filter(filter => filter.enabled).forEach(filter => {
+      if (filter.type === 'highpass' || filter.type === 'lowpass') {
+        // 高低切是 4 级串联（48dB/oct），曲线也按 4 级叠加计算，与实际听感一致
+        CUT_STAGE_QS.forEach(q => out.push(biquadCoefficients(Object.assign({}, filter, { q }))));
+      } else {
+        out.push(biquadCoefficients(filter));
+      }
+    });
+    return out;
+  }
+
+  function combinedDbFromCoefficients(freq, coefficients) {
+    const db = coefficients.reduce((sum, coef) => sum + biquadDbAt(coef, freq), 0);
+    return Number.isFinite(db) ? db : 0;
+  }
+
+  function drawSmoothPath(c, points) {
+    if (!points.length) return;
+    c.beginPath();
+    c.moveTo(points[0].x, points[0].y);
+    if (points.length === 1) return;
+    for (let i = 1; i < points.length - 1; i++) {
+      const midX = (points[i].x + points[i + 1].x) / 2;
+      const midY = (points[i].y + points[i + 1].y) / 2;
+      c.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
+    }
+    const last = points[points.length - 1];
+    c.lineTo(last.x, last.y);
+  }
+
+  function drawEqCurve(c, m) {
+    const coefficients = activeCoefficients();
+    const steps = Math.max(900, Math.ceil(Math.max(1, m.graphW) * 2.2));
+    const points = [];
+    for (let i = 0; i <= steps; i++) {
+      const norm = i / steps;
+      const rawFreq = normToFreq(norm);
+      const freq = Number.isFinite(rawFreq) ? Math.max(1, rawFreq) : 1;
+      const x = m.padL + norm * m.graphW;
+      const rawDb = combinedDbFromCoefficients(freq, coefficients);
+      const db = Math.max(-39, Math.min(39, Number.isFinite(rawDb) ? rawDb : 0));
+      points.push({ x, y: yOfDb(db, m.graphY, m.graphH) });
+    }
+
+    c.save();
+    c.beginPath();
+    c.rect(m.padL, m.graphY, m.graphW, m.graphH);
+    c.clip();
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+
+    const zeroY = yOfDb(0, m.graphY, m.graphH);
+    c.beginPath();
+    c.moveTo(m.padL, zeroY);
+    c.lineTo(m.padL + m.graphW, zeroY);
+    c.strokeStyle = 'rgba(232,238,247,.28)';
+    c.lineWidth = 1.25;
+    c.stroke();
+
+    drawSmoothPath(c, points);
+    c.strokeStyle = 'rgba(4,8,18,.72)';
+    c.lineWidth = 9;
+    c.stroke();
+
+    drawSmoothPath(c, points);
+    c.strokeStyle = eqEnabled ? '#fb923c' : '#64748b';
+    c.lineWidth = 4.5;
+    c.stroke();
+
+    drawSmoothPath(c, points);
+    c.strokeStyle = eqEnabled ? 'rgba(255,237,213,.58)' : 'rgba(203,213,225,.35)';
+    c.lineWidth = 1.25;
+    c.stroke();
+    c.restore();
+  }
+
+  function activeFilterCount() {
+    return Object.values(filters).filter(filter => filter.enabled).length;
+  }
+
+  function freqFromX(px, m) {
+    return normToFreq((px - m.padL) / m.graphW);
+  }
+
+  function dbFromY(py, m) {
+    const db = ((m.graphY + m.graphH / 2 - py) / (m.graphH / 2 - 14)) * 39;
+    return Math.max(-39, Math.min(39, db));
+  }
+
+  function handlePoint(id, m) {
+    const filter = filters[id];
+    const x = xOfFreq(filter.freq, m.padL, m.graphW);
+    const y = yOfDb((filter.type === 'highpass' || filter.type === 'lowpass') ? 0 : filter.gain, m.graphY, m.graphH);
+    return { id, x, y };
+  }
+
+  function pointerCanvasPoint(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = rect.width ? canvas.clientWidth / rect.width : 1;
+    const scaleY = rect.height ? canvas.clientHeight / rect.height : 1;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
+  }
+
+  function updateFilterFromPointer(e) {
+    const m = graphMetrics();
+    const p = pointerCanvasPoint(e);
+    const filter = filters[selectedFilter];
+    filter.enabled = true;
+    filter.freq = Math.round(freqFromX(p.x, m));
+    if (filter.type !== 'highpass' && filter.type !== 'lowpass') filter.gain = Math.round(dbFromY(p.y, m));
+    filter.touched = true;
+    selectedBand = nearestBand(filter.freq);
+    applyAll();
+  }
+
+  function onPointerDown(e) {
+    const m = graphMetrics();
+    const p = pointerCanvasPoint(e);
+    const nearest = visibleHandleIds()
+      .map(id => handlePoint(id, m))
+      .map(point => Object.assign(point, { d: Math.hypot(point.x - p.x, point.y - p.y) }))
+      .sort((a, b) => a.d - b.d)[0];
+    if (nearest && nearest.d < 70) selectedFilter = nearest.id;
+    dragging = true;
+    e.preventDefault();
+    if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+    updateFilterFromPointer(e);
+  }
+
+  function onPointerMove(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    updateFilterFromPointer(e);
+  }
+
+  function drawCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w) return;
+    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+    }
+    const c = canvas.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w, h);
+
+    const m = graphMetrics();
+    const { padL, graphH, graphW, graphY } = m;
+    c.fillStyle = '#101827';
+    c.fillRect(0, 0, w, h);
+
+    c.strokeStyle = '#243552';
+    c.fillStyle = '#6f83a4';
+    c.lineWidth = 1;
+    c.font = '12px sans-serif';
+    [0, 80, 105, 180, 250, 500, 1000, 2000, 4500, 8000, 12000, 20000].forEach(f => {
+      const x = xOfFreq(f, padL, graphW);
+      c.beginPath(); c.moveTo(x, graphY); c.lineTo(x, graphY + graphH); c.stroke();
+      const label = f === 0 ? '0' : f === 4500 ? '4.5k' : hzLabel(f).replace('Hz', '');
+      c.fillText(label, Math.min(x + 2, w - 38), graphY + graphH + 18);
+    });
+    [-36, -24, -12, 0, 12, 24, 36].forEach(db => {
+      const y = yOfDb(db, graphY, graphH);
+      c.beginPath(); c.moveTo(padL, y); c.lineTo(padL + graphW, y); c.stroke();
+      c.fillText((db > 0 ? '+' : '') + db, 8, y + 4);
+    });
+
+    drawRta(c, m);
+
+    drawEqCurve(c, m);
+    drawHandles(c, m);
+
+    const active = filters[selectedFilter];
+    const xBand = xOfFreq(active.freq, padL, graphW);
+    c.strokeStyle = '#38bdf8';
+    c.lineWidth = 2;
+    c.beginPath(); c.moveTo(xBand, graphY); c.lineTo(xBand, graphY + graphH); c.stroke();
+    c.fillStyle = '#e8eef7';
+    c.font = '15px sans-serif';
+    const label = `${active.label} · ${hzLabel(Math.round(active.freq))}` +
+      ((active.type === 'highpass' || active.type === 'lowpass') ? '' : ` · ${fmtDb(Math.round(active.gain))}`);
+    c.fillText(label, padL, 19);
+    c.fillStyle = '#93a4bd';
+    c.fillText('0 - 20kHz', Math.max(padL, w - 108), 19);
+
+    drawDirectivityCanvas();
+  }
+
+  function drawDirectivityCanvas() {
+    if (!directivityCanvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = directivityCanvas.clientWidth, h = directivityCanvas.clientHeight;
+    if (!w) return;
+    if (directivityCanvas.width !== w * dpr || directivityCanvas.height !== h * dpr) {
+      directivityCanvas.width = w * dpr;
+      directivityCanvas.height = h * dpr;
+    }
+    const c = directivityCanvas.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w, h);
+    drawDirectivity(c, 0, 0, w, h);
+  }
+
+  function drawRta(c, m) {
+    if (!analyser || !rtaData || !playing) return;
+    analyser.getByteFrequencyData(rtaData);
+    c.beginPath();
+    let started = false;
+    for (let i = 1; i < rtaData.length; i++) {
+      const freq = i * ctx.sampleRate / analyser.fftSize;
+      if (freq > MAX_FREQ) break;
+      const x = xOfFreq(freq, m.padL, m.graphW);
+      const mag = Math.pow(rtaData[i] / 255, 0.72);
+      const y = m.graphY + m.graphH - mag * m.graphH * 0.82;
+      started ? c.lineTo(x, y) : c.moveTo(x, y);
+      started = true;
+    }
+    c.strokeStyle = 'rgba(56,189,248,.58)';
+    c.lineWidth = 2;
+    c.stroke();
+  }
+
+  function drawHandles(c, m) {
+    visibleHandleIds().forEach(id => {
+      const p = handlePoint(id, m);
+      const f = filters[id];
+      const active = id === selectedFilter;
+      c.beginPath();
+      c.arc(p.x, p.y, active ? 9 : 6, 0, Math.PI * 2);
+      c.fillStyle = f.color;
+      c.globalAlpha = eqEnabled && f.enabled ? 1 : 0.28;
+      c.fill();
+      c.globalAlpha = 1;
+      c.lineWidth = active ? 3 : 1.5;
+      c.strokeStyle = active ? '#ffffff' : 'rgba(232,238,247,.65)';
+      c.stroke();
+      c.fillStyle = f.color;
+      c.globalAlpha = f.enabled ? 1 : 0.5;
+      c.font = '11px sans-serif';
+      c.fillText(f.label, p.x + 10, p.y - 8);
+      c.globalAlpha = 1;
+    });
+  }
+
+  function drawDirectivity(c, x, y, w, h) {
+    c.fillStyle = '#0d1727';
+    c.strokeStyle = '#263956';
+    c.lineWidth = 1;
+    roundRect(c, x, y, w, h, 8);
+    c.fill(); c.stroke();
+    c.fillStyle = '#e8eef7';
+    c.font = '13px sans-serif';
+    c.fillText('频段指向性对比', x + 10, y + 20);
+
+    const items = [
+      { f: 60, label: '60Hz', color: '#4ade80' },
+      { f: 500, label: '500Hz', color: '#38bdf8' },
+      { f: 4000, label: '4kHz', color: '#fbbf24' },
+      { f: filters[selectedFilter].freq, label: '当前', color: '#fb923c' },
+    ];
+    const slot = w / items.length;
+    items.forEach((it, idx) => {
+      const r = Math.min(42, slot * 0.28, (h - 40) * 0.42);
+      const cx = x + slot * idx + slot / 2;
+      const cy = y + h / 2 + 10;
+      drawPolar(c, cx, cy, r, it.f, it.color);
+      c.fillStyle = it.color;
+      c.font = '12px sans-serif';
+      c.fillText(it.label, cx - 18, y + h - 10);
+    });
+  }
+
+  function drawPolar(c, cx, cy, r, freq, color) {
+    c.strokeStyle = 'rgba(147,164,189,.28)';
+    c.lineWidth = 1;
+    [0.5, 1].forEach(s => { c.beginPath(); c.arc(cx, cy, r * s, 0, Math.PI * 2); c.stroke(); });
+    c.beginPath(); c.moveTo(cx - r, cy); c.lineTo(cx + r, cy); c.moveTo(cx, cy - r); c.lineTo(cx, cy + r); c.stroke();
+
+    const narrow = Math.min(0.94, Math.max(0.02, Math.log(freq / 70) / Math.log(90)));
+    c.beginPath();
+    for (let i = 0; i <= 300; i++) {
+      const a = (i / 300) * Math.PI * 2;
+      const forward = (Math.cos(a) + 1) / 2;
+      const back = Math.max(0, -Math.cos(a));
+      const mag = r * (1 - narrow * 0.68 + narrow * Math.pow(forward, 4.4) + back * (1 - narrow) * 0.15);
+      const px = cx + Math.cos(a) * mag;
+      const py = cy + Math.sin(a) * mag;
+      i ? c.lineTo(px, py) : c.moveTo(px, py);
+    }
+    c.closePath();
+    c.globalAlpha = 0.24; c.fillStyle = color; c.fill(); c.globalAlpha = 1;
+    c.strokeStyle = color; c.lineWidth = freq === filters[selectedFilter].freq ? 3 : 2; c.stroke();
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y);
+    c.quadraticCurveTo(x + w, y, x + w, y + r);
+    c.lineTo(x + w, y + h - r);
+    c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    c.lineTo(x + r, y + h);
+    c.quadraticCurveTo(x, y + h, x, y + h - r);
+    c.lineTo(x, y + r);
+    c.quadraticCurveTo(x, y, x + r, y);
+  }
+
+  function initEvents() {
+    $('#mxSafety').checked = false;
+    $('#mxSafety').addEventListener('change', () => {
+      if (!$('#mxSafety').checked && playing) pause();
+      updateStatus();
+    });
+    $('#mxPlayBtn').addEventListener('click', togglePlay);
+    $('#mxEqToggleBtn').addEventListener('click', () => {
+      eqEnabled = !eqEnabled;
+      applyAll();
+    });
+    $$('#mxFilterTabs button').forEach(btn => btn.addEventListener('click', () => selectFilter(btn.dataset.filter)));
+    $('#mxBatchScan').addEventListener('click', scanBatchFolders);
+    $('#mxBatchPickFolder').addEventListener('click', () => $('#mxBatchFolderInput').click());
+    $('#mxBatchFolderInput').addEventListener('change', e => {
+      importLocalFolderFiles(e.target.files);
+      e.target.value = '';
+    });
+    $('#mxBatchLoad').addEventListener('click', loadBatchChoice);
+    $('#mxBatchNext').addEventListener('click', loadNextBatchChoice);
+    // 下拉选中"第几首"后立即批量切换，不用再点"一键替换"
+    $('#mxBatchSongSelect').addEventListener('change', () => {
+      if ($('#mxBatchSongSelect').value !== '') loadBatchChoice();
+    });
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', () => { dragging = false; });
+    canvas.addEventListener('pointerleave', () => { dragging = false; });
+    window.addEventListener('resize', drawCanvas);
+  }
+
+  renderBands();
+  renderBellTabs();
+  renderTrackMix();
+  applyAll();
+  initEvents();
+  updateStatus();
+  StopRegistry.push(stop);
+
+  // 钟型 Q 值滑杆：作用于当前选中的钟型
+  $('#mxBellQ').addEventListener('input', () => {
+    if (!isBellId(selectedFilter)) return;
+    filters[selectedFilter].q = bellSliderToQ(+$('#mxBellQ').value);
+    applyAll();
+  });
+
+  // 一键全部静音（再点恢复）；开启时清除独奏
+  $('#mxMuteAll').addEventListener('click', () => {
+    allMuted = !allMuted;
+    if (allMuted) soloIds.clear();
+    applyAll();
+  });
+  // 取消所有独奏，回到各轨开关状态
+  $('#mxSoloClear').addEventListener('click', () => {
+    soloIds.clear();
+    applyAll();
+  });
+
+  // 打开页面只扫描各轨文件夹和 manifest，不解码大音频文件。
+  // 真正的 AudioContext 初始化和音频解码放到用户点击播放之后，兼容移动端自动播放限制。
+  (async () => {
+    try {
+      await scanDefaultTrackFolders();
+      buildBatchChoices();
+    } catch (e) {
+      console.warn('启动自动扫描失败', e);
+    }
+  })();
+
+  return { stop };
+})();
+
+/* ============================================================
+   ⑧【模块三：左右耳听力平衡测试】LrModule
+   每轮两声提示音（StereoPanner 硬声像：第一声全左、第二声全右），
+   下降法逐步缩小左右音量差，记录可察觉的最小差值与正确率
+   ============================================================ */
+const LrModule = (() => {
+  const FREQS = [
+    { hz: 250,  name: '低频 250Hz'  },
+    { hz: 1000, name: '中频 1kHz'   },
+    { hz: 4000, name: '高频 4kHz'   },
+  ];
+  const DIFF_STEPS = [12, 9, 6, 4, 3, 2, 1];   // dB，从明显到细微
+  const TONE_DUR = 0.7;                          // 每声提示音时长（秒）
+  const TONE_GAP = 0.25;                         // 两声提示音之间的间隔（秒）
+
+  let fi = 0, si = 0, louder = 'L', results = [], busy = false;
+  let trialCount = 0, correctCount = 0;   // 当前频率的答题数 / 答对数（用于正确率）
+
+  function baseGain() { return ($('#lrVolume').value / 100) * 0.5; }
+
+  /** 单声哔音：panVal = -1 只进左耳 / +1 只进右耳。
+      用 StereoPannerNode 做硬声像（各浏览器行为一致）；不支持时兜底用双声道合并 */
+  function beep(ctx, freqHz, when, level, panVal) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freqHz;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(level, when + 0.02);
+    g.gain.setValueAtTime(level, when + TONE_DUR - 0.05);
+    g.gain.linearRampToValueAtTime(0, when + TONE_DUR);
+    osc.connect(g);
+    if (ctx.createStereoPanner) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = panVal;
+      g.connect(p);
+      p.connect(ctx.destination);
+    } else {
+      const m = ctx.createChannelMerger(2);
+      g.connect(m, 0, panVal < 0 ? 0 : 1);
+      m.connect(ctx.destination);
+    }
+    osc.start(when);
+    osc.stop(when + TONE_DUR + 0.03);
+    return osc;
+  }
+
+  /** 播放一轮：第一声只在左耳、第二声只在右耳；louder 侧为基准音量，另一侧衰减 diffDb */
+  function playTrial() {
+    if (!Gate.unlocked || busy) return;
+    busy = true;
+    const ctx = AudioEngine.ensure();
+    const diffDb = DIFF_STEPS[si];
+    const base = baseGain();
+    const quiet = base * dbToGain(-diffDb);
+    const t = ctx.currentTime + 0.05;
+    const lv = louder === 'L' ? base : quiet;
+    const rv = louder === 'R' ? base : quiet;
+    beep(ctx, FREQS[fi].hz, t, lv, -1);                                     // 第一声：左耳
+    const second = beep(ctx, FREQS[fi].hz, t + TONE_DUR + TONE_GAP, rv, 1); // 第二声：右耳
+    second.onended = () => { busy = false; };
+  }
+
+  function updateTrialUI() {
+    $('#lrProgress').textContent = `第 ${fi + 1} / ${FREQS.length} 项 · ${FREQS[fi].name}`;
+    $('#lrTrialInfo').textContent =
+      `当前左右音量差：${DIFF_STEPS[si]} dB（第 ${si + 1} / ${DIFF_STEPS.length} 档，差值会越来越小）`;
+  }
+
+  function startTest() {
+    if (!Gate.unlocked) return;
+    fi = 0; si = 0; results = [];
+    trialCount = 0; correctCount = 0;
+    nextTrial(true);
+    $('#lrTestCard').style.display = 'block';
+    $('#lrResultCard').style.display = 'none';
+    $('#lrStartBtn').textContent = '重新开始';
+  }
+
+  function nextTrial(autoplay) {
+    louder = Math.random() < 0.5 ? 'L' : 'R';
+    updateTrialUI();
+    if (autoplay) setTimeout(playTrial, 350);
+  }
+
+  function answerTrial(ans) {
+    if (busy) return;
+    const correct = ans === louder;
+    trialCount++;
+    if (correct) correctCount++;
+    if (correct) {
+      // 答对：这一档能听出来，继续缩小差值
+      if (si === DIFF_STEPS.length - 1) {
+        finishFreq(DIFF_STEPS[si]);            // 最小档也能听出
+      } else {
+        si++;
+        nextTrial(true);
+      }
+    } else {
+      // 答错或听不出：阈值为上一档（第一档就失败则记为"未能察觉最大差值"）
+      finishFreq(si === 0 ? null : DIFF_STEPS[si - 1]);
+    }
+  }
+
+  function finishFreq(thresholdDb) {
+    results.push({ freq: FREQS[fi], threshold: thresholdDb, trials: trialCount, correct: correctCount });
+    trialCount = 0; correctCount = 0;
+    fi++;
+    si = 0;
+    if (fi < FREQS.length) {
+      nextTrial(true);
+    } else {
+      showResults();
+    }
+  }
+
+  function gradeOf(th) {
+    if (th === null) return '建议检查耳机 / 佩戴后重测';
+    if (th <= 2) return '两耳差异感知非常敏锐';
+    if (th <= 4) return '平衡感知良好';
+    if (th <= 6) return '平衡感知一般';
+    return '感知较弱，建议换设备交叉验证';
+  }
+
+  function showResults() {
+    $('#lrTestCard').style.display = 'none';
+    const tb = $('#lrResultBody');
+    tb.innerHTML = '';
+    results.forEach(r => {
+      const tr = document.createElement('tr');
+      const acc = r.trials ? Math.round(r.correct / r.trials * 100) + '%（' + r.correct + '/' + r.trials + '）' : '--';
+      tr.innerHTML = `<td>${r.freq.name}</td>` +
+        `<td>${r.threshold === null ? '> ' + DIFF_STEPS[0] + ' dB' : r.threshold + ' dB'}</td>` +
+        `<td>${acc}</td>` +
+        `<td>${gradeOf(r.threshold)}</td>`;
+      tb.appendChild(tr);
+    });
+    const totTrials = results.reduce((s, r) => s + r.trials, 0);
+    const totCorrect = results.reduce((s, r) => s + r.correct, 0);
+    const totAcc = totTrials ? Math.round(totCorrect / totTrials * 100) : 0;
+    const vals = results.filter(r => r.threshold !== null).map(r => r.threshold);
+    $('#lrResultSummary').textContent =
+      `本次总正确率：${totAcc}%（共判断 ${totTrials} 次，答对 ${totCorrect} 次）。` +
+      (vals.length
+        ? `最小差值数值越小、正确率越高，表示你对左右音量差越敏感。三个频率的结果若差异较大（例如高频明显偏弱），` +
+          `可能与耳机频响、佩戴贴合度或听力特点有关，建议换一副耳机再测一次交叉对比。`
+        : `本次各频率均未能察觉最大差值，请先确认耳机双侧都正常出声、佩戴正确、音量适中后重测。`);
+    $('#lrResultCard').style.display = 'block';
+  }
+
+  $('#lrSafety').addEventListener('change', e => { $('#lrStartBtn').disabled = !e.target.checked; });
+  $('#lrVolume').addEventListener('input', () => { $('#lrVolLabel').textContent = $('#lrVolume').value + '%'; });
+  $('#lrStartBtn').addEventListener('click', startTest);
+  $('#lrReplayBtn').addEventListener('click', playTrial);
+  $('#lrRestartBtn').addEventListener('click', startTest);
+  $$('#lrTestCard .lr-answer button').forEach(b =>
+    b.addEventListener('click', () => answerTrial(b.dataset.ans === '0' ? '0' : b.dataset.ans)));
+
+  StopRegistry.push(() => {}); // 测试音为短音，无需长期停止逻辑
+  return {};
+})();
+
+/* ============================================================
+   ⑨【启动】
+   ============================================================ */
+PageZoom.init();
+Gate.init();
+
+// 双击打开（file://）时给出醒目警告：此方式下浏览器拦截一切 fetch，
+// 默认音频加载、文件夹扫描、manifest 清单全都不可用，这是浏览器安全机制，前端无法绕过
+if (window.location.protocol === 'file:') {
+  const bar = document.createElement('div');
+  bar.style.cssText =
+    'position:fixed;top:0;left:0;right:0;z-index:300;background:#7f1d1d;color:#fecaca;' +
+    'padding:10px 40px 10px 14px;font-size:13px;line-height:1.6;box-shadow:0 2px 12px rgba(0,0,0,.5);';
+  bar.innerHTML =
+    '⚠️ 你是<b>双击打开</b>本页面的（file:// 方式），浏览器会拦截默认音频加载和文件夹扫描，这是浏览器安全限制。' +
+    '正确打开方式：双击项目文件夹里的 <b>「启动本地服务器.command」</b>（Mac）或 <b>「启动本地服务器.bat」</b>（Windows），' +
+    '会自动在 http://localhost:8642 打开页面。（不换的话，只能用各轨的「导入」或「选择本地文件夹」手动加载音频）' +
+    '<span style="position:absolute;right:12px;top:8px;cursor:pointer;font-size:18px;" ' +
+    'onclick="this.parentNode.remove()" title="关闭">✕</span>';
+  document.body.appendChild(bar);
+}
+
+/* ============================================================
+   ⑩【未来扩展预留】
+   计划中的新训练模块可按当前模式接入：
+     - 混响训练   ReverbModule   （ConvolverNode，猜混响时间/类型）
+     - 压缩训练   CompModule     （DynamicsCompressorNode，猜阈值/比例）
+     - 噪声门训练 GateModule     （猜门限动作）
+   接入步骤：
+     1. 在 <nav class="tabs"> 里加一个 <button data-tab="xxx">
+     2. 新建 <section class="module" id="module-xxx">，
+        内部放一份 .lock-overlay（复制现有模块的即可，自动受解锁控制）
+     3. 仿照 MxEqModule 写一个 IIFE 模块：音频链自建、
+        把停止函数 push 进 StopRegistry、播放前检查 Gate.unlocked
+   ============================================================ */
+</script>
+</body>
+</html>
