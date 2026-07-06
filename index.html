@@ -140,7 +140,7 @@ table.result th { background: var(--card-2); font-weight: 600; }
 .lock-overlay .lock-icon { font-size: 44px; }
 section.module.unlocked .lock-overlay { display: none; }
 
-/* ---- 引导流程（免责声明 → 解锁）全屏蒙层 ---- */
+/* ---- 引导流程（免责声明 → 内测密码）全屏蒙层 ---- */
 #gate {
   position: fixed; inset: 0; z-index: 100; background: var(--bg);
   overflow-y: auto; -webkit-overflow-scrolling: touch;
@@ -156,8 +156,40 @@ section.module.unlocked .lock-overlay { display: none; }
 .disclaim-list li { margin-bottom: 10px; }
 .qr-wrap { text-align: center; margin: 14px 0; }
 .qr-wrap img { width: 210px; max-width: 70%; border-radius: 12px; border: 1px solid var(--line); }
-.price-line { text-align: center; font-size: 17px; margin: 8px 0; }
-.price-line b { color: var(--warn); font-size: 24px; }
+.access-line { text-align: center; font-size: 17px; margin: 8px 0; }
+.access-line b { color: var(--warn); font-size: 24px; }
+.contact-card {
+  margin: 16px 0;
+  text-align: center;
+}
+.contact-card strong {
+  color: var(--accent);
+  font-size: 18px;
+}
+.contact-card .qr-wrap img {
+  width: 230px;
+  max-width: 78%;
+  background: #fff;
+}
+.support-card {
+  max-width: 520px;
+  margin: 22px auto 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  text-align: center;
+}
+.support-card h2 {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+.support-card img {
+  width: min(260px, 82vw);
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+}
 
 /* ---- EQ 工具通用控件 ---- */
 .band-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
@@ -230,6 +262,28 @@ section.module.unlocked .lock-overlay { display: none; }
 }
 .hear-pill.flat { background: rgba(56,189,248,.14); border-color: #38bdf8; color: #7dd3fc; }
 .hear-pill.proc { background: rgba(251,146,60,.16); border-color: #fb923c; color: #fdba74; }
+.hear-pill.loading {
+  position: relative;
+  overflow: hidden;
+  background: rgba(56,189,248,.12);
+  border-color: #38bdf8;
+  color: #bae6fd;
+}
+.hear-pill.loading::after {
+  content: '';
+  position: absolute;
+  left: -45%;
+  right: auto;
+  bottom: 0;
+  width: 45%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #38bdf8, transparent);
+  animation: loadingSweep 1.15s ease-in-out infinite;
+}
+@keyframes loadingSweep {
+  from { transform: translateX(0); }
+  to { transform: translateX(320%); }
+}
 .hear-pill.ans  { background: rgba(74,222,128,.14); border-color: #4ade80; color: #86efac; }
 .hear-pill.user { background: rgba(251,191,36,.14); border-color: #fbbf24; color: #fde68a; }
 .hear-pill.cut  { background: rgba(167,139,250,.14); border-color: #a78bfa; color: #c4b5fd; }
@@ -812,7 +866,7 @@ nav.tabs { display: none; }
 <body>
 
 <!-- ============================================================
-     引导流程蒙层：第一步免责声明 → 第二步付费解锁
+     引导流程蒙层：第一步免责声明 → 第二步内测密码
      ============================================================ -->
 <div id="gate">
   <div class="gate-inner">
@@ -823,6 +877,12 @@ nav.tabs { display: none; }
       <p class="hint" style="text-align:center;">歌手 · 乐手 · 调音师的听觉训练工具</p>
       <div class="volume-warning">
         ⚠️ 注意调节音量！<br>注意调节音量！<br>注意调节音量！
+      </div>
+      <div class="card contact-card">
+        <h2>免费内测 · 限制人数使用</h2>
+        <p class="hint">找我领取免费密码</p>
+        <p style="margin:8px 0;">微信：<strong>ErosAUC</strong></p>
+        <div class="qr-wrap"><img id="contactQrImg" alt="微信二维码"></div>
       </div>
       <div class="card">
         <h2>使用前请务必阅读</h2>
@@ -839,33 +899,30 @@ nav.tabs { display: none; }
       <button class="btn primary" id="agreeBtn" disabled style="width:100%;">同意并继续</button>
     </div>
 
-    <!-- 第 2 步：付费解锁 / 输入解锁码 -->
+    <!-- 第 2 步：输入内测密码 -->
     <div class="step" id="gateStepUnlock">
-      <h1 style="font-size:20px;text-align:center;margin:6px 0 14px;">解锁全部功能</h1>
+      <h1 style="font-size:20px;text-align:center;margin:6px 0 14px;">输入内测密码</h1>
       <div class="card">
         <p style="font-size:14px;">
-          你好！这是一个<b>个人开发的小工具</b>，不是商业公司产品。
-          价格为<b>一次性买断</b>，付一次即可永久使用，没有订阅、没有内购。
+          这是一个<b>免费内测</b>的听音训练工具，目前限制人数使用。
+          请添加微信 <b>ErosAUC</b> 找我领取免费密码。
         </p>
-        <div class="qr-wrap"><img id="qrImg" alt="收款二维码"></div>
-        <p class="price-line" id="priceLine">买断价：<b>--</b> 元，永久解锁全部功能</p>
-        <p class="hint" id="contactLine" style="text-align:center;"></p>
+        <div class="qr-wrap"><img id="unlockContactQrImg" alt="微信二维码"></div>
+        <p class="access-line">内测密码格式：<b>ErosIris + 数字</b></p>
         <p class="hint" style="margin-top:10px;">
-          小提示：由于这是纯网页工具，无法自动确认到账，解锁码需要<b>人工发放</b>，
-          可能要等一小会儿，请耐心～ 收到解锁码后在下方输入即可。
-          解锁状态保存在当前浏览器中，同一设备无需重复输入。
+          例如：ErosIris001、ErosIris110505180001。激活状态会保存在当前浏览器中，
+          同一设备无需重复输入。
         </p>
       </div>
       <div class="card">
-        <h2>输入解锁码</h2>
+        <h2>输入密码</h2>
         <div class="row" style="margin-top:8px;">
-          <input type="text" id="unlockInput" class="grow" placeholder="请输入解锁码"
+          <input type="text" id="unlockInput" class="grow" placeholder="请输入内测密码，例如 ErosIris001"
                  autocomplete="off" autocapitalize="characters">
-          <button class="btn primary" id="unlockBtn">解锁</button>
+          <button class="btn primary" id="unlockBtn">激活进入</button>
         </div>
         <p class="hint" id="unlockMsg" style="margin-top:8px;"></p>
       </div>
-      <button class="btn ghost" id="previewBtn" style="width:100%;">先逛逛（功能预览模式）</button>
     </div>
 
   </div>
@@ -895,7 +952,7 @@ nav.tabs { display: none; }
         <button class="btn ghost small" id="pageZoomIn" type="button" title="放大页面">+</button>
         <button class="btn ghost small" id="pageZoomReset" type="button" title="恢复 100%">1:1</button>
       </div>
-      <span class="badge" id="lockBadge">🔒 未解锁</span>
+      <span class="badge" id="lockBadge">🔐 未激活</span>
     </div>
   </header>
 
@@ -909,8 +966,8 @@ nav.tabs { display: none; }
   <section class="module" id="module-tone">
     <div class="lock-overlay">
       <div class="lock-icon">🔒</div>
-      <p>付费解锁后即可使用全部训练功能</p>
-      <button class="btn primary unlock-jump">去解锁</button>
+      <p>请输入内测密码后即可使用全部训练功能</p>
+      <button class="btn primary unlock-jump">输入密码</button>
     </div>
 
     <div class="card">
@@ -957,8 +1014,8 @@ nav.tabs { display: none; }
   <section class="module active" id="module-eq">
     <div class="lock-overlay">
       <div class="lock-icon">🔒</div>
-      <p>付费解锁后即可使用全部训练功能</p>
-      <button class="btn primary unlock-jump">去解锁</button>
+      <p>请输入内测密码后即可使用全部训练功能</p>
+      <button class="btn primary unlock-jump">输入密码</button>
     </div>
 
     <div id="mxSimple">
@@ -1038,8 +1095,8 @@ nav.tabs { display: none; }
   <section class="module" id="module-lr">
     <div class="lock-overlay">
       <div class="lock-icon">🔒</div>
-      <p>付费解锁后即可使用全部训练功能</p>
-      <button class="btn primary unlock-jump">去解锁</button>
+      <p>请输入内测密码后即可使用全部训练功能</p>
+      <button class="btn primary unlock-jump">输入密码</button>
     </div>
 
     <div class="card">
@@ -1099,6 +1156,11 @@ nav.tabs { display: none; }
 
   <footer style="text-align:center;margin-top:30px;">
     <p class="hint">个人开发的听音训练小工具 · 请科学用耳，避免长时间高音量聆听</p>
+    <div class="support-card">
+      <h2>赞赏开发者</h2>
+      <p class="hint" style="margin-bottom:10px;">支持开发者做出更好的产品</p>
+      <img id="tipQrImg" alt="赞赏二维码">
+    </div>
   </footer>
 </div>
 
@@ -1108,26 +1170,18 @@ nav.tabs { display: none; }
    ①【可配置区】—— 日常维护只需要改这里
    ============================================================ */
 
-// 解锁码：人工确认收款后发给用户的固定字符串（区分大小写，输入时会自动去掉首尾空格）
-const UNLOCK_CODE = 'EAR-2026-UNLOCK';
+// 免费内测密码规则：ErosIris + 任意数字，例如 ErosIris001
+const ACCESS_CODE_RE = /^ErosIris\d+$/;
 
-// 付费总开关：false = 暂时关闭付费环节，所有人免费直接使用（免责声明仍会显示）；
-// 将来要恢复收费，把它改回 true 即可，其他代码不用动。
-const PAYMENT_ENABLED = false;
+// 内测密码门开关：true = 首次使用需输入内测密码
+const ACCESS_GATE_ENABLED = true;
 
 const APP_CONFIG = {
-  // 价格与联系方式配置文件（价格数字、联系方式请改 json，不要改代码）
-  PRICE_CONFIG_URL: 'assets/payment/price-config.json',
-  QRCODE_URL: 'assets/payment/qrcode.png',
+  WECHAT_ID: 'ErosAUC',
+  CONTACT_QR_URL: 'assets/微信好友码.jpg',
+  TIP_QR_URL: 'assets/赞赏码.png',
 
-  // 当 json 读取失败（例如直接双击 html 以 file:// 打开）时的兜底显示值
-  PRICE_FALLBACK: {
-    price: 3, currencySymbol: '¥',
-    note: '买断制解锁，一次付费永久使用',
-    contact: '付款后请截图联系微信 / 邮箱：请在 price-config.json 中填写联系方式',
-  },
-
-  // localStorage 键名（改了会导致老用户解锁状态失效，一般不要动）
+  // localStorage 键名（改了会导致老用户激活状态失效，一般不要动）
   LS_DISCLAIMER: 'earTrainer.disclaimerAccepted.v1',
   LS_UNLOCKED:   'earTrainer.unlocked.v1',
   LS_PAGE_ZOOM:  'earTrainer.pageZoom.v1',
@@ -1304,29 +1358,17 @@ const PageZoom = {
 };
 
 /* ============================================================
-   ④【付费解锁 & 引导流程层】Gate
-   流程：免责声明 → 解锁码 / 预览 → 主界面
+   ④【内测密码 & 引导流程层】Gate
+   流程：免责声明 → 内测密码 → 主界面
    ============================================================ */
 const Gate = {
-  // 付费开关关闭时视为人人已解锁
-  unlocked: !PAYMENT_ENABLED || lsGet(APP_CONFIG.LS_UNLOCKED) === 'yes',
-  priceCfg: APP_CONFIG.PRICE_FALLBACK,
+  // 内测密码门关闭时视为人人已激活
+  unlocked: !ACCESS_GATE_ENABLED || lsGet(APP_CONFIG.LS_UNLOCKED) === 'yes',
 
   async init() {
-    // 动态读取价格配置（价格数字不硬编码在 HTML 里）
-    try {
-      const res = await fetch(APP_CONFIG.PRICE_CONFIG_URL, { cache: 'no-store' });
-      if (res.ok) this.priceCfg = Object.assign({}, APP_CONFIG.PRICE_FALLBACK, await res.json());
-    } catch (e) {
-      // file:// 直接打开时 fetch 会失败，使用兜底配置
-      console.warn('价格配置读取失败，使用默认值', e);
-    }
-    $('#qrImg').src = APP_CONFIG.QRCODE_URL;
-    const sym = this.priceCfg.currencySymbol || '¥';
-    $('#priceLine').innerHTML =
-      `买断价：<b>${sym}${this.priceCfg.price}</b> 元，永久解锁全部功能<br>` +
-      `<span class="hint">${this.priceCfg.note || ''}</span>`;
-    $('#contactLine').textContent = this.priceCfg.contact || '';
+    $('#contactQrImg').src = APP_CONFIG.CONTACT_QR_URL;
+    $('#unlockContactQrImg').src = APP_CONFIG.CONTACT_QR_URL;
+    $('#tipQrImg').src = APP_CONFIG.TIP_QR_URL;
 
     // 免责声明勾选
     $('#agreeCheck').addEventListener('change', e => { $('#agreeBtn').disabled = !e.target.checked; });
@@ -1336,27 +1378,24 @@ const Gate = {
       else this.showStep('gateStepUnlock');
     });
 
-    // 解锁码验证
+    // 内测密码验证
     const tryUnlock = () => {
       const code = $('#unlockInput').value.trim();
-      if (code === UNLOCK_CODE) {
+      if (ACCESS_CODE_RE.test(code)) {
         lsSet(APP_CONFIG.LS_UNLOCKED, 'yes');
         this.unlocked = true;
-        $('#unlockMsg').textContent = '✅ 解锁成功！欢迎使用～';
+        $('#unlockMsg').textContent = '✅ 激活成功！欢迎使用～';
         $('#unlockMsg').style.color = 'var(--ok)';
         setTimeout(() => this.enterApp(), 500);
       } else {
-        $('#unlockMsg').textContent = '❌ 解锁码不正确，请检查后重试（注意大小写和空格）。';
+        $('#unlockMsg').textContent = '❌ 密码格式不正确，请输入 ErosIris + 数字。';
         $('#unlockMsg').style.color = 'var(--danger)';
       }
     };
     $('#unlockBtn').addEventListener('click', tryUnlock);
     $('#unlockInput').addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
 
-    // 预览模式：进主界面但保持锁定
-    $('#previewBtn').addEventListener('click', () => this.enterApp());
-
-    // 各锁定蒙层里的"去解锁"按钮 & 顶部徽章
+    // 各锁定蒙层里的"输入密码"按钮 & 顶部徽章
     $$('.unlock-jump').forEach(b => b.addEventListener('click', () => this.reopenUnlock()));
     $('#lockBadge').addEventListener('click', () => { if (!this.unlocked) this.reopenUnlock(); });
 
@@ -1375,7 +1414,7 @@ const Gate = {
   },
 
   reopenUnlock() {
-    if (!PAYMENT_ENABLED) return; // 付费关闭时没有解锁页可去
+    if (!ACCESS_GATE_ENABLED) return; // 密码门关闭时没有激活页可去
     this.showStep('gateStepUnlock');
   },
 
@@ -1384,19 +1423,19 @@ const Gate = {
     this.applyLockState();
   },
 
-  /** 根据解锁状态刷新界面：蒙层显隐 + 徽章 */
+  /** 根据激活状态刷新界面：蒙层显隐 + 徽章 */
   applyLockState() {
     $$('section.module').forEach(sec => sec.classList.toggle('unlocked', this.unlocked));
     const badge = $('#lockBadge');
-    if (!PAYMENT_ENABLED) {
-      badge.style.display = 'none'; // 付费关闭期间不显示解锁徽章
+    if (!ACCESS_GATE_ENABLED) {
+      badge.style.display = 'none';
       return;
     }
     if (this.unlocked) {
-      badge.textContent = '✅ 已解锁';
+      badge.textContent = '✅ 已激活';
       badge.classList.add('unlocked');
     } else {
-      badge.textContent = '🔒 未解锁 · 点此输入解锁码';
+      badge.textContent = '🔐 未激活 · 点此输入内测密码';
     }
   },
 };
@@ -1549,7 +1588,7 @@ const MxEqModule = (() => {
   const MAX_FREQ = 20000;
 
   let ctx = null, master = null, analyser = null, rtaData = null, raf = null;
-  let playing = false, paused = false, eqEnabled = true, dragging = false;
+  let playing = false, paused = false, loadingPlayback = false, statusNotice = null, eqEnabled = true, dragging = false;
   const soloIds = new Set();   // 处于独奏的轨道（非空时只有这些轨出声，可多选）
   let allMuted = false;        // 一键全部静音
   let startedAt = 0, pauseOffset = 0;
@@ -2237,22 +2276,37 @@ const MxEqModule = (() => {
 
   async function togglePlay() {
     if (!Gate.unlocked) return;
+    if (loadingPlayback) return;
     if (playing) { pause(); return; }
     if (!$('#mxSafety').checked) {
       $('#mxNowHearing').textContent = '请先调低系统音量，再勾选确认';
       $('#mxNowHearing').className = 'hear-pill flat';
       return;
     }
-    ensureAudio();
-    await loadDefaultTracks();
-    const offset = paused ? pauseOffset : 0;
-    startFileSources(offset);
-    startGeneratorSources();
-    playing = true;
-    paused = false;
-    startedAt = ctx.currentTime - offset;
-    applyAll();
-    startDrawLoop();
+    loadingPlayback = true;
+    statusNotice = null;
+    updateStatus();
+    try {
+      ensureAudio();
+      await loadDefaultTracks();
+      const offset = paused ? pauseOffset : 0;
+      startFileSources(offset);
+      startGeneratorSources();
+      playing = true;
+      paused = false;
+      startedAt = ctx.currentTime - offset;
+      applyAll();
+      startDrawLoop();
+    } catch (e) {
+      console.warn('播放启动失败', e);
+      statusNotice = {
+        text: '加载失败，请检查网络或稍后重试',
+        className: 'hear-pill cut',
+      };
+    } finally {
+      loadingPlayback = false;
+      updateStatus();
+    }
   }
 
   function pause() {
@@ -2743,14 +2797,20 @@ const MxEqModule = (() => {
   }
 
   function updateStatus() {
-    $('#mxPlayBtn').textContent = playing ? '暂停' : paused ? '继续播放' : '播放';
+    $('#mxPlayBtn').textContent = loadingPlayback ? '加载中...' : playing ? '暂停' : paused ? '继续播放' : '播放';
     $('#mxPlayBtn').classList.toggle('playing', playing);
-    $('#mxPlayBtn').disabled = !playing && !$('#mxSafety').checked;
+    $('#mxPlayBtn').disabled = loadingPlayback || (!playing && !$('#mxSafety').checked);
     $('#mxEqToggleBtn').textContent = eqEnabled ? 'EQ 取消' : 'EQ 作用';
     $('#mxEqToggleBtn').classList.toggle('primary', !eqEnabled);
     $('#mxEqToggleBtn').classList.toggle('ghost', eqEnabled);
     const el = $('#mxNowHearing');
-    if (playing) {
+    if (statusNotice && !playing && !loadingPlayback) {
+      el.textContent = statusNotice.text;
+      el.className = statusNotice.className;
+    } else if (loadingPlayback) {
+      el.textContent = '正在加载无损音频，手机端可能需要几秒...';
+      el.className = 'hear-pill loading';
+    } else if (playing) {
       const f = filters[selectedFilter];
       el.textContent = eqEnabled ? `正在听：${activeFilterCount()} 个 EQ 点` : '正在听：原声';
       el.className = eqEnabled && activeFilterCount() ? 'hear-pill proc' : 'hear-pill flat';
@@ -3417,7 +3477,7 @@ if (window.location.protocol === 'file:') {
    接入步骤：
      1. 在 <nav class="tabs"> 里加一个 <button data-tab="xxx">
      2. 新建 <section class="module" id="module-xxx">，
-        内部放一份 .lock-overlay（复制现有模块的即可，自动受解锁控制）
+        内部放一份 .lock-overlay（复制现有模块的即可，自动受激活控制）
      3. 仿照 MxEqModule 写一个 IIFE 模块：音频链自建、
         把停止函数 push 进 StopRegistry、播放前检查 Gate.unlocked
    ============================================================ */
