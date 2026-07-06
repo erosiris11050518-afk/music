@@ -879,24 +879,16 @@ nav.tabs { display: none; }
           <span>我已阅读并知晓上述风险，自愿继续使用</span>
         </label>
       </div>
-      <button class="btn primary" id="agreeBtn" disabled style="width:100%;">同意并继续</button>
-    </div>
-
-    <div class="step" id="gateStepAccess">
-      <h1 style="font-size:20px;text-align:center;margin:6px 0 14px;">访问密码</h1>
-      <div class="card contact-card">
-        <h2>请输入访问密码</h2>
-        <p class="hint">如未获取，请添加微信 <b>ErosAUC</b> 联系我。</p>
-        <div class="qr-wrap"><img id="accessContactQrImg" alt="微信二维码"></div>
-      </div>
       <div class="card">
+        <h2>访问密码</h2>
+        <p class="hint">请输入你获取到的访问密码。</p>
         <div class="row" style="margin-top:8px;">
           <input type="password" id="accessInput" class="grow" placeholder="请输入访问密码"
                  autocomplete="off" autocapitalize="none" spellcheck="false">
-          <button class="btn primary" id="accessBtn">进入</button>
         </div>
         <p class="hint" id="accessMsg" style="margin-top:8px;"></p>
       </div>
+      <button class="btn primary" id="agreeBtn" disabled style="width:100%;">同意并进入</button>
     </div>
 
   </div>
@@ -1313,26 +1305,18 @@ const PageZoom = {
 
 /* ============================================================
    ④【使用前提醒层】Gate
-   流程：免责声明 → 访问密码 → 主界面
+   流程：免责声明 + 访问密码 → 主界面
    ============================================================ */
 const Gate = {
   ready: lsGet(APP_CONFIG.LS_ACCESS) === 'yes',
 
   async init() {
     $('#contactQrImg').src = APP_CONFIG.CONTACT_QR_URL;
-    $('#accessContactQrImg').src = APP_CONFIG.CONTACT_QR_URL;
     $('#tipQrImg').src = APP_CONFIG.TIP_QR_URL;
-
-    // 免责声明勾选
-    $('#agreeCheck').addEventListener('change', e => { $('#agreeBtn').disabled = !e.target.checked; });
-    $('#agreeBtn').addEventListener('click', () => {
-      lsSet(APP_CONFIG.LS_DISCLAIMER, 'yes');
-      if (this.ready) this.enterApp();
-      else this.showStep('gateStepAccess');
-    });
 
     const tryAccess = () => {
       if (isValidAccessCode($('#accessInput').value)) {
+        lsSet(APP_CONFIG.LS_DISCLAIMER, 'yes');
         lsSet(APP_CONFIG.LS_ACCESS, 'yes');
         this.ready = true;
         $('#accessMsg').textContent = '验证成功，正在进入...';
@@ -1343,20 +1327,17 @@ const Gate = {
         $('#accessMsg').style.color = 'var(--danger)';
       }
     };
-    $('#accessBtn').addEventListener('click', tryAccess);
-    $('#accessInput').addEventListener('keydown', e => { if (e.key === 'Enter') tryAccess(); });
 
-    if (lsGet(APP_CONFIG.LS_DISCLAIMER) === 'yes') {
-      if (this.ready) this.enterApp();
-      else this.showStep('gateStepAccess');
+    // 免责声明勾选
+    $('#agreeCheck').addEventListener('change', e => { $('#agreeBtn').disabled = !e.target.checked; });
+    $('#agreeBtn').addEventListener('click', tryAccess);
+    $('#accessInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && $('#agreeCheck').checked) tryAccess();
+    });
+
+    if (this.ready && lsGet(APP_CONFIG.LS_DISCLAIMER) === 'yes') {
+      this.enterApp();
     }
-  },
-
-  showStep(id) {
-    $$('#gate .step').forEach(s => s.classList.remove('active'));
-    $('#' + id).classList.add('active');
-    $('#gate').style.display = 'block';
-    $('#gate').scrollTop = 0;
   },
 
   enterApp() {
