@@ -15,7 +15,7 @@ import update_manifest
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 DIST = os.path.join(ROOT, 'dist')
-PUBLISH_ITEMS = ('index.html', 'assets', 'audio')
+PUBLISH_ITEMS = ('index.html', 'mix-export.html', 'assets', 'audio', 'libs')
 IGNORE_NAMES = {
     '.DS_Store',
     '__MACOSX',
@@ -34,18 +34,20 @@ def fail(message):
     return 1
 
 
-def validate_index():
-    index_path = os.path.join(ROOT, 'index.html')
-    if not os.path.isfile(index_path):
-        return fail('index.html not found')
+def validate_html_assets():
+    html_files = [name for name in PUBLISH_ITEMS if name.endswith('.html')]
+    for name in html_files:
+        path = os.path.join(ROOT, name)
+        if not os.path.isfile(path):
+            return fail('%s not found' % name)
 
-    with open(index_path, 'r', encoding='utf-8') as fh:
-        html = fh.read()
+        with open(path, 'r', encoding='utf-8') as fh:
+            html = fh.read()
 
-    for pattern in ABSOLUTE_PATH_PATTERNS:
-        match = pattern.search(html)
-        if match:
-            return fail('absolute root asset path found near: %r' % html[match.start():match.start() + 80])
+        for pattern in ABSOLUTE_PATH_PATTERNS:
+            match = pattern.search(html)
+            if match:
+                return fail('%s has absolute root asset path near: %r' % (name, html[match.start():match.start() + 80]))
 
     return 0
 
@@ -71,7 +73,7 @@ def main():
     if rc:
         return rc
 
-    rc = validate_index()
+    rc = validate_html_assets()
     if rc:
         return rc
 
