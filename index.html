@@ -3039,6 +3039,34 @@ const MxEqModule = (() => {
     updateFilterFromPointer(e);
   }
 
+  function drawXAxisTicks(c, m, canvasWidth) {
+    const ticks = [0, 80, 105, 180, 250, 500, 1000, 2000, 4500, 8000, 12000, 20000];
+    const labelGap = canvasWidth < 430 ? 10 : 6;
+    const maxLabel = hzLabel(MAX_FREQ).replace('Hz', '');
+    const maxLabelW = c.measureText(maxLabel).width;
+    const maxLabelX = xOfFreq(MAX_FREQ, m.padL, m.graphW);
+    const maxLabelLeft = Math.max(m.padL - 2, Math.min(maxLabelX - maxLabelW, canvasWidth - maxLabelW - 2));
+    let lastRight = -Infinity;
+    ticks.forEach(f => {
+      const x = xOfFreq(f, m.padL, m.graphW);
+      c.beginPath();
+      c.moveTo(x, m.graphY);
+      c.lineTo(x, m.graphY + m.graphH);
+      c.stroke();
+
+      const label = f === 0 ? '0' : f === 4500 ? '4.5k' : hzLabel(f).replace('Hz', '');
+      const textW = c.measureText(label).width;
+      const labelX = f === MAX_FREQ ? Math.min(x - textW, canvasWidth - textW - 2) : x + 2;
+      const left = Math.max(m.padL - 2, labelX);
+      const right = left + textW;
+      const isEdgeLabel = f === 0 || f === MAX_FREQ;
+      if (f !== MAX_FREQ && right > maxLabelLeft - labelGap) return;
+      if (!isEdgeLabel && left < lastRight + labelGap) return;
+      c.fillText(label, left, m.graphY + m.graphH + 18);
+      lastRight = right;
+    });
+  }
+
   function drawCanvas() {
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -3060,12 +3088,7 @@ const MxEqModule = (() => {
     c.fillStyle = '#6f83a4';
     c.lineWidth = 1;
     c.font = '12px sans-serif';
-    [0, 80, 105, 180, 250, 500, 1000, 2000, 4500, 8000, 12000, 20000].forEach(f => {
-      const x = xOfFreq(f, padL, graphW);
-      c.beginPath(); c.moveTo(x, graphY); c.lineTo(x, graphY + graphH); c.stroke();
-      const label = f === 0 ? '0' : f === 4500 ? '4.5k' : hzLabel(f).replace('Hz', '');
-      c.fillText(label, Math.min(x + 2, w - 38), graphY + graphH + 18);
-    });
+    drawXAxisTicks(c, m, w);
     [-36, -24, -12, 0, 12, 24, 36].forEach(db => {
       const y = yOfDb(db, graphY, graphH);
       c.beginPath(); c.moveTo(padL, y); c.lineTo(padL + graphW, y); c.stroke();
