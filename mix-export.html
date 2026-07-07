@@ -1218,15 +1218,21 @@ const mainEq = createEqUnit({
   bellCount: 6, defaultBellGain: 6,   // 混音场景默认 +6dB（训练页是 +31）
   onChange: () => { applyEqLive(); updateExpSummary(); },
 });
+let syncingVerbCut = false;
+let revEqReady = false;
 const revEq = createEqUnit({
   canvasSel: '#rvCanvas', tabsSel: '#rvFilterTabs', bellTabsSel: '#rvBellTabs',
   qSel: '#rvQ', qLabSel: '#rvQLab', bandChipsSel: null,
   bellCount: 2, defaultBellGain: 4,
-  onChange: () => { syncVerbCutFromRevEq(); applyReverbLive(); },
+  onChange: () => {
+    if (!revEqReady) return;
+    syncVerbCutFromRevEq();
+    applyReverbLive();
+  },
 });
+revEqReady = true;
 
 /* Low Cut / High Cut 滑杆 ↔ 混响 EQ 的低切/高切滤波器（同一组参数） */
-let syncingVerbCut = false;
 function syncRevEqFromSliders() {
   if (syncingVerbCut) return;
   syncingVerbCut = true;
