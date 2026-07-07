@@ -105,6 +105,18 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
 .mini-eq-tabs button.on::after { content: ' ●'; font-size: 9px; vertical-align: 2px; }
 .bell-tabs button.add { border-style: dashed; color: var(--text-dim); }
 
+/* 实时对比按钮：after=蓝(听处理后) / before=橙(听处理前) */
+.cmp-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; margin: 6px 0; }
+.cmp-row button.cmp { min-height: 42px; }
+button.cmp.after { border-color: var(--accent); color: var(--accent); background: rgba(56,189,248,.12); font-weight: 700; }
+button.cmp.before { border-color: var(--warn); color: var(--warn); background: rgba(251,146,60,.16); font-weight: 700; }
+/* Pre/Post 探测切换 */
+.prepost { display: flex; align-items: center; gap: 6px; margin: 6px 0; flex-wrap: wrap; }
+.prepost button {
+  padding: 6px 12px; font-size: 12px; border-radius: 7px; cursor: pointer;
+  background: var(--card-2); color: var(--text-dim); border: 1px solid var(--line);
+}
+.prepost button.sel { background: var(--accent); color: #06283a; font-weight: 700; border-color: var(--accent); }
 .file-meta { font-size: 12.5px; color: var(--text-dim); line-height: 1.7; margin-top: 6px; word-break: break-all; }
 .progress-wrap { background: var(--card-2); border-radius: 8px; height: 14px; overflow: hidden; margin: 8px 0; display: none; }
 .progress-bar { height: 100%; width: 0%; background: var(--accent); transition: width .15s; }
@@ -119,7 +131,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
   <header style="display:flex;justify-content:space-between;align-items:center;padding:10px 2px;">
     <div>
       <div style="font-size:19px;font-weight:700;">🎛️ 粗混导出工具</div>
-      <div class="hint">剪切 · 降噪 · EQ · 混响 · 导出（纯本机处理，不上传服务器）</div>
+      <div class="hint">剪切 · Gate · EQ · 混响 · 导出（纯本机处理，不上传服务器）</div>
     </div>
     <a href="./index.html" class="hint">← 返回耳训</a>
   </header>
@@ -139,10 +151,16 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
     </div>
     <div class="file-meta" id="fileMeta">未选择文件。支持 mp3 / wav / m4a / aac / flac（以浏览器解码能力为准）。</div>
     <div class="pill" id="statusPill">⏹ 未加载音频</div>
-    <div class="row">
-      <button class="btn ghost grow" id="playRawBtn" disabled>▶ 原声(片段)</button>
-      <button class="btn primary grow" id="playProcBtn" disabled>▶ 处理后</button>
-      <button class="btn ghost" id="stopBtn">⏹</button>
+    <canvas id="playWave" height="70"></canvas>
+    <div class="row" style="margin-top:8px;">
+      <button class="btn primary grow" id="playPauseBtn" disabled>▶ 播放</button>
+      <button class="btn ghost" id="stopBtn">⏹ 停止</button>
+    </div>
+    <p class="hint" style="margin-top:8px;">实时对比（点一下即时切换，<b>不会重新播放</b>，方便盲听前后）：</p>
+    <div class="cmp-row">
+      <button class="btn ghost small cmp" id="cmpAll" data-cmp="all">总效果：后</button>
+      <button class="btn ghost small cmp" id="cmpEq" data-cmp="eq">EQ：后</button>
+      <button class="btn ghost small cmp" id="cmpRev" data-cmp="rev">混响：后</button>
     </div>
     <div class="slider-row">
       <div class="lab"><span>试听音量</span><b id="volLab">70%</b></div>
@@ -168,7 +186,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
   <!-- ================= 选项卡 ================= -->
   <div class="band-chips tabs" id="mainTabs">
     <button data-tab="cut" class="sel">✂️ 剪切</button>
-    <button data-tab="gate">🔇 降噪</button>
+    <button data-tab="gate">🔇 Gate</button>
     <button data-tab="eq">🎚 EQ</button>
     <button data-tab="verb">🌊 混响</button>
     <button data-tab="exp">💾 导出</button>
@@ -176,7 +194,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
 
   <!-- ========== 剪切 ========== -->
   <div class="card panel active" id="panel-cut">
-    <h2>剪切（后续降噪 / EQ / 混响 / 导出只处理保留的片段）</h2>
+    <h2>剪切（后续 Gate / EQ / 混响 / 导出只处理保留的片段）</h2>
     <div class="band-chips" id="cutMode">
       <button data-mode="keep" class="sel">保留区间</button>
       <button data-mode="remove">删除中间区间</button>
@@ -235,11 +253,18 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
 
   <!-- ========== 降噪 ========== -->
   <div class="card panel" id="panel-gate">
-    <h2>轻量降噪 / 噪声门</h2>
-    <p class="hint">适合压低<b>底噪和空白段噪声</b>（噪声门/Expander 原理），不是 AI 人声降噪，请勿期待去除持续的强噪声。</p>
+    <h2>Gate 门（压低底噪 / 空白段噪声）</h2>
+    <p class="hint">噪声门 / Expander 原理，适合压低<b>底噪和空白段噪声</b>；不是 AI 人声降噪，请勿期待去除持续强噪声。</p>
+    <div class="prepost" data-rta="gate">
+      <span class="hint">RTA 探测：</span>
+      <button data-pp="pre">Pre 门前</button>
+      <button data-pp="post" class="sel">Post 门后</button>
+    </div>
+    <canvas id="gateCanvas" height="150"></canvas>
+    <p class="hint">播放后看频谱：把<b>门限（黄线）</b>调到刚好压过噪声底、又不吃掉人声即可。</p>
     <label class="check" style="margin:10px 0;">
       <input type="checkbox" id="gateOn">
-      <span>启用降噪（默认关闭）</span>
+      <span>启用 Gate（默认关闭）</span>
     </label>
     <div class="slider-row">
       <div class="lab"><span>Threshold 门限</span><b id="gateThLab">-45dB</b></div>
@@ -278,8 +303,14 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
       <div class="lab"><span>Q 值</span><b id="eqQLab">Q 1.9</b></div>
       <input type="range" id="eqQ" min="0" max="100" value="53">
     </div>
+    <div class="prepost" data-rta="eq">
+      <span class="hint">RTA 探测：</span>
+      <button data-pp="pre">Pre EQ前</button>
+      <button data-pp="post" class="sel">Post EQ后</button>
+    </div>
     <canvas id="eqCanvas" height="250"></canvas>
     <div class="band-chips" id="eqBandChips"></div>
+    <p class="hint">播放后曲线下方会显示实时频谱（RTA）；Pre = EQ 处理前，Post = 处理后。</p>
   </div>
 
   <!-- ========== 混响 ========== -->
@@ -299,7 +330,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
     <div class="slider-row"><div class="lab"><span>Wet 湿声</span><b id="vWetLab">25%</b></div><input type="range" id="vWet" min="0" max="100" value="25"></div>
     <div class="slider-row"><div class="lab"><span>Dry 干声</span><b id="vDryLab">100%</b></div><input type="range" id="vDry" min="0" max="100" value="100"></div>
 
-    <h2 style="margin-top:14px;">混响返回声 EQ（只影响混响，不改原音）</h2>
+    <h2 style="margin-top:14px;">混响 EQ（只影响混响，不改原音）</h2>
     <div class="mini-eq-tabs" id="rvFilterTabs">
       <button data-filter="highpass">低切</button>
       <button data-filter="lowshelf">低搁架</button>
@@ -312,8 +343,14 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
       <div class="lab"><span>Q 值</span><b id="rvQLab">Q 1.9</b></div>
       <input type="range" id="rvQ" min="0" max="100" value="53">
     </div>
+    <div class="prepost" data-rta="verb">
+      <span class="hint">RTA 探测：</span>
+      <button data-pp="pre">Pre 送入</button>
+      <button data-pp="post" class="sel">Post 混响返回</button>
+    </div>
     <canvas id="rvCanvas" height="190"></canvas>
-    <p class="hint">上面的 Low Cut / High Cut 滑杆和此图中的低切 / 高切是同一组参数，会互相同步。</p>
+    <p class="hint">曲线下方为混响 RTA：Pre = 送入混响的信号，Post = 混响返回声。
+      上面的 Low Cut / High Cut 滑杆与此图的低切 / 高切是同一组参数，会互相同步。</p>
   </div>
 
   <!-- ========== 导出 ========== -->
@@ -334,7 +371,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
     </div>
     <div class="pill" id="expPill" style="display:none;"></div>
     <div class="progress-wrap" id="expProgWrap"><div class="progress-bar" id="expProg"></div></div>
-    <p class="hint">导出包含：剪切片段 → 降噪 → 主 EQ → 混响（含返回声 EQ 与干湿比）。
+    <p class="hint">导出包含：剪切片段 → Gate → 主 EQ → 混响（含混响 EQ 与干湿比）。
       手机端建议 30-90 秒；超过 3 分钟或用 MP3 会明显更慢，<b>渲染期间请勿切出页面或锁屏</b>。</p>
     <p class="hint">⚠️ 微信内打开时保存文件可能受限，如无法下载请点右上角 ··· 选择"在浏览器打开"。</p>
   </div>
@@ -487,7 +524,7 @@ const EQ_BANDS = [
 /* ---------------- ② EQ 组件工厂（主站逻辑封装成可复用实例） ---------------- */
 /* 每个实例：独立 filters 状态 + 画布 + 滤波器/钟型选项卡 + Q 滑杆 + 可选频段按钮 */
 function createEqUnit(opts) {
-  const { canvasSel, tabsSel, bellTabsSel, qSel, qLabSel, bandChipsSel, bellCount, defaultBellGain, onChange } = opts;
+  const { canvasSel, tabsSel, bellTabsSel, qSel, qLabSel, bandChipsSel, bellCount, defaultBellGain, onChange, rtaFn } = opts;
   const canvas = $(canvasSel);
   const bellIds = Array.from({ length: bellCount }, (_, i) => i ? 'bell' + (i + 1) : 'bell');
   const bellFreqs = [105, 250, 500, 1000, 2000, 4000];
@@ -591,6 +628,8 @@ function createEqUnit(opts) {
     const zeroY = yOfDb(0, m.graphY, m.graphH);
     c.beginPath(); c.moveTo(m.padL, zeroY); c.lineTo(m.padL + m.graphW, zeroY);
     c.strokeStyle = 'rgba(232,238,247,.28)'; c.lineWidth = 1.25; c.stroke();
+    // 实时频谱 RTA（在曲线下方铺一层，随播放动）
+    if (rtaFn) { const info = rtaFn(); if (info && info.data) drawRtaSpectrum(c, m, info); }
     // 合成曲线
     const coefs = activeCoefficients();
     const steps = Math.max(500, Math.ceil(m.graphW * 2));
@@ -623,6 +662,28 @@ function createEqUnit(opts) {
       ((active.type === 'highpass' || active.type === 'lowpass') ? '' : ` · ${fmtDb(Math.round(active.gain))}`) +
       (active.enabled ? '' : '（未启用）');
     c.fillText(title, m.padL, 17);
+  }
+
+  /* --- RTA 频谱绘制：把 analyser 的字节频谱铺在曲线下方 --- */
+  function drawRtaSpectrum(c, m, info) {
+    const { data, sampleRate, fftSize, color } = info;
+    const bins = data.length;
+    const bottom = m.graphY + m.graphH;
+    c.beginPath();
+    c.moveTo(m.padL, bottom);
+    let firstX = m.padL;
+    for (let i = 1; i < bins; i++) {
+      const freq = i * sampleRate / fftSize;
+      if (freq > MAX_FREQ) break;
+      const x = clamp(xOfFreq(freq, m.padL, m.graphW), m.padL, m.padL + m.graphW);
+      const mag = data[i] / 255;                 // 0..1（analyser 已按 dB 映射）
+      const y = bottom - Math.pow(mag, 1.05) * m.graphH * 0.94;
+      if (i === 1) { firstX = x; c.lineTo(x, y); } else c.lineTo(x, y);
+    }
+    c.lineTo(m.padL + m.graphW, bottom);
+    c.closePath();
+    c.fillStyle = color || 'rgba(56,189,248,.20)';
+    c.fill();
   }
 
   /* --- 指针交互（与主站一致：就近抓点、拖动改频率/增益） --- */
@@ -786,20 +847,22 @@ function createEqUnit(opts) {
       const f = context.createBiquadFilter(); f.type = 'lowpass';
       nodes.lps.push(f); cursor.connect(f); cursor = f;
     });
-    const chain = { input, output: cursor, apply: () => applyToChain(nodes) };
+    const chain = { input, output: cursor, apply: forceBypass => applyToChain(nodes, forceBypass) };
     chain.apply();
     return chain;
   }
-  function applyToChain(nodes) {
+  /* forceBypass=true 时整条 EQ 平直（用于"EQ 前/后"实时对比，不改动 EQ 面板本身的启用状态） */
+  function applyToChain(nodes, forceBypass) {
+    const eff = enabled && !forceBypass;
     const setF = (node, filter, on, qOverride) => {
       const bypassFreq = filter.type === 'highpass' ? 10 : filter.type === 'lowpass' ? MAX_FREQ : filter.freq;
       node.frequency.value = on ? filter.freq : bypassFreq;
       if (node.Q) node.Q.value = qOverride || filter.q || 0.707;
       if (node.gain) node.gain.value = on ? filter.gain : 0;
     };
-    nodes.hps.forEach((n, i) => setF(n, filters.highpass, enabled && filters.highpass.enabled, CUT_STAGE_QS[i]));
-    ['lowshelf', ...bellIds, 'highshelf'].forEach(id => setF(nodes.others[id], filters[id], enabled && filters[id].enabled));
-    nodes.lps.forEach((n, i) => setF(n, filters.lowpass, enabled && filters.lowpass.enabled, CUT_STAGE_QS[i]));
+    nodes.hps.forEach((n, i) => setF(n, filters.highpass, eff && filters.highpass.enabled, CUT_STAGE_QS[i]));
+    ['lowshelf', ...bellIds, 'highshelf'].forEach(id => setF(nodes.others[id], filters[id], eff && filters[id].enabled));
+    nodes.lps.forEach((n, i) => setF(n, filters.lowpass, eff && filters.lowpass.enabled, CUT_STAGE_QS[i]));
   }
 
   /* --- 参数序列化（模板用） --- */
@@ -847,6 +910,12 @@ const state = {
   verb: { type: 'off', preDelay: 20, decay: 2.2, size: 1.0, lowCut: 120, highCut: 7500, bassMulti: 1.0, wet: 25, dry: 100 },
   bitrate: 192,
   peaks: null,
+  segPeaks: null,          // 剪切片段的波形峰值（播放定位用）
+  // 实时对比开关：'after'=听处理后 / 'before'=听处理前
+  cmp: { all: 'after', eq: 'after', rev: 'after' },
+  // 各面板 RTA 探测点：'pre' 处理前 / 'post' 处理后
+  rta: { gate: 'post', eq: 'post', verb: 'post' },
+  activeTab: 'cut',
 };
 
 let actx = null;
@@ -899,6 +968,8 @@ function ensureSegment() {
     state.segmentBuffer = buildSegment(state.originalBuffer, state.cut);
     state.cutDirty = false;
     state.gatedBuffer = null;
+    state.segPeaks = computePeaks(state.segmentBuffer);
+    if (Live.offset > state.segmentBuffer.duration) Live.offset = 0;
     updateCutInfo();
   }
   return state.segmentBuffer;
@@ -931,74 +1002,190 @@ function currentProcBuffer() {
   if (!seg) return null;
   if (!state.gate.on) return seg;
   if (!state.gatedBuffer) {
-    setPill('busy', '⏳ 正在计算降噪…');
+    setPill('busy', '⏳ 正在计算 Gate…');
     state.gatedBuffer = gateProcess(seg, state.gate);
   }
   return state.gatedBuffer;
 }
 
-/* ---------------- ④ 实时试听链 ---------------- */
+/* ---------------- ④ 实时试听引擎（常驻信号图 + 实时对比 + RTA） ----------------
+   信号图（单一常驻，切换对比只改参数，绝不重建/重播）：
+     src → srcBus → [Gate ScriptProcessor] → EQ 链 → 干声(dry) ┐
+                                                └→ 预延迟→卷积→混响EQ→湿声(wet) ┴→ mixBus → master → 输出
+   analyser 侧探测点：gatePre / gatePost / eqPost / revPost，供各面板 RTA 的 Pre/Post 选择。
+   Gate 为实时 ScriptProcessor（预览用；导出仍用离线 gateProcess 保证质量）。
+------------------------------------------------------------------ */
 const Live = {
-  src: null, master: null, mode: null,
-  eqChain: null, revNodes: null,
-  stop() {
-    if (this.src) { try { this.src.stop(); this.src.disconnect(); } catch (e) {} this.src = null; }
-    this.mode = null;
-    updateTransport();
-  },
-  ensureGraph() {
+  built: false, src: null, playing: false,
+  startTime: 0, offset: 0,
+  master: null, srcBus: null, gateNode: null,
+  eqChain: null, revEqChain: null, pre: null, conv: null, wet: null, dry: null, mixBus: null,
+  an: {},
+  gEnv: [0, 0], gGain: [1, 1],
+
+  build() {
+    if (this.built) return;
     const ctx = ensureCtx();
-    if (this.master) return;
+    const mkAn = () => { const a = ctx.createAnalyser(); a.fftSize = 2048; a.smoothingTimeConstant = 0.75; return a; };
     this.master = ctx.createGain();
     this.master.gain.value = (+$('#volRange').value / 100) * 0.9;
-    this.master.connect(ctx.destination);
+    this.mixBus = ctx.createGain();
+    this.srcBus = ctx.createGain();
+    this.an = { gatePre: mkAn(), gatePost: mkAn(), eqPost: mkAn(), revPost: mkAn() };
+
+    // 实时 Gate（噪声门），跨缓冲保持包络状态
+    const gate = ctx.createScriptProcessor(2048, 2, 2);
+    gate.onaudioprocess = e => {
+      const inB = e.inputBuffer, outB = e.outputBuffer;
+      const active = state.cmp.all !== 'before' && state.gate.on;
+      const chs = Math.min(inB.numberOfChannels, outB.numberOfChannels);
+      if (!active) {
+        for (let c = 0; c < chs; c++) outB.getChannelData(c).set(inB.getChannelData(c));
+        return;
+      }
+      const g = state.gate, sr = inB.sampleRate;
+      const thLin = Math.pow(10, g.threshold / 20), redLin = Math.pow(10, -g.reduction / 20);
+      const atkC = Math.exp(-1 / (sr * Math.max(0.001, g.attack / 1000)));
+      const relC = Math.exp(-1 / (sr * Math.max(0.005, g.release / 1000)));
+      const envC = Math.exp(-1 / (sr * 0.02));
+      for (let c = 0; c < chs; c++) {
+        const x = inB.getChannelData(c), y = outB.getChannelData(c);
+        let env = this.gEnv[c] || 0, gain = this.gGain[c] == null ? 1 : this.gGain[c];
+        for (let i = 0; i < x.length; i++) {
+          const a = Math.abs(x[i]);
+          env = a > env ? a : env * envC + a * (1 - envC);
+          const target = env < thLin ? redLin : 1;
+          gain = target > gain ? target + (gain - target) * atkC : target + (gain - target) * relC;
+          y[i] = x[i] * gain;
+        }
+        this.gEnv[c] = env; this.gGain[c] = gain;
+      }
+    };
+    this.gateNode = gate;
+
     this.eqChain = mainEq.buildChain(ctx);
-    // 混响支路：eqOut → preDelay → convolver → 混响EQ → wet → master；干声 eqOut → dry → master
-    const pre = ctx.createDelay(0.5);
-    const conv = ctx.createConvolver();
-    const revEqChain = revEq.buildChain(ctx);
-    const wet = ctx.createGain(), dry = ctx.createGain();
-    this.eqChain.output.connect(dry).connect(this.master);
-    this.eqChain.output.connect(pre);
-    pre.connect(conv);
-    conv.connect(revEqChain.input);
-    revEqChain.output.connect(wet).connect(this.master);
-    this.revNodes = { pre, conv, wet, dry, revEqChain };
-    applyReverbLive();
+    this.revEqChain = revEq.buildChain(ctx);
+    this.pre = ctx.createDelay(0.5);
+    this.conv = ctx.createConvolver();
+    this.wet = ctx.createGain(); this.dry = ctx.createGain();
+
+    // 连线
+    this.srcBus.connect(this.an.gatePre);
+    this.srcBus.connect(gate);
+    gate.connect(this.an.gatePost);
+    gate.connect(this.eqChain.input);
+    this.eqChain.output.connect(this.an.eqPost);
+    this.eqChain.output.connect(this.dry);
+    this.eqChain.output.connect(this.pre);
+    this.pre.connect(this.conv);
+    this.conv.connect(this.revEqChain.input);
+    this.revEqChain.output.connect(this.an.revPost);
+    this.revEqChain.output.connect(this.wet);
+    this.dry.connect(this.mixBus);
+    this.wet.connect(this.mixBus);
+    this.mixBus.connect(this.master);
+    this.master.connect(ctx.destination);
+    // gate 侧接 analyser 不足以驱动 ScriptProcessor，需接入输出链——已通过 gate→eqChain 完成
+    this.built = true;
+    applyRouting();
   },
-  play(mode) {
+  setVolume() { if (this.master) this.master.gain.value = (+$('#volRange').value / 100) * 0.9; },
+  segDur() { const s = ensureSegment(); return s ? s.duration : 0; },
+  play(offset) {
     if (!state.originalBuffer) return;
-    this.stop();
-    this.ensureGraph();
+    this.build();
     const ctx = ensureCtx();
-    const buf = mode === 'raw' ? ensureSegment() : currentProcBuffer();
-    if (!buf) return;
+    const seg = ensureSegment();
+    if (!seg) return;
+    this._stopSrc();
+    const o = clamp(offset == null ? this.offset : offset, 0, Math.max(0, seg.duration - 0.02));
     this.src = ctx.createBufferSource();
-    this.src.buffer = buf;
+    this.src.buffer = seg;
     this.src.loop = true;
-    if (mode === 'raw') this.src.connect(this.master);
-    else this.src.connect(this.eqChain.input);
-    this.src.start();
-    this.mode = mode;
+    this.src.connect(this.srcBus);
+    this.src.start(0, o % seg.duration);
+    this.startTime = ctx.currentTime - o;
+    this.offset = o;
+    this.playing = true;
+    applyRouting();
+    startRtaLoop();
     updateTransport();
   },
-  refreshProcSource() {
-    // 降噪参数变化后热替换处理后音源
-    if (this.mode !== 'proc') return;
-    this.play('proc');
+  pause() {
+    if (!this.playing) return;
+    this.offset = this.position();
+    this._stopSrc();
+    this.playing = false;
+    updateTransport();
+    drawPlayWave();
   },
+  toggle() { this.playing ? this.pause() : this.play(this.offset); },
+  stop() {
+    this._stopSrc();
+    this.playing = false;
+    this.offset = 0;
+    updateTransport();
+    drawPlayWave();
+  },
+  seek(t) {
+    const dur = this.segDur();
+    this.offset = clamp(t, 0, Math.max(0, dur - 0.02));
+    if (this.playing) this.play(this.offset);
+    else { updateTransport(); drawPlayWave(); }
+  },
+  position() {
+    const dur = this.segDur();
+    if (!dur) return 0;
+    return this.playing ? (ensureCtx().currentTime - this.startTime) % dur : clamp(this.offset, 0, dur);
+  },
+  _stopSrc() { if (this.src) { try { this.src.stop(); this.src.disconnect(); } catch (e) {} this.src = null; } },
+  // 剪切/降噪改变后：若在播放，用当前进度热重启（片段 buffer 变了才需要）
+  refreshSource() { if (this.playing) this.play(this.offset); },
 };
 
-function applyEqLive() { if (Live.eqChain) Live.eqChain.apply(); }
-function applyReverbLive() {
-  if (!Live.revNodes) return;
+/* 实时路由：只改参数，不重建。对比开关：'before'=听处理前 */
+function applyRouting() {
+  if (!Live.built) return;
+  const rawMode = state.cmp.all === 'before';
+  const eqBypass = rawMode || state.cmp.eq === 'before';
   const v = state.verb;
-  const on = v.type !== 'off';
-  Live.revNodes.pre.delayTime.value = v.preDelay / 1000;
-  Live.revNodes.wet.gain.value = on ? v.wet / 100 : 0;
-  Live.revNodes.dry.gain.value = v.dry / 100;
-  Live.revNodes.revEqChain.apply();
-  if (on) Live.revNodes.conv.buffer = getIR(ensureCtx().sampleRate);
+  const revOff = rawMode || state.cmp.rev === 'before' || v.type === 'off';
+  Live.eqChain.apply(eqBypass);
+  Live.revEqChain.apply(false);
+  Live.pre.delayTime.value = v.preDelay / 1000;
+  Live.dry.gain.value = v.dry / 100;
+  Live.wet.gain.value = revOff ? 0 : v.wet / 100;
+  if (!revOff) Live.conv.buffer = getIR(ensureCtx().sampleRate);
+}
+function applyEqLive() { applyRouting(); }
+function applyReverbLive() { applyRouting(); }
+
+/* RTA 数据供给：按面板 + Pre/Post 选择返回对应 analyser 的频谱 */
+function rtaData(which) {
+  if (!Live.built || !Live.playing) return null;
+  const an = which === 'gate' ? (state.rta.gate === 'pre' ? Live.an.gatePre : Live.an.gatePost)
+    : which === 'eq' ? (state.rta.eq === 'pre' ? Live.an.gatePost : Live.an.eqPost)
+    : (state.rta.verb === 'pre' ? Live.an.eqPost : Live.an.revPost);
+  if (!an) return null;
+  const buf = an._buf || (an._buf = new Uint8Array(an.frequencyBinCount));
+  an.getByteFrequencyData(buf);
+  const color = which === 'gate' ? 'rgba(74,222,128,.20)' : which === 'verb' ? 'rgba(167,139,250,.22)' : 'rgba(56,189,248,.20)';
+  return { data: buf, sampleRate: ensureCtx().sampleRate, fftSize: an.fftSize, color };
+}
+
+/* RTA + 播放头动画循环 */
+let rtaRaf = null;
+function startRtaLoop() {
+  if (rtaRaf) return;
+  const loop = () => {
+    rtaRaf = null;
+    if (state.activeTab === 'eq') mainEq.draw();
+    else if (state.activeTab === 'verb') revEq.draw();
+    else if (state.activeTab === 'gate') drawGateRta();
+    drawPlayWave();
+    if (Live.playing) rtaRaf = requestAnimationFrame(loop);
+  };
+  rtaRaf = requestAnimationFrame(loop);
 }
 
 /* ---------------- ⑤ 混响 IR 生成（Hall / Plate 差异化） ---------------- */
@@ -1063,7 +1250,7 @@ async function renderProcessed() {
   setExpProgress(5);
   await tick();
   const seg = ensureSegment();
-  setExpStage('busy', state.gate.on ? '⏳ 阶段 2/3：降噪处理…' : '⏳ 阶段 2/3：降噪（未启用，跳过）');
+  setExpStage('busy', state.gate.on ? '⏳ 阶段 2/3：Gate 处理…' : '⏳ 阶段 2/3：Gate（未启用，跳过）');
   setExpProgress(15);
   await tick();
   const input = currentProcBuffer();
@@ -1217,6 +1404,7 @@ const mainEq = createEqUnit({
   qSel: '#eqQ', qLabSel: '#eqQLab', bandChipsSel: '#eqBandChips',
   bellCount: 6, defaultBellGain: 6,   // 混音场景默认 +6dB（训练页是 +31）
   onChange: () => { applyEqLive(); updateExpSummary(); },
+  rtaFn: () => rtaData('eq'),
 });
 let syncingVerbCut = false;
 let revEqReady = false;
@@ -1229,6 +1417,7 @@ const revEq = createEqUnit({
     syncVerbCutFromRevEq();
     applyReverbLive();
   },
+  rtaFn: () => rtaData('verb'),
 });
 revEqReady = true;
 
@@ -1337,8 +1526,8 @@ function applyParams(p) {
   syncRevEqFromSliders();
   state.bitrate = +full.bitrate || 192;
   syncAllUi();
-  applyEqLive(); applyReverbLive();
-  Live.refreshProcSource();
+  applyRouting();          // 参数实时生效，不打断播放
+  Live.refreshSource();    // 剪切范围变了才需要换片段源（内部自带进度保持）
 }
 function refreshPresetSelect() {
   const sel = $('#presetSelect');
@@ -1366,15 +1555,33 @@ function setPill(cls, text) {
   el.textContent = text;
 }
 function updateTransport() {
-  $('#playRawBtn').classList.toggle('playing', Live.mode === 'raw');
-  $('#playProcBtn').classList.toggle('playing', Live.mode === 'proc');
-  if (Live.mode === 'raw') setPill('flat', '🔵 正在听：原声片段（已剪切，未处理）');
-  else if (Live.mode === 'proc') setPill('proc', '🟠 正在听：处理后（降噪+EQ+混响）');
-  else if (state.originalBuffer) setPill('', '⏹ 已停止');
+  const btn = $('#playPauseBtn');
+  btn.textContent = Live.playing ? '⏸ 暂停' : '▶ 播放';
+  btn.classList.toggle('playing', Live.playing);
+  if (!state.originalBuffer) return;
+  if (Live.playing) {
+    const raw = state.cmp.all === 'before';
+    setPill(raw ? 'flat' : 'proc',
+      raw ? '🔵 正在听：处理前（原声片段）' : '🟠 正在听：处理后（Gate + EQ + 混响）');
+  } else {
+    setPill('', '⏸ 停在 ' + fmtTime(Live.position()) + '（点波形可定位，播放从此处继续）');
+  }
+}
+/* 实时对比按钮外观：后=蓝 / 前=橙；总效果=前 时单项对比不可用（整链已旁通） */
+function updateCmpUi() {
+  [['#cmpAll', 'all', '总效果'], ['#cmpEq', 'eq', 'EQ'], ['#cmpRev', 'rev', '混响']].forEach(([sel, key, name]) => {
+    const after = state.cmp[key] === 'after';
+    const btn = $(sel);
+    btn.textContent = `${name}：${after ? '后' : '前'}`;
+    btn.classList.toggle('after', after);
+    btn.classList.toggle('before', !after);
+  });
+  $('#cmpEq').disabled = state.cmp.all === 'before';
+  $('#cmpRev').disabled = state.cmp.all === 'before';
 }
 function updateEnableStates() {
   const has = !!state.originalBuffer;
-  ['#playRawBtn', '#playProcBtn', '#cutPreviewBtn', '#cutApplyBtn', '#expWavBtn', '#expMp3Btn']
+  ['#playPauseBtn', '#cutPreviewBtn', '#cutApplyBtn', '#expWavBtn', '#expMp3Btn']
     .forEach(s => { $(s).disabled = !has || exporting; });
 }
 function segKeptSeconds() {
@@ -1395,7 +1602,7 @@ function updateExpSummary() {
   if (!state.originalBuffer) { $('#expSummary').textContent = '上传音频后可导出。'; return; }
   const v = state.verb;
   $('#expSummary').innerHTML =
-    `将导出：片段 <b>${fmtTime(segKeptSeconds())}</b> · 降噪 <b>${state.gate.on ? '开' : '关'}</b>` +
+    `将导出：片段 <b>${fmtTime(segKeptSeconds())}</b> · Gate <b>${state.gate.on ? '开' : '关'}</b>` +
     ` · EQ <b>${mainEq.enabled ? mainEq.activeCount() + ' 点' : '取消'}</b>` +
     ` · 混响 <b>${v.type === 'off' ? '关' : (v.type === 'hall' ? 'Hall' : 'Plate') + ' ' + v.wet + '%'}</b>`;
 }
@@ -1459,6 +1666,105 @@ $('#waveCanvas').addEventListener('pointerdown', e => {
   syncCutUi();
 });
 
+/* --- 播放波形（当前片段）+ 播放头 + 点按定位 --- */
+function drawPlayWave() {
+  const canvas = $('#playWave');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w) return;
+  if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  const c = canvas.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, w, h);
+  c.fillStyle = '#101827'; c.fillRect(0, 0, w, h);
+  const peaks = state.segPeaks;
+  const dur = Live.segDur();
+  if (!peaks || !dur) return;
+  const bins = peaks.length;
+  const pos = Live.position();
+  const posX = (pos / dur) * w;
+  for (let b = 0; b < bins; b++) {
+    const x = (b / bins) * w;
+    const amp = Math.max(0.02, peaks[b]) * (h / 2 - 3);
+    c.fillStyle = x <= posX ? '#38bdf8' : 'rgba(147,164,189,.35)';
+    c.fillRect(x, h / 2 - amp, Math.max(1, w / bins - 0.5), amp * 2);
+  }
+  // 播放头
+  c.strokeStyle = '#fbbf24'; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(posX, 0); c.lineTo(posX, h); c.stroke();
+  // 时间
+  c.fillStyle = '#e8eef7'; c.font = '11px sans-serif';
+  c.fillText(fmtTime(pos) + ' / ' + fmtTime(dur), 6, 12);
+}
+$('#playWave').addEventListener('pointerdown', e => {
+  const dur = Live.segDur();
+  if (!dur) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  Live.seek(clamp((e.clientX - rect.left) / rect.width, 0, 1) * dur);
+});
+
+/* --- Gate 面板 RTA：频谱 + 门限线（帮助把门限设在噪声底之上） --- */
+function drawGateRta() {
+  const canvas = $('#gateCanvas');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w) return;
+  if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  const c = canvas.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, w, h);
+  c.fillStyle = '#101827'; c.fillRect(0, 0, w, h);
+  const padL = 34, padB = 16, padT = 8;
+  const gw = w - padL - 8, gh = h - padT - padB;
+  const DB_MIN = -80, DB_MAX = 0;
+  const yOf = db => padT + (1 - (clamp(db, DB_MIN, DB_MAX) - DB_MIN) / (DB_MAX - DB_MIN)) * gh;
+  const xOf = f => padL + (Math.log(clamp(f, 20, MAX_FREQ) / 20) / Math.log(MAX_FREQ / 20)) * gw;
+  // 网格
+  c.strokeStyle = '#243552'; c.fillStyle = '#6f83a4'; c.lineWidth = 1; c.font = '10px sans-serif';
+  [-80, -60, -40, -20, 0].forEach(db => {
+    const y = yOf(db); c.beginPath(); c.moveTo(padL, y); c.lineTo(padL + gw, y); c.stroke();
+    c.fillText(db + '', 4, y + 3);
+  });
+  [100, 1000, 10000].forEach(f => {
+    const x = xOf(f); c.beginPath(); c.moveTo(x, padT); c.lineTo(x, padT + gh); c.stroke();
+    c.fillText(hzLabel(f).replace('Hz', ''), x + 2, padT + gh + 12);
+  });
+  // 频谱（float dB）
+  let curPeak = -120;
+  if (Live.built && Live.playing) {
+    const an = state.rta.gate === 'pre' ? Live.an.gatePre : Live.an.gatePost;
+    const arr = an._fbuf || (an._fbuf = new Float32Array(an.frequencyBinCount));
+    an.getFloatFrequencyData(arr);
+    const sr = ensureCtx().sampleRate;
+    c.beginPath(); c.moveTo(padL, padT + gh);
+    for (let i = 1; i < arr.length; i++) {
+      const freq = i * sr / an.fftSize;
+      if (freq > MAX_FREQ) break;
+      const x = xOf(freq), y = yOf(arr[i]);
+      c.lineTo(x, y);
+      if (arr[i] > curPeak) curPeak = arr[i];
+    }
+    c.lineTo(padL + gw, padT + gh); c.closePath();
+    c.fillStyle = 'rgba(74,222,128,.22)'; c.fill();
+    c.strokeStyle = 'rgba(74,222,128,.7)'; c.lineWidth = 1.2; c.stroke();
+  }
+  // 门限线
+  const thY = yOf(state.gate.threshold);
+  c.strokeStyle = '#fbbf24'; c.setLineDash([5, 4]); c.lineWidth = 1.6;
+  c.beginPath(); c.moveTo(padL, thY); c.lineTo(padL + gw, thY); c.stroke();
+  c.setLineDash([]);
+  c.fillStyle = '#fbbf24'; c.font = '11px sans-serif';
+  c.fillText('门限 ' + state.gate.threshold + 'dB', padL + 4, thY - 4);
+  // 开/关状态
+  if (Live.built && Live.playing) {
+    const open = curPeak > state.gate.threshold;
+    c.fillStyle = open ? '#4ade80' : '#f87171'; c.font = '12px sans-serif';
+    c.fillText(open ? '● 门开（信号通过）' : '● 门关（被压低）', padL + 4, padT + 12);
+  }
+}
+
 /* --- 剪切 UI 同步 --- */
 function markCutDirty() { state.cutDirty = true; }
 function syncCutUi() {
@@ -1507,11 +1813,11 @@ $$('#panel-cut [data-quick]').forEach(b => b.addEventListener('click', () => {
   state.cut.end = b.dataset.quick === 'all' ? d : Math.min(d, +b.dataset.quick);
   markCutDirty(); syncCutUi();
 }));
-$('#cutPreviewBtn').addEventListener('click', () => Live.play('raw'));
+$('#cutPreviewBtn').addEventListener('click', () => { ensureSegment(); Live.play(0); });
 $('#cutStopBtn').addEventListener('click', () => Live.stop());
 $('#cutApplyBtn').addEventListener('click', () => {
   markCutDirty(); ensureSegment(); syncCutUi();
-  if (Live.mode) Live.play(Live.mode);
+  Live.refreshSource();   // 正在播放则以新片段热接续
 });
 $('#cutResetBtn').addEventListener('click', () => {
   const d = state.originalBuffer ? state.originalBuffer.duration : 0;
@@ -1519,8 +1825,7 @@ $('#cutResetBtn').addEventListener('click', () => {
   markCutDirty(); ensureSegment(); syncCutUi();
 });
 
-/* --- 降噪 UI --- */
-let gateTimer = null;
+/* --- Gate UI（试听走实时门，参数即时生效，无需重启音源） --- */
 function gateChanged() {
   state.gate.on = $('#gateOn').checked;
   state.gate.threshold = +$('#gateTh').value;
@@ -1531,10 +1836,9 @@ function gateChanged() {
   $('#gateRedLab').textContent = state.gate.reduction + 'dB';
   $('#gateAtkLab').textContent = state.gate.attack + 'ms';
   $('#gateRelLab').textContent = state.gate.release + 'ms';
-  state.gatedBuffer = null;
+  state.gatedBuffer = null;   // 仅导出缓存失效；实时 Gate 直接读参数
   updateExpSummary();
-  if (gateTimer) clearTimeout(gateTimer);
-  gateTimer = setTimeout(() => { Live.refreshProcSource(); updateTransport(); }, 350);
+  if (!Live.playing) drawGateRta();   // 播放中由动画循环刷新
 }
 ['#gateOn', '#gateTh', '#gateRed', '#gateAtk', '#gateRel'].forEach(s => $(s).addEventListener('input', gateChanged));
 
@@ -1654,9 +1958,11 @@ $('#fileInput').addEventListener('change', async e => {
     } else {
       setPill('ok', '✅ 已加载，可以开始处理');
     }
+    Live.offset = 0;
     ensureSegment();
     syncCutUi();
     updateEnableStates();
+    drawPlayWave();
   } catch (err) {
     console.warn('解码失败', err);
     state.originalBuffer = null;
@@ -1666,20 +1972,41 @@ $('#fileInput').addEventListener('change', async e => {
   e.target.value = '';
 });
 
-/* --- 试听 / 音量 / 选项卡 / 导出 --- */
-$('#playRawBtn').addEventListener('click', () => Live.play('raw'));
-$('#playProcBtn').addEventListener('click', () => Live.play('proc'));
+/* --- 试听 / 实时对比 / RTA 探测 / 音量 / 选项卡 / 导出 --- */
+$('#playPauseBtn').addEventListener('click', () => Live.toggle());
 $('#stopBtn').addEventListener('click', () => Live.stop());
+
+// 前/后实时对比：只切参数路由，绝不重播，进度不断
+$$('.cmp-row .cmp').forEach(btn => btn.addEventListener('click', () => {
+  const key = btn.dataset.cmp;
+  state.cmp[key] = state.cmp[key] === 'after' ? 'before' : 'after';
+  applyRouting();
+  updateCmpUi(); updateTransport();
+}));
+
+// 各面板 RTA 的 Pre / Post 探测点切换
+$$('.prepost').forEach(box => {
+  const which = box.dataset.rta;
+  box.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+    state.rta[which] = btn.dataset.pp;
+    box.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === btn));
+    if (which === 'gate') drawGateRta();
+    else if (which === 'eq') mainEq.draw();
+    else revEq.draw();
+  }));
+});
+
 $('#volRange').addEventListener('input', () => {
   $('#volLab').textContent = $('#volRange').value + '%';
-  if (Live.master) Live.master.gain.value = (+$('#volRange').value / 100) * 0.9;
+  Live.setVolume();
 });
 $$('#mainTabs button').forEach(b => b.addEventListener('click', () => {
   $$('#mainTabs button').forEach(x => x.classList.toggle('sel', x === b));
   $$('.panel').forEach(p => p.classList.remove('active'));
   $('#panel-' + b.dataset.tab).classList.add('active');
+  state.activeTab = b.dataset.tab;
   // 隐藏面板中的 canvas 宽度为 0，切换后重绘
-  mainEq.draw(); revEq.draw(); drawWave();
+  mainEq.draw(); revEq.draw(); drawWave(); drawGateRta(); drawPlayWave();
 }));
 $$('#brChips button').forEach(b => b.addEventListener('click', () => {
   $$('#brChips button').forEach(x => x.classList.remove('sel'));
@@ -1704,12 +2031,17 @@ function syncAllUi() {
   $('#eqToggleBtn').classList.toggle('primary', !mainEq.enabled);
   $$('#brChips button').forEach(x => x.classList.toggle('sel', +x.dataset.br === state.bitrate));
   $('#brLab').textContent = state.bitrate + ' kbps';
+  $$('.prepost').forEach(box => {
+    const which = box.dataset.rta;
+    box.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x.dataset.pp === state.rta[which]));
+  });
+  updateCmpUi();
   syncVerbSliderLabels();
   syncCutUi();
   updateExpSummary();
 }
 
-window.addEventListener('resize', () => { mainEq.draw(); revEq.draw(); drawWave(); });
+window.addEventListener('resize', () => { mainEq.draw(); revEq.draw(); drawWave(); drawGateRta(); drawPlayWave(); });
 refreshPresetSelect();
 syncRevEqFromSliders();
 syncAllUi();
