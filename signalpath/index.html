@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#14171b">
+<title>SignalPath · 音响系统连线图管理</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="led led-on"></span>
+    <span class="brand-name">SIGNALPATH</span>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn primary sm" id="btn-quick" title="快速布局：输入数字直接建系统（⌘K / ⌃空格）">⚡ 快速布局</button>
+    <button class="btn ghost sm" id="btn-undo" title="撤销（⌘Z）">撤销</button>
+    <button class="btn ghost sm" id="btn-redo" title="重做（⇧⌘Z）">重做</button>
+    <span class="save-indicator" id="save-indicator">·</span>
+    <button class="btn ghost sm" id="btn-report" title="生成可打印/存 PDF 的多页报告">报告</button>
+    <button class="btn ghost sm" id="btn-config" title="配置：导入 / 导出 / 切换 / 临时移除">配置</button>
+    <button class="btn ghost sm" id="btn-keys" title="快捷键介绍与自定义改键">快捷键</button>
+    <button class="btn ghost sm danger" id="btn-clear" title="清空全部数据（可撤销）">清空</button>
+    <button class="btn ghost sm theme-btn" id="btn-theme" title="切换黑 / 白主题">☀︎</button>
+    <input type="file" id="import-file" accept=".json,application/json" multiple hidden>
+  </div>
+</header>
+<nav class="tabbar">
+  <div class="tabs" id="main-tabs">
+    <button class="tab active" data-view="wiring">设备连线</button>
+    <button class="tab" data-view="cables">线材清单</button>
+    <button class="tab" data-view="teach">接线教学</button>
+    <button class="tab" data-view="mixer">台内路由</button>
+  </div>
+</nav>
+
+<main>
+  <!-- ============ 设备连线：框图 + 右侧设备栏 + 底部连接清单抽屉 ============ -->
+  <section class="view active" id="view-wiring">
+    <div class="canvas-col">
+      <div class="diagram-toolbar">
+        <span class="tb-group">
+          <button class="btn ghost sm" id="btn-smart-all-diagram" title="所有未连接线路一键智能连接：调音台→DSP→功放→音箱">⚡ 一键智能连接</button>
+          <button class="btn ghost sm" id="btn-power-alarm" title="按模式检查功放功率余量、并联总功率与阻抗">功率报警</button>
+          <button class="btn ghost sm danger" id="btn-clear-all-wires-diagram" title="清空系统内全部连线（可撤销）">全部清线</button>
+          <button class="btn ghost sm danger" id="btn-clear-devices" title="清空全部设备与连线（可撤销）">清空设备</button>
+        </span>
+        <span class="tb-group">
+          <button class="btn ghost sm" id="btn-diagram-orient" title="横版 / 竖版切换">切换横版</button>
+          <button class="btn ghost sm" id="btn-diagram-reset" title="清除手动拖动，按上级设备居中对齐排版">对齐上级</button>
+          <button class="btn ghost sm" id="btn-diagram-reset-bottom" title="清除手动拖动，尽量对准各自下级设备">对齐下级</button>
+          <button class="btn ghost sm" id="btn-rel-align-up" title="保留当前相对排布，整层平移对齐到上级">相对上级</button>
+          <button class="btn ghost sm" id="btn-rel-align-down" title="保留当前相对排布，整层平移对齐到下级">相对下级</button>
+        </span>
+        <span class="tb-group grow">
+          <button class="btn ghost sm" id="btn-zoom-fit" title="全局视角 / 定位当前 双态切换">全局视角</button>
+          <input type="range" id="zoom-range" class="zoom-range" min="25" max="200" step="5" value="100" title="缩放比例（以视口中心为锚点），也可 ⌘+滚轮缩放">
+          <span class="zoom-val" id="zoom-val">100%</span>
+        </span>
+        <span class="tb-group">
+          <button class="btn ghost sm" id="btn-wdiagram-undo" title="撤销框图排版动作">撤销</button>
+          <button class="btn ghost sm" id="btn-wdiagram-redo" title="重做框图排版动作">重做</button>
+          <span class="menu-wrap">
+            <button class="btn ghost sm" id="btn-diagram-export" title="导出框图">导出 ▾</button>
+            <div class="menu-pop" id="export-pop" hidden>
+              <button data-export-w="2560">2K</button>
+              <button data-export-w="3840">4K</button>
+              <button data-export-w="7680">8K</button>
+              <button data-export-pdf>PDF</button>
+            </div>
+          </span>
+        </span>
+      </div>
+      <div class="diagram-scroll" id="wiring-diagram"></div>
+      <div class="conn-drawer" id="conn-drawer">
+        <div class="drawer-head">
+          <button class="drawer-toggle" id="drawer-toggle" title="展开 / 收起连接清单">
+            <span class="tri">▴</span> 连接清单 <span class="head-note" id="wiring-count"></span>
+          </button>
+          <span class="seg" id="conn-sort-seg">
+            <button data-sort="hier" title="按信号层级排序：调音台 → DSP → 功放 → 音箱">层级顺序</button>
+            <button data-sort="added" title="按连线创建的先后顺序显示">添加顺序</button>
+          </span>
+        </div>
+        <div class="drawer-body table-scroll" id="wiring-table-wrap"></div>
+      </div>
+    </div>
+
+    <aside class="inspector">
+      <div class="insp-head">
+        <h2>设备栏</h2>
+        <span class="head-note" id="insp-count"></span>
+        <button class="btn primary sm" id="insp-add">＋ 添加</button>
+      </div>
+      <div class="insp-body" id="insp-body"></div>
+    </aside>
+  </section>
+
+  <!-- ============ 台内路由 ============ -->
+  <section class="view" id="view-mixer">
+    <aside class="sidebar">
+      <section class="panel">
+        <header class="panel-head">
+          <h2>调音台页</h2>
+          <span class="head-note" id="mixer-page-note"></span>
+        </header>
+        <div class="panel-body" id="mixer-page-list"></div>
+      </section>
+      <section class="panel">
+        <header class="panel-head"><h2>台面配置</h2></header>
+        <div class="panel-body" id="mixer-config"></div>
+      </section>
+    </aside>
+
+    <div class="workarea">
+      <div class="duo">
+        <section class="panel grow">
+          <header class="panel-head">
+            <h2>信号流向图</h2>
+            <span class="head-note">物理输入 → CH → BUS / MAIN / MATRIX</span>
+            <span class="head-actions">
+              <button class="btn ghost sm" id="btn-mixdiag-undo" title="撤销信号流向图相关动作">撤销</button>
+              <button class="btn ghost sm" id="btn-mixdiag-redo" title="重做信号流向图相关动作">重做</button>
+              <button class="btn ghost sm" id="btn-mixdiag-png" title="导出高清 PNG 图片">导出 PNG</button>
+            </span>
+          </header>
+          <div class="diagram-scroll" id="mixer-diagram"></div>
+        </section>
+        <section class="panel grow">
+          <header class="panel-head">
+            <h2>路由清单</h2>
+            <span class="head-note" id="mixer-count"></span>
+          </header>
+          <div class="table-scroll" id="mixer-table-wrap"></div>
+        </section>
+      </div>
+      <section class="panel">
+        <header class="panel-head">
+          <h2>输入路由矩阵</h2>
+          <span class="head-note" id="input-patch-count">行 = 物理输入 · 列 = CH</span>
+          <span class="head-actions">
+            <button class="btn ghost sm" id="btn-inpatch-undo" title="撤销输入路由矩阵动作">撤销</button>
+            <button class="btn ghost sm" id="btn-inpatch-redo" title="重做输入路由矩阵动作">重做</button>
+            <button class="btn ghost sm" id="btn-inpatch-reset" title="恢复物理输入到 CH 的 1:1 分配">1:1</button>
+            <button class="btn ghost sm" id="btn-inpatch-double" title="Double Patch：IN1 → CH1/CH2，IN2 → CH3/CH4，依次类推">Double Patch</button>
+            <button class="btn ghost sm" id="btn-inpatch-png" title="导出输入路由矩阵 PNG">导出 PNG</button>
+          </span>
+        </header>
+        <div class="grid-scroll" id="in-route-grid-wrap"></div>
+      </section>
+      <section class="panel">
+        <header class="panel-head">
+          <h2>发送路由矩阵</h2>
+          <span class="head-note">行 = CH 通道 · 列 = 发送目标，点按切换</span>
+          <span class="head-actions">
+            <button class="btn ghost sm" id="btn-route-undo" title="撤销发送路由矩阵动作">撤销</button>
+            <button class="btn ghost sm" id="btn-route-redo" title="重做发送路由矩阵动作">重做</button>
+            <button class="btn ghost sm" id="btn-route-png" title="导出发送路由矩阵 PNG">导出 PNG</button>
+          </span>
+        </header>
+        <div class="grid-scroll" id="route-grid-wrap"></div>
+      </section>
+      <section class="panel">
+        <header class="panel-head">
+          <h2>输出路由矩阵</h2>
+          <span class="head-note" id="output-patch-count">行 = BUS / MAIN / MATRIX · 列 = OUTPUT</span>
+          <span class="head-actions">
+            <button class="btn ghost sm" id="btn-outpatch-undo" title="撤销输出路由矩阵动作">撤销</button>
+            <button class="btn ghost sm" id="btn-outpatch-redo" title="重做输出路由矩阵动作">重做</button>
+            <button class="btn ghost sm" id="btn-outpatch-png" title="导出输出路由矩阵 PNG">导出 PNG</button>
+          </span>
+        </header>
+        <div class="grid-scroll" id="out-route-grid-wrap"></div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ============ 接线教学：全部设备类型独立展示页 ============ -->
+  <section class="view" id="view-teach">
+    <aside class="sidebar">
+      <section class="panel">
+        <header class="panel-head">
+          <h2>设备</h2>
+          <span class="head-note">每台设备一页教学</span>
+        </header>
+        <div class="panel-body" id="teach-dev-list"></div>
+      </section>
+      <details class="panel collapsible" open>
+        <summary class="panel-head">
+          <h2>输入设备清单（话筒 / 乐器）</h2>
+          <span class="head-note" id="teach-gear-count"></span>
+        </summary>
+        <div class="panel-body" id="teach-gear-list"></div>
+      </details>
+    </aside>
+
+    <div class="workarea">
+      <section class="panel grow diagram-panel">
+        <header class="panel-head">
+          <h2>接线示意图</h2>
+          <span class="head-note" id="teach-dev-note"></span>
+          <span class="head-actions">
+            <button class="btn ghost sm" id="btn-teach-img" title="上传设备背板/接口照片，显示在示意图上方对照">上传接口图</button>
+            <button class="btn ghost sm danger" id="btn-teach-img-clear" title="移除已上传的接口照片">移除图片</button>
+            <button class="btn ghost sm" id="btn-teach-png" title="导出高清 PNG（含照片与标注），可作工程指导">导出 PNG</button>
+            <input type="file" id="teach-img-file" accept="image/*" hidden>
+          </span>
+        </header>
+        <div class="diagram-scroll" id="teach-diagram"></div>
+      </section>
+      <section class="panel">
+        <header class="panel-head">
+          <h2>接线清单</h2>
+          <span class="head-note" id="teach-count"></span>
+        </header>
+        <div class="table-scroll" id="teach-table-wrap"></div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ============ 线材清单 ============ -->
+  <section class="view" id="view-cables">
+    <div class="workarea single">
+      <section class="panel">
+        <header class="panel-head">
+          <h2>购线汇总</h2>
+          <span class="head-note" id="cable-page-note"></span>
+        </header>
+        <div class="panel-body cable-summary" id="cable-summary"></div>
+      </section>
+      <section class="panel grow">
+        <header class="panel-head">
+          <h2>线材明细（可直接编辑）</h2>
+          <span class="head-note">长度用于购线汇总与报告</span>
+        </header>
+        <div class="table-scroll" id="cable-table-wrap"></div>
+      </section>
+    </div>
+  </section>
+</main>
+
+<div class="ctx-menu" id="ctx-menu" hidden></div>
+<div class="modal-overlay" id="modal-overlay" hidden>
+  <div class="modal" id="modal-box" role="dialog" aria-modal="true"></div>
+</div>
+
+<script src="js/db.js"></script>
+<script src="js/store.js"></script>
+<script src="js/diagram.js"></script>
+<script src="js/inspector.js"></script>
+<script src="js/quick.js"></script>
+<script src="js/keys.js"></script>
+<script src="js/cables.js"></script>
+<script src="js/mixer.js"></script>
+<script src="js/teach.js"></script>
+<script src="js/report.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,679 @@
+/* ============================================================
+   main.js — 启动流程（IndexedDB 就绪后渲染）/ 视图切换 /
+             主题 / 缩放工具条 / 配置槽（含临时移除）/ 导入导出
+   ============================================================ */
+
+(function () {
+  var Store = SP.Store;
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  /* ================= Toast 轻提示（替代确认弹窗：直接执行 + 提示可撤销） ================= */
+
+  var toastTimer = 0;
+  SP.toast = function (msg, warn) {
+    if (!document.body) return;
+    var t = el('sp-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'sp-toast';
+      t.className = 'toast';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.toggle('warn', !!warn);
+    t.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2600);
+  };
+
+  /* ================= 配置槽：导入多个 JSON 后切换对比（v2 支持临时移除） ================= */
+
+  var ConfigSlots = (function () {
+    var KEY = 'signalpath-config-slots-v2';
+    var LEGACY = 'signalpath-config-slots-v1';
+    var slots = [], activeId = 'work';
+
+    function cloneState() { return JSON.parse(JSON.stringify(Store.state)); }
+    function uid() { return 'cfg-' + Date.now() + '-' + Math.floor(Math.random() * 100000); }
+    function saveSlots() {
+      try { localStorage.setItem(KEY, JSON.stringify({ activeId: activeId, slots: slots })); }
+      catch (e) { if (SP.warnStorage) SP.warnStorage(); }
+    }
+    function find(id) {
+      for (var i = 0; i < slots.length; i++) if (slots[i].id === id) return slots[i];
+      return null;
+    }
+    function ensureWorkSlot() {
+      /* 活动槽 data 为 null：其内容始终以主存储为准，避免整份 state 存两遍 */
+      if (!slots.length) slots.push({ id: 'work', name: '当前配置', data: null, hidden: false, updated: Date.now() });
+      if (!find(activeId) || find(activeId).hidden) {
+        var vis = slots.filter(function (s) { return !s.hidden; });
+        activeId = vis.length ? vis[0].id : slots[0].id;
+      }
+    }
+    function load() {
+      try {
+        var raw = localStorage.getItem(KEY) || localStorage.getItem(LEGACY);
+        if (raw) {
+          var pack = JSON.parse(raw);
+          slots = Array.isArray(pack.slots) ? pack.slots : [];
+          activeId = pack.activeId || 'work';
+          slots.forEach(function (s) { if (s.hidden === undefined) s.hidden = false; });
+        }
+      } catch (e) {
+        slots = [];
+        activeId = 'work';
+      }
+      ensureWorkSlot();
+    }
+    function render() {
+      var sel = el('config-switch');
+      if (!sel) return;
+      sel.innerHTML = slots.filter(function (s) { return !s.hidden; }).map(function (s) {
+        return '<option value="' + esc(s.id) + '">' + esc(s.name) + '</option>';
+      }).join('');
+      sel.value = activeId;
+    }
+    /* 把当前主存储内容封存进即将离开的活动槽 */
+    function stashActive() {
+      var s = find(activeId);
+      if (!s) return;
+      s.data = cloneState();
+      s.updated = Date.now();
+    }
+    function init() {
+      load();
+      var s = find(activeId);
+      if (s && s.data) {
+        /* 兼容旧格式：活动槽曾存整份数据 → 恢复后转为 null 引用 */
+        Store.replaceState(s.data, { noHistory: true, resetHistory: true, skipConfig: true });
+        s.data = null;
+      }
+      render();
+      saveSlots();
+    }
+    function switchTo(id) {
+      if (id === activeId) return;
+      var target = find(id);
+      if (!target || !target.data) { render(); return; }
+      stashActive();
+      activeId = id;
+      Store.replaceState(target.data, { noHistory: true, resetHistory: true, skipConfig: true });
+      target.data = null;
+      saveSlots();
+      render();
+      SP.renderAll();
+    }
+    function addImported(name, data) {
+      stashActive();
+      activeId = uid();
+      slots.push({ id: activeId, name: name || '导入配置', data: null, hidden: false, updated: Date.now() });
+      Store.replaceState(data, { noHistory: true, resetHistory: true, skipConfig: true });
+      saveSlots();
+      render();
+      SP.renderAll();
+    }
+    function setHidden(id, hidden) {
+      var s = find(id);
+      if (!s) return;
+      if (hidden && id === activeId) {
+        /* 临时移除活动槽：先切到另一个可见槽 */
+        var other = slots.filter(function (x) { return x.id !== id && !x.hidden; })[0];
+        if (!other) { alert('至少要保留一个可见配置。'); return; }
+        stashActive();
+        s.hidden = true;
+        activeId = other.id;
+        Store.replaceState(other.data || Store.defaultState(), { noHistory: true, resetHistory: true, skipConfig: true });
+        other.data = null;
+        saveSlots();
+        render();
+        SP.renderAll();
+        return;
+      }
+      s.hidden = hidden;
+      saveSlots();
+      render();
+    }
+    function removeSlot(id) {
+      var s = find(id);
+      if (!s || id === activeId) { alert('不能删除当前正在使用的配置。'); return; }
+      slots = slots.filter(function (x) { return x.id !== id; });
+      ensureWorkSlot();
+      saveSlots();
+      render();
+    }
+    function onStoreSaved() {}
+    return {
+      init: init, switchTo: switchTo, addImported: addImported,
+      setHidden: setHidden, removeSlot: removeSlot, onStoreSaved: onStoreSaved,
+      get slots() { return slots; }, get activeId() { return activeId; }
+    };
+  })();
+
+  SP.onStoreSaved = function () { ConfigSlots.onStoreSaved(); };
+
+  /* 配置面板：切换 / 临时移除 / 恢复 / 删除 / 导入 / 导出 合并入口 */
+  function exportConfig() {
+    var data = JSON.parse(JSON.stringify(Store.state));
+    var images = {};
+    (data.devices || []).forEach(function (dv) {
+      [dv.imgId, dv.panelImgId].forEach(function (id) {
+        if (id && SP.Images.get(id)) images[id] = SP.Images.get(id);
+      });
+    });
+    if (Object.keys(images).length) data.__images = images;
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    var d = new Date();
+    a.download = 'signalpath-' + d.getFullYear() +
+      ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    SP.toast('配置已导出（含图片）');
+  }
+
+  function openConfigPanel() {
+    function rows() {
+      return ConfigSlots.slots.map(function (s) {
+        var isActive = s.id === ConfigSlots.activeId;
+        return '<div class="cfg-slot-row' + (s.hidden ? ' hidden-slot' : '') + '">' +
+          '<span class="cfg-slot-name">' + esc(s.name) + (isActive ? ' <span class="tag ok">当前</span>' : '') +
+          (s.hidden ? ' <span class="tag warn">已移除</span>' : '') + '</span>' +
+          '<span class="cfg-slot-acts">' +
+          (!isActive && !s.hidden
+            ? '<button class="btn primary sm" data-slot-use="' + s.id + '">切换</button>' : '') +
+          (s.hidden
+            ? '<button class="btn ghost sm" data-slot-show="' + s.id + '">恢复</button>'
+            : '<button class="btn ghost sm" data-slot-hide="' + s.id + '"' + '>临时移除</button>') +
+          '<button class="btn ghost sm danger" data-slot-del="' + s.id + '"' +
+          (isActive ? ' disabled' : '') + '>删除</button>' +
+          '</span></div>';
+      }).join('');
+    }
+    SP.openModal(
+      '<div class="modal-head"><h3>配置</h3>' +
+      '<button class="btn icon" data-close-modal>✕</button></div>' +
+      '<div class="modal-body">' +
+      '<div style="display:flex;gap:8px;margin-bottom:12px">' +
+      '<button class="btn ghost sm" id="cfg-export">导出当前配置</button>' +
+      '<button class="btn ghost sm" id="cfg-import">导入配置文件…</button>' +
+      '</div>' +
+      '<p class="cfg-note" style="margin-top:0">点「切换」在多套配置间对比；「临时移除」只是从列表隐藏（数据保留）；「删除」彻底移除。</p>' +
+      '<div id="cfg-slot-list">' + rows() + '</div>' +
+      '</div><div class="modal-foot"><button class="btn primary" data-close-modal>完成</button></div>'
+    );
+    var box = el('modal-box');
+    function bind() {
+      var ex = el('cfg-export');
+      if (ex) ex.onclick = exportConfig;
+      var im = el('cfg-import');
+      if (im) im.onclick = function () { el('import-file').click(); };
+      box.querySelectorAll('[data-slot-use]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          ConfigSlots.switchTo(b.dataset.slotUse);
+          SP.closeModal();
+          SP.toast('已切换配置');
+        });
+      });
+      box.querySelectorAll('[data-slot-hide]').forEach(function (b) {
+        b.addEventListener('click', function () { ConfigSlots.setHidden(b.dataset.slotHide, true); refresh(); });
+      });
+      box.querySelectorAll('[data-slot-show]').forEach(function (b) {
+        b.addEventListener('click', function () { ConfigSlots.setHidden(b.dataset.slotShow, false); refresh(); });
+      });
+      box.querySelectorAll('[data-slot-del]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          /* 彻底删除不在撤销栈里，保留唯一一个确认 */
+          if (!confirm('彻底删除该配置？不可恢复。')) return;
+          ConfigSlots.removeSlot(b.dataset.slotDel);
+          refresh();
+        });
+      });
+    }
+    function refresh() {
+      var list = el('cfg-slot-list');
+      if (list) { list.innerHTML = rows(); bind(); }
+    }
+    bind();
+  }
+
+  SP.updateHistoryButtons = function () {
+    var u = el('btn-undo'), r = el('btn-redo');
+    if (u) u.disabled = !Store.canUndo();
+    if (r) r.disabled = !Store.canRedo();
+    [
+      ['btn-wdiagram-undo', 'btn-wdiagram-redo', 'diagram'],
+      ['btn-mixdiag-undo', 'btn-mixdiag-redo', 'mixerDiagram'],
+      ['btn-inpatch-undo', 'btn-inpatch-redo', 'inPatch'],
+      ['btn-route-undo', 'btn-route-redo', 'routeGrid'],
+      ['btn-outpatch-undo', 'btn-outpatch-redo', 'outPatch']
+    ].forEach(function (row) {
+      var bu = el(row[0]), br = el(row[1]);
+      if (bu) bu.disabled = !Store.canUndoArea(row[2]);
+      if (br) br.disabled = !Store.canRedoArea(row[2]);
+    });
+  };
+
+  /* 路由矩阵 PNG：从数据直接绘制 canvas（Safari 对 foreignObject 光栅化不稳定） */
+  SP.exportGridPNG = function (kind, filename) {
+    var m = Store.activeMixer();
+    var light = document.documentElement.getAttribute('data-theme') === 'light';
+    var C = light
+      ? { bg: '#ffffff', grid: '#c9ced6', head: '#eef0f3', headTx: '#5a6572', rowTx: '#5a6572', cellBg: '#f7f8fa' }
+      : { bg: '#14171b', grid: '#2b333d', head: '#20262d', headTx: '#93a0ae', rowTx: '#93a0ae', cellBg: '#10141a' };
+    var GRP = { bus: '#6ba3c4', mtx: '#a08fc0', main: '#eda63d', in_: '#6ba3c4', out: '#4fbf8b' };
+
+    var rows = [], cols = [], isOn;
+    if (kind === 'in') {
+      for (var i = 0; i < m.physIn; i++) rows.push({ label: 'IN ' + (i + 1) });
+      for (var c = 0; c < m.channels; c++) cols.push({ label: 'C' + (c + 1), grp: 'in_' });
+      isOn = function (r, c2) { return Store.hasInPatch(r, c2); };
+    } else if (kind === 'out') {
+      Store.outPatchSources().forEach(function (src) {
+        rows.push({ label: src.label, id: src.id,
+          grp: src.id[0] === 'b' ? 'bus' : src.id[0] === 'x' ? 'mtx' : 'main' });
+      });
+      for (var o = 0; o < m.physOut; o++) cols.push({ label: 'O' + (o + 1), grp: 'out' });
+      isOn = function (r, c2) { return Store.hasOutPatch(rows[r].id, c2); };
+    } else {
+      for (var ci = 0; ci < m.channels; ci++) {
+        if (m.links.indexOf(ci) >= 0 && ci + 1 < m.channels) {
+          rows.push({ label: 'CH ' + (ci + 1) + '-' + (ci + 2), anchor: ci });
+          ci++;
+        } else {
+          rows.push({ label: 'CH ' + (ci + 1), anchor: ci });
+        }
+      }
+      for (var b = 0; b < m.buses; b++) cols.push({ label: 'B' + (b + 1), grp: 'bus', id: 'b' + b });
+      Store.mainTargets().forEach(function (t) {
+        cols.push({ label: String(t.label).replace('MAIN ', ''), grp: 'main', id: t.id });
+      });
+      for (var x = 0; x < m.matrices; x++) cols.push({ label: 'M' + (x + 1), grp: 'mtx', id: 'x' + x });
+      isOn = function (r, c2) { return Store.hasRoute(rows[r].anchor, cols[c2].id); };
+    }
+    if (!rows.length || !cols.length) { alert('当前矩阵没有内容可导出。'); return; }
+
+    var scale = 2, cw = 34, ch = 30, headW = 116, headH = 30, pad = 14;
+    var W = pad * 2 + headW + cols.length * cw;
+    var H = pad * 2 + headH + rows.length * ch;
+    var cv = document.createElement('canvas');
+    cv.width = W * scale;
+    cv.height = H * scale;
+    var ctx = cv.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.font = '10px Menlo, monospace';
+    ctx.textBaseline = 'alphabetic';
+
+    ctx.fillStyle = C.head;
+    ctx.fillRect(pad, pad, headW + cols.length * cw, headH);
+    ctx.fillRect(pad, pad, headW, headH + rows.length * ch);
+
+    cols.forEach(function (col, ci2) {
+      var x = pad + headW + ci2 * cw;
+      ctx.fillStyle = C.headTx;
+      ctx.textAlign = 'center';
+      ctx.fillText(col.label, x + cw / 2, pad + 19);
+      ctx.fillStyle = GRP[col.grp] || '#888';
+      ctx.fillRect(x, pad + headH - 3, cw, 2);
+    });
+    rows.forEach(function (row, r) {
+      var y = pad + headH + r * ch;
+      ctx.fillStyle = C.rowTx;
+      ctx.textAlign = 'right';
+      ctx.fillText(row.label.length > 15 ? row.label.slice(0, 14) + '…' : row.label,
+        pad + headW - 8, y + 19);
+      cols.forEach(function (col, c2) {
+        var x = pad + headW + c2 * cw;
+        ctx.fillStyle = C.cellBg;
+        ctx.fillRect(x + 1, y + 1, cw - 2, ch - 2);
+        if (isOn(r, c2)) {
+          ctx.fillStyle = GRP[kind === 'out' ? rows[r].grp : cols[c2].grp] || '#eda63d';
+          ctx.fillRect(x + 8, y + 7, cw - 16, ch - 14);
+        }
+      });
+    });
+
+    ctx.strokeStyle = C.grid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var gc = 0; gc <= cols.length; gc++) {
+      var gx = pad + headW + gc * cw;
+      ctx.moveTo(gx + .5, pad);
+      ctx.lineTo(gx + .5, H - pad);
+    }
+    for (var gr = 0; gr <= rows.length; gr++) {
+      var gy = pad + headH + gr * ch;
+      ctx.moveTo(pad, gy + .5);
+      ctx.lineTo(W - pad, gy + .5);
+    }
+    ctx.moveTo(pad + .5, pad);
+    ctx.lineTo(pad + .5, H - pad);
+    ctx.stroke();
+
+    cv.toBlob(function (blob) {
+      if (!blob) { alert('导出失败，请重试。'); return; }
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    }, 'image/png');
+  };
+
+  /* ================= 汇总渲染 ================= */
+
+  SP.renderAll = function () {
+    SP.renderInspector();
+    SP.renderWiringTable();
+    SP.renderWiringDiagram(el('wiring-diagram'));
+    SP.renderMixerView();
+    if (SP.renderTeach) SP.renderTeach();
+    if (SP.renderCables) SP.renderCables();
+    if (SP.syncOrientBtn) SP.syncOrientBtn();
+    if (SP.syncFitBtn) SP.syncFitBtn();
+  };
+
+  /* ================= 初始化 ================= */
+
+  document.addEventListener('DOMContentLoaded', function () {
+
+    /* ---------- 主视图切换 ---------- */
+    SP.switchView = function (name) {
+      el('main-tabs').querySelectorAll('.tab').forEach(function (x) {
+        x.classList.toggle('active', x.dataset.view === name);
+      });
+      document.querySelectorAll('.view').forEach(function (v) {
+        v.classList.toggle('active', v.id === 'view-' + name);
+      });
+      if (name === 'mixer' && SP.renderMixerView) SP.renderMixerView();
+      if (name === 'cables' && SP.renderCables) SP.renderCables();
+      if (name === 'teach' && SP.renderTeach) SP.renderTeach();
+    };
+    el('main-tabs').querySelectorAll('.tab').forEach(function (t) {
+      t.addEventListener('click', function () { SP.switchView(t.dataset.view); });
+    });
+
+    /* ---------- 黑 / 白主题 ---------- */
+    function applyTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      try { localStorage.setItem('signalpath-theme', t); } catch (e) {}
+      var b = el('btn-theme');
+      if (b) {
+        b.textContent = t === 'light' ? '☾' : '☀︎';
+        b.title = t === 'light' ? '切换到黑色主题' : '切换到白色主题';
+      }
+    }
+    var savedTheme = 'dark';
+    try { savedTheme = localStorage.getItem('signalpath-theme') || 'dark'; } catch (e) {}
+    applyTheme(savedTheme);
+    el('btn-theme').addEventListener('click', function () {
+      var cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      applyTheme(cur);
+      SP.renderAll();   /* 框图内嵌 SVG 样式需按新主题重新生成 */
+    });
+
+    /* ---------- 相对对齐 / 清空设备 ---------- */
+    var relUp = el('btn-rel-align-up');
+    if (relUp) relUp.addEventListener('click', function () {
+      SP.relAlignLayout('up', el('wiring-diagram'));
+      SP.toast('已按相对位置对齐上级（可撤销）');
+    });
+    var relDown = el('btn-rel-align-down');
+    if (relDown) relDown.addEventListener('click', function () {
+      SP.relAlignLayout('down', el('wiring-diagram'));
+      SP.toast('已按相对位置对齐下级（可撤销）');
+    });
+    var clearDev = el('btn-clear-devices');
+    if (clearDev) clearDev.addEventListener('click', function () {
+      var n = Store.clearAllDevices();
+      if (!n) { SP.toast('当前没有设备', true); return; }
+      SP.selectedDeviceId = '';
+      SP.multiSelected = [];
+      SP.renderAll();
+      SP.toast('已清空 ' + n + ' 台设备（⌘Z 可撤销）');
+    });
+
+    /* ---------- 框图缩放（滑杆 = 视口中心锚点） ---------- */
+    function syncZoomUI() {
+      var z = Math.round((SP.diagramZoom || 1) * 100);
+      var range = el('zoom-range');
+      if (range) range.value = z;
+      var val = el('zoom-val');
+      if (val) val.textContent = z + '%';
+    }
+    SP.syncZoomUI = syncZoomUI;
+    el('zoom-range').addEventListener('input', function () {
+      SP.zoomAt(el('wiring-diagram'), this.value / 100);
+      el('zoom-val').textContent = this.value + '%';
+      if (SP.syncFitBtn) SP.syncFitBtn();
+    });
+    /* 一键视角切换：全局（整图放得下）↔ 局部（定位到高亮设备） */
+    function syncFitBtn() {
+      var box = el('wiring-diagram');
+      var fit = SP.fitDiagramZoom(box);
+      var atFit = Math.abs((SP.diagramZoom || 1) - fit) < 0.02;
+      var b = el('btn-zoom-fit');
+      if (!b) return;
+      b.textContent = atFit ? '定位当前' : '全局视角';
+      b.title = atFit
+        ? '当前为全局视角。点击放大并居中定位到高亮设备'
+        : '点击缩放到能一眼看清全部设备的全局视角';
+    }
+    SP.syncFitBtn = syncFitBtn;
+    el('btn-zoom-fit').addEventListener('click', function () {
+      var box = el('wiring-diagram');
+      var fit = SP.fitDiagramZoom(box);
+      var atFit = Math.abs((SP.diagramZoom || 1) - fit) < 0.02;
+      if (atFit) {
+        SP.focusSelectedInDiagram(box);
+      } else {
+        SP.setDiagramZoom(fit, box);
+        if (box.scrollTo) box.scrollTo({ left: 0, top: 0 });
+      }
+      syncZoomUI();
+      syncFitBtn();
+    });
+    syncZoomUI();
+
+    /* ---------- 框图工具条 ---------- */
+    el('btn-wdiagram-undo').addEventListener('click', function () {
+      if (Store.undoArea('diagram')) SP.renderAll();
+    });
+    el('btn-wdiagram-redo').addEventListener('click', function () {
+      if (Store.redoArea('diagram')) SP.renderAll();
+    });
+    el('btn-diagram-reset').addEventListener('click', function () {
+      SP.resetDiagramLayout(el('wiring-diagram'), 'topdown');
+    });
+    el('btn-diagram-reset-bottom').addEventListener('click', function () {
+      SP.resetDiagramLayout(el('wiring-diagram'), 'bottomup');
+    });
+    SP.syncOrientBtn = function () {
+      var b = el('btn-diagram-orient');
+      if (!b) return;
+      var h = Store.state.diagramOrient === 'h';
+      b.textContent = h ? '切换竖版' : '切换横版';
+      b.title = h
+        ? '当前为横版（信号从左到右）。点击切回竖版（信号从上到下）'
+        : '当前为竖版（信号从上到下）。点击切换为横版（信号从左到右）';
+    };
+    el('btn-diagram-orient').addEventListener('click', function () {
+      var box = el('wiring-diagram');
+      var h = Store.state.diagramOrient === 'h';
+      SP.setDiagramOrient(h ? 'v' : 'h', box);
+      SP.setDiagramZoom(SP.fitDiagramZoom(box), box);
+      if (box.scrollTo) box.scrollTo({ left: 0, top: 0 });
+      SP.syncOrientBtn();
+      syncZoomUI();
+      syncFitBtn();
+    });
+    SP.syncOrientBtn();
+
+    /* 导出下拉：PNG 2K/4K/8K + PDF */
+    var exportBtn = el('btn-diagram-export');
+    var exportPop = el('export-pop');
+    if (exportBtn && exportPop) {
+      exportBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        exportPop.hidden = !exportPop.hidden;
+      });
+      document.addEventListener('click', function (e) {
+        if (!e.target.closest || !e.target.closest('#export-pop')) exportPop.hidden = true;
+      });
+      exportPop.querySelectorAll('[data-export-w]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          exportPop.hidden = true;
+          SP.exportPNGWidth(el('wiring-diagram'),
+            'signalpath-系统框图-' + b.textContent.trim() + '.png', +b.dataset.exportW);
+        });
+      });
+      var pdfBtn = exportPop.querySelector('[data-export-pdf]');
+      if (pdfBtn) pdfBtn.addEventListener('click', function () {
+        exportPop.hidden = true;
+        SP.exportDiagramPDF(el('wiring-diagram'), 'SignalPath 系统框图');
+      });
+    }
+
+    /* ---------- 台内路由页按钮 ---------- */
+    el('btn-mixdiag-png').addEventListener('click', function () {
+      SP.exportPNG(el('mixer-diagram'), 'signalpath-台内路由.png', 3);
+    });
+    el('btn-mixdiag-undo').addEventListener('click', function () {
+      if (Store.undoArea('mixerDiagram')) SP.renderMixerView();
+    });
+    el('btn-mixdiag-redo').addEventListener('click', function () {
+      if (Store.redoArea('mixerDiagram')) SP.renderMixerView();
+    });
+    el('btn-inpatch-undo').addEventListener('click', function () {
+      if (Store.undoArea('inPatch')) {
+        SP.renderInputPatchGrid();
+        SP.renderMixerDiagram(el('mixer-diagram'));
+      }
+    });
+    el('btn-inpatch-redo').addEventListener('click', function () {
+      if (Store.redoArea('inPatch')) {
+        SP.renderInputPatchGrid();
+        SP.renderMixerDiagram(el('mixer-diagram'));
+      }
+    });
+    el('btn-inpatch-png').addEventListener('click', function () {
+      SP.exportGridPNG('in', 'signalpath-输入路由矩阵.png');
+    });
+    el('btn-route-undo').addEventListener('click', function () {
+      if (Store.undoArea('routeGrid')) {
+        SP.renderRouteGrid();
+        SP.renderMixerDiagram(el('mixer-diagram'));
+        SP.renderMixerTable();
+      }
+    });
+    el('btn-route-redo').addEventListener('click', function () {
+      if (Store.redoArea('routeGrid')) {
+        SP.renderRouteGrid();
+        SP.renderMixerDiagram(el('mixer-diagram'));
+        SP.renderMixerTable();
+      }
+    });
+    el('btn-route-png').addEventListener('click', function () {
+      SP.exportGridPNG('route', 'signalpath-发送路由矩阵.png');
+    });
+    el('btn-outpatch-undo').addEventListener('click', function () {
+      if (Store.undoArea('outPatch')) {
+        SP.renderOutputPatchGrid();
+        SP.renderMixerDiagram(el('mixer-diagram'));
+      }
+    });
+    el('btn-outpatch-redo').addEventListener('click', function () {
+      if (Store.redoArea('outPatch')) {
+        SP.renderOutputPatchGrid();
+        SP.renderMixerDiagram(el('mixer-diagram'));
+      }
+    });
+    el('btn-outpatch-png').addEventListener('click', function () {
+      SP.exportGridPNG('out', 'signalpath-输出路由矩阵.png');
+    });
+
+    /* ---------- 顶栏 ---------- */
+    el('btn-undo').addEventListener('click', function () {
+      if (Store.undo()) SP.renderAll();
+    });
+    el('btn-redo').addEventListener('click', function () {
+      if (Store.redo()) SP.renderAll();
+    });
+    el('btn-quick').addEventListener('click', function () { SP.openQuickLayout(); });
+    el('btn-report').addEventListener('click', SP.openReportOptions);
+    el('btn-keys').addEventListener('click', function () { SP.openKeysPanel(); });
+    el('btn-config').addEventListener('click', openConfigPanel);
+
+    /* ---------- 导入配置（还原图片到 IndexedDB），入口在「配置」面板 ---------- */
+    function importState(data) {
+      if (data.__images) {
+        var map = {};
+        Object.keys(data.__images).forEach(function (oldId) {
+          map[oldId] = SP.Images.put(data.__images[oldId]);
+        });
+        (data.devices || []).forEach(function (dv) {
+          if (dv.imgId && map[dv.imgId]) dv.imgId = map[dv.imgId];
+          if (dv.panelImgId && map[dv.panelImgId]) dv.panelImgId = map[dv.panelImgId];
+        });
+        delete data.__images;
+      }
+      return data;
+    }
+    el('import-file').addEventListener('change', function () {
+      var files = Array.prototype.slice.call(this.files || []);
+      this.value = '';
+      if (!files.length) return;
+      function readNext(idx) {
+        var f = files[idx];
+        if (!f) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          try {
+            var data = JSON.parse(reader.result);
+            if (!data || !Array.isArray(data.devices)) throw new Error('bad format');
+            var name = f.name.replace(/\.json$/i, '') || '导入配置';
+            ConfigSlots.addImported(name, importState(data));
+            if (idx + 1 < files.length) readNext(idx + 1);
+          } catch (e) {
+            alert('导入失败：' + f.name + ' 不是有效的 SignalPath 配置。');
+          }
+        };
+        reader.readAsText(f);
+      }
+      readNext(0);
+    });
+
+    /* ---------- 清空（不再确认：进撤销栈，⌘Z 可回退） ---------- */
+    el('btn-clear').addEventListener('click', function () {
+      if (!Store.state.devices.length && !Store.state.connections.length) {
+        SP.toast('当前已是空白', true);
+        return;
+      }
+      Store.replaceState(Store.defaultState());
+      SP.selectedDeviceId = '';
+      SP.multiSelected = [];
+      SP.renderAll();
+      SP.toast('已清空全部数据（⌘Z 可撤销）');
+    });
+
+    /* ---------- 启动：IndexedDB 图片缓存就绪后再渲染 ---------- */
+    SP.Images.init().then(function () {
+      ConfigSlots.init();
+      SP.renderAll();
+      SP.updateHistoryButtons();
+      syncFitBtn();
+      /* 首次使用（无任何数据）：直接打开快速布局引导 */
+      if (Store.firstRun && !Store.state.devices.length) {
+        setTimeout(function () { SP.openQuickLayout(); }, 250);
+      }
+    });
+  });
+})();
