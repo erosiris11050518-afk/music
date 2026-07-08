@@ -15,7 +15,7 @@ import update_manifest
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 DIST = os.path.join(ROOT, 'dist')
-PUBLISH_ITEMS = ('index.html', 'mix-export.html', 'assets', 'audio', 'libs')
+PUBLISH_ITEMS = ('index.html', 'mix-export.html', 'assets', 'audio', 'libs', 'signalpath')
 IGNORE_NAMES = {
     '.DS_Store',
     '__MACOSX',
