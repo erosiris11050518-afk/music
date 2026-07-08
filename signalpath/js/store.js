@@ -195,7 +195,7 @@ SP.Store = (function () {
     return { devices: [], connections: [], customTypes: [], inputGear: [],
       userMixerTemplates: [], deviceTemplates: JSON.parse(JSON.stringify(SP.TEMPLATES)),
       deviceTemplatesVersion: 4, mixer: defaultMixer(), activeMixerId: '',
-      diagramLayout: 'topdown', diagramOrient: 'v', seq: 1, quickPresets: [],
+      diagramLayout: 'topdown', diagramOrient: 'v', seq: 1, quickPresets: [], reversePresets: [],
       powerAlarmMode: 'show',
       power: { eff: 0.7, headroom: 1.3, mixerW: 150, dspW: 50, seqW: 30 } };
   }
@@ -247,6 +247,7 @@ SP.Store = (function () {
       }
     });
     s.quickPresets = s.quickPresets || [];
+    s.reversePresets = s.reversePresets || [];
     (s.connections || []).forEach(function (c) {
       if (c.lenM === undefined) {
         var raw = String(c.len || '');
@@ -299,6 +300,15 @@ SP.Store = (function () {
       if (d.type === 'speaker') {
         if (!d.speakerRole) d.speakerRole = SP.inferSpeakerRole(d.name);
         if (d.specs.powered !== 'active') d.specs.powered = 'passive';
+        if (d.reverseParallel) {
+          var rp = d.reverseParallel;
+          if (!rp.groupId) rp.groupId = '';
+          rp.parallel = Math.max(1, +rp.parallel || 1);
+          rp.groupSize = Math.max(1, +rp.groupSize || rp.parallel);
+          rp.index = Math.max(1, +rp.index || 1);
+          rp.channel = Math.max(1, +rp.channel || 1);
+          rp.locked = rp.locked !== false;
+        }
       }
     });
     (s.connections || []).forEach(function (c) {
@@ -573,7 +583,8 @@ SP.Store = (function () {
     if (dev.type === 'amp') {
       if (dev.specs.grounded === undefined) dev.specs.grounded = true;
       dev.ampPairModes = [];
-      for (var pi = 0; pi < Math.ceil(dev.outputs.length / 2); pi++) dev.ampPairModes.push('P');
+      /* 新功放默认 S 档（立体声，两路独立） */
+      for (var pi = 0; pi < Math.ceil(dev.outputs.length / 2); pi++) dev.ampPairModes.push('S');
     }
     if (dev.type === 'dsp') ensureDspRoute(dev);
     if (dev.type === 'speaker' && dev.specs.powered !== 'active') dev.specs.powered = 'passive';
@@ -715,6 +726,21 @@ SP.Store = (function () {
     save();
   }
 
+  function addReversePreset(name, data) {
+    state.reversePresets = state.reversePresets || [];
+    var p = { name: name, data: JSON.parse(JSON.stringify(data || {})) };
+    var idx = -1;
+    state.reversePresets.forEach(function (x, i) { if (x.name === name) idx = i; });
+    if (idx >= 0) state.reversePresets[idx] = p; else state.reversePresets.push(p);
+    save();
+  }
+
+  function removeReversePreset(idx) {
+    state.reversePresets = state.reversePresets || [];
+    state.reversePresets.splice(idx, 1);
+    save();
+  }
+
   /* ---------- 设备 → 模板（存为模板 / 一键模板） ---------- */
 
   function baseNameOf(name) {
@@ -752,6 +778,70 @@ SP.Store = (function () {
     });
     save();
     return mode;
+  }
+
+  /* ---------- 模板库整体存档：设备模板 + 快速布局预设 + 台面模板 ---------- */
+
+  function exportTemplateLib() {
+    return {
+      __signalpathTplLib: 1,
+      deviceTemplates: JSON.parse(JSON.stringify(state.deviceTemplates)),
+      quickPresets: JSON.parse(JSON.stringify(state.quickPresets || [])),
+      reversePresets: JSON.parse(JSON.stringify(state.reversePresets || [])),
+      userMixerTemplates: JSON.parse(JSON.stringify(state.userMixerTemplates || []))
+    };
+  }
+
+  /* 设备模板按「类型+名称」合并去重：同名更新、新名追加。返回 'added' | 'updated' */
+  function mergeTemplate(t) {
+    if (!t || !t.name) return null;
+    var idx = -1;
+    state.deviceTemplates.forEach(function (x, i) {
+      if (x.name === t.name && x.type === t.type) idx = i;
+    });
+    if (idx >= 0) {
+      t.tplId = state.deviceTemplates[idx].tplId || ('tpl' + (state.seq++));
+      state.deviceTemplates[idx] = t;
+      return 'updated';
+    }
+    var dup = state.deviceTemplates.some(function (x) { return x.tplId && x.tplId === t.tplId; });
+    if (!t.tplId || dup) t.tplId = 'tpl' + (state.seq++);
+    state.deviceTemplates.push(t);
+    return 'added';
+  }
+
+  function importTemplateLib(data) {
+    var res = { dev: 0, presets: 0, reversePresets: 0, mixerTpls: 0 };
+    batch(function () {
+      (data.deviceTemplates || []).forEach(function (t) {
+        if (mergeTemplate(JSON.parse(JSON.stringify(t)))) res.dev++;
+      });
+      state.quickPresets = state.quickPresets || [];
+      (data.quickPresets || []).forEach(function (p) {
+        if (!p || !p.name) return;
+        var i = -1;
+        state.quickPresets.forEach(function (x, j) { if (x.name === p.name) i = j; });
+        if (i >= 0) state.quickPresets[i] = p; else state.quickPresets.push(p);
+        res.presets++;
+      });
+      state.reversePresets = state.reversePresets || [];
+      (data.reversePresets || []).forEach(function (p) {
+        if (!p || !p.name) return;
+        var ri = -1;
+        state.reversePresets.forEach(function (x, j) { if (x.name === p.name) ri = j; });
+        if (ri >= 0) state.reversePresets[ri] = p; else state.reversePresets.push(p);
+        res.reversePresets++;
+      });
+      state.userMixerTemplates = state.userMixerTemplates || [];
+      (data.userMixerTemplates || []).forEach(function (m) {
+        if (!m || !m.name) return;
+        var i2 = -1;
+        state.userMixerTemplates.forEach(function (x, j) { if (x.name === m.name) i2 = j; });
+        if (i2 >= 0) state.userMixerTemplates[i2] = m; else state.userMixerTemplates.push(m);
+        res.mixerTpls++;
+      });
+    });
+    return res;
   }
 
   /* 一键模板：把画布上所有设备按名称系列归类存入模板库 */
@@ -838,8 +928,9 @@ SP.Store = (function () {
   function autoSourceTypes(dev) {
     if (dev.type === 'dsp') return ['mixer'];
     if (dev.type === 'amp') return ['dsp', 'mixer'];
-    /* 音箱并联：上游同类音箱的 OUT 作为备选（功放/线路口用完后自动串接） */
-    if (dev.type === 'speaker') return speakerPowered(dev) ? ['dsp', 'mixer', 'speaker'] : ['amp', 'speaker'];
+    /* 智能连接默认不自动并联：音箱只自动接功放/线路口，多余音箱提示未接。
+       手动音箱→音箱并联仍然允许（见 canAutoConnect 的 manual 分支 / connectionError）。 */
+    if (dev.type === 'speaker') return speakerPowered(dev) ? ['dsp', 'mixer'] : ['amp'];
     if (dev.type === 'mixer') return [];
     return ['mixer', 'dsp'];   /* 自定义类型只自动接线路级上游，避免误接功放输出 */
   }
@@ -847,7 +938,7 @@ SP.Store = (function () {
   function canAutoConnect(target, source) {
     if (!target || !source || target.id === source.id) return false;
     if (target.type === 'speaker') {
-      /* 音箱 → 音箱 并联：有源/无源一致 + 同分支（全频接全频、超低接超低） */
+      /* 音箱 → 音箱 并联仅限手动连线（智能分配不会走到这里，autoSourceTypes 已排除） */
       if (source.type === 'speaker') {
         return speakerPowered(source) === speakerPowered(target) &&
           (source.speakerRole || 'fullrange') === (target.speakerRole || 'fullrange');
@@ -870,9 +961,6 @@ SP.Store = (function () {
       var tk = pref[pi];
       state.devices.forEach(function (s) {
         if (s.type !== tk || !canAutoConnect(dev, s)) return;
-        /* 并联源必须自己已通电（输入已接），避免两只空箱互相串成环 */
-        if (s.type === 'speaker' &&
-            !s.inputs.some(function (p2, ii) { return sourceFor(s.id, ii); })) return;
         s.outputs.forEach(function (p, i) {
           if (isHiddenOut(s, i)) return;
           if (!consumersOf(s.id, i).length) outs.push({ dev: s, port: i });
@@ -901,8 +989,8 @@ SP.Store = (function () {
         ? '调音台通常是信号源，没有可自动接入的上游输出。'
         : dev.type === 'speaker'
           ? (speakerPowered(dev)
-            ? '有源音箱可接调音台 / DSP 信号线输出，或从同类有源音箱并联；当前没有可用空闲输出。'
-            : '无源音箱可接功放音响线输出，或从同类无源音箱并联；当前没有可用空闲输出。')
+            ? '有源音箱只自动接调音台 / DSP 信号线输出；当前没有可用空闲输出（可手动并联）。'
+            : '无源音箱只自动接功放音响线输出；当前没有可用空闲输出（可手动并联）。')
           : '上游设备没有可安全自动分配的空闲输出口。' };
     }
 
@@ -944,15 +1032,24 @@ SP.Store = (function () {
         count += r.lines.length;
       }
     });
-    /* 仍未接的输入口（不含调音台的话筒/线路输入） */
+    var lockedN = enforceReverseParallelGroups();
+    if (lockedN) {
+      lines.push('— 反推并联串接：');
+      lines.push('　已恢复 ' + lockedN + ' 条受控并联串接线');
+      count += lockedN;
+    }
+    /* 仍未接的输入口（不含调音台的话筒/线路输入）；音响单独统计只数用于提示 */
     var remaining = 0;
+    var speakerLeft = 0;
     state.devices.forEach(function (d) {
       if (d.type === 'mixer') return;
+      var unfed = false;
       d.inputs.forEach(function (pt, i) {
-        if (!sourceFor(d.id, i)) remaining++;
+        if (!sourceFor(d.id, i)) { remaining++; unfed = true; }
       });
+      if (unfed && d.type === 'speaker') speakerLeft++;
     });
-    return { lines: lines, count: count, remaining: remaining };
+    return { lines: lines, count: count, remaining: remaining, speakerLeft: speakerLeft };
   }
 
   /* 一键清空全部连线（可通过撤销恢复） */
@@ -1021,12 +1118,188 @@ SP.Store = (function () {
     return list.length;
   }
 
-  /* ---------- 快速布局：批量建 5 类设备 + 一键智能连接 = 单个撤销步骤 ---------- */
+  /* ---------- 快速布局：批量建设备 + 一键智能连接 = 单个撤销步骤。
+     item.parallel > 1 的音箱行：智能连接后自动把未接音箱串到已接音箱后
+     （SpeakON 菊花链：功放 OUT → 音箱1 → 音箱2 …） ---------- */
+
+  function chainParallelSpeakers(devs, par) {
+    if (par <= 1) return;
+    var keepLeaders = Math.ceil(devs.length / par);
+    var kept = 0;
+    devs.forEach(function (d) {
+      var c = sourceFor(d.id, 0);
+      var s = c && getDevice(c.sid);
+      if (!s || s.type === 'speaker') return;
+      kept++;
+      if (kept > keepLeaders) disconnect(d.id, 0, true);
+    });
+    function fed(d) {
+      return d.inputs.some(function (p, i) { return !!sourceFor(d.id, i); });
+    }
+    var leaders = devs.filter(fed);
+    var followers = devs.filter(function (d) { return !fed(d); });
+    var fi = 0;
+    leaders.forEach(function (lead) {
+      var prev = lead;
+      for (var k = 1; k < par && fi < followers.length; k++) {
+        var next = followers[fi++];
+        var r = connect(next.id, 0, prev.id, 0);
+        if (r && r.ok === false) break;
+        prev = next;
+      }
+    });
+  }
+
+  function makeDevicesFromTemplate(t, count, opt) {
+    opt = opt || {};
+    var out = [];
+    if (!t || !count) return out;
+    var outs0 = Array.isArray(t.outs) ? t.outs.length : t.outs;
+    var names = count > 1 ? numberedNames(t.name, count) : [t.name];
+    names.forEach(function (nm) {
+      var specs = Object.assign({}, t.specs || {});
+      if (t.type === 'speaker') specs.powered = opt.powered === 'active' ? 'active' : 'passive';
+      var dev = makeDevice({
+        type: t.type, name: nm, ins: t.ins, outs: outs0,
+        outLabels: Array.isArray(t.outs) ? t.outs : null,
+        speakerRole: t.type === 'speaker' ? (t.speakerRole || SP.inferSpeakerRole(t.name)) : '',
+        specs: specs, mixerDefaults: t.mixerDefaults || null, tplId: t.tplId || ''
+      });
+      state.devices.push(dev);
+      out.push(dev);
+    });
+    return out;
+  }
+
+  function freeLineOuts(devs) {
+    var outs = [];
+    (devs || []).forEach(function (d) {
+      (d.outputs || []).forEach(function (p, i) {
+        if (isHiddenOut(d, i)) return;
+        if (!consumersOf(d.id, i).length) outs.push({ dev: d, port: i });
+      });
+    });
+    return outs;
+  }
+
+  function connectSequential(sourceDevs, targets) {
+    var outs = freeLineOuts(sourceDevs);
+    var n = Math.min(outs.length, targets.length);
+    for (var i = 0; i < n; i++) {
+      connect(targets[i].dev.id, targets[i].port, outs[i].dev.id, outs[i].port);
+    }
+    return n;
+  }
+
+  function speakerGroups(devs, par, rowNo) {
+    var groups = [];
+    if (!devs.length) return groups;
+    par = Math.max(1, +par || 1);
+    for (var i = 0; i < devs.length; i += par) {
+      var g = devs.slice(i, i + par);
+      var groupId = 'rpg' + (state.seq++);
+      g.forEach(function (d, j) {
+        d.reverseParallel = {
+          groupId: groupId, parallel: par, groupSize: g.length,
+          index: j + 1, channel: groups.length + 1, row: rowNo || 0,
+          locked: par > 1
+        };
+      });
+      groups.push(g);
+    }
+    return groups;
+  }
+
+  function chainLockedGroup(group) {
+    if (!group || !group.length) return 0;
+    group.sort(function (a, b) {
+      return ((a.reverseParallel || {}).index || 1) - ((b.reverseParallel || {}).index || 1);
+    });
+    var n = 0;
+    for (var i = 1; i < group.length; i++) {
+      disconnect(group[i].id, 0, true);
+      var r = connect(group[i].id, 0, group[i - 1].id, 0);
+      var c = sourceFor(group[i].id, 0);
+      if (c) {
+        c.reverseParallelGroupId = (group[i].reverseParallel || {}).groupId || '';
+        c.reverseParallel = true;
+      }
+      if (!r || r.ok !== false) n++;
+    }
+    return n;
+  }
+
+  function enforceReverseParallelGroups() {
+    var groups = {};
+    state.devices.forEach(function (d) {
+      if (d.type !== 'speaker' || !d.reverseParallel || !d.reverseParallel.locked) return;
+      var gid = d.reverseParallel.groupId;
+      if (!gid) return;
+      (groups[gid] = groups[gid] || []).push(d);
+    });
+    var count = 0;
+    Object.keys(groups).forEach(function (gid) {
+      count += chainLockedGroup(groups[gid]);
+    });
+    return count;
+  }
+
+  function reverseLayout(plan) {
+    plan = plan || {};
+    var added = [];
+    batch(function () {
+      var mixers = makeDevicesFromTemplate(plan.mixerTpl, plan.mixerCount || 0);
+      var dsps = makeDevicesFromTemplate(plan.dspTpl, plan.dspCount || 0);
+      added = added.concat(mixers, dsps);
+
+      var ampInputs = [];
+      var rowPlans = [];
+      (plan.speakerRows || []).forEach(function (row, ri) {
+        var amps4 = makeDevicesFromTemplate(plan.amp4Tpl, row.a4 || 0);
+        var amps2 = makeDevicesFromTemplate(plan.amp2Tpl, row.a2 || 0);
+        var amps = amps4.concat(amps2);
+        var speakers = makeDevicesFromTemplate(row.tpl, row.count || 0, { powered: 'passive' });
+        added = added.concat(amps, speakers);
+        amps.forEach(function (amp) {
+          (amp.inputs || []).forEach(function (p, i) { ampInputs.push({ dev: amp, port: i }); });
+        });
+        rowPlans.push({ row: row, amps: amps, speakers: speakers, groups: speakerGroups(speakers, row.parallel || 1, ri + 1) });
+      });
+
+      if (mixers.length && dsps.length) {
+        var dspInputs = [];
+        dsps.forEach(function (dsp) {
+          (dsp.inputs || []).forEach(function (p, i) { dspInputs.push({ dev: dsp, port: i }); });
+        });
+        connectSequential(mixers, dspInputs);
+      }
+      connectSequential(dsps.length ? dsps : mixers, ampInputs);
+
+      rowPlans.forEach(function (rp) {
+        var ampOuts = [];
+        rp.amps.forEach(function (amp) {
+          visibleOuts(amp).forEach(function (oi) {
+            if (!consumersOf(amp.id, oi).length) ampOuts.push({ dev: amp, port: oi });
+          });
+        });
+        rp.groups.forEach(function (g, gi) {
+          if (!g.length || !ampOuts[gi]) return;
+          connect(g[0].id, 0, ampOuts[gi].dev.id, ampOuts[gi].port);
+          chainLockedGroup(g);
+        });
+      });
+      state.diagramLayout = 'smart';
+    });
+    return added;
+  }
 
   function quickLayout(items) {
     var added = [];
+    var perItem = [];
     batch(function () {
       (items || []).forEach(function (it) {
+        var mine = [];
+        perItem.push(mine);
         if (!it.tpl || !it.count) return;
         var t = it.tpl;
         var outs0 = Array.isArray(t.outs) ? t.outs.length : t.outs;
@@ -1044,11 +1317,78 @@ SP.Store = (function () {
           });
           state.devices.push(dev);
           added.push(dev);
+          mine.push(dev);
         });
       });
-      if (added.length) smartAssignAll();
+      if (added.length) {
+        smartAssignAll();
+        (items || []).forEach(function (it, idx) {
+          if (it.tpl && it.tpl.type === 'speaker' && (it.parallel || 1) > 1) {
+            chainParallelSpeakers(perItem[idx], it.parallel);
+          }
+        });
+        state.diagramLayout = 'smart';   /* 12：交叉更少的对齐方案自动生效 */
+      }
     });
     return added;
+  }
+
+  /* ---------- 音响反推（纯函数，可测）----------
+     rows: [{ name, power(W), ohms(Ω), count, parallel(每通道并联只数,默认1) }]
+     opt:  { ratio, ampMode:'2'|'4'|'mix', amp2W, amp4W, minOhms(4|2), dspOuts, mixerN }
+     规则：不同型号音响不混用同一台功放；搭配模式 4 通道优先，
+     余 ≤2 路补 1 台 2 通道，余 3 路补 1 台 4 通道；全部向上取整保富余。 */
+  function reverseCalc(rows, opt) {
+    opt = opt || {};
+    var ratio = +opt.ratio || 1.5;
+    var minOhms = +opt.minOhms || 4;
+    var res = { rows: [], amp2N: 0, amp4N: 0, dspN: 0, ampInputs: 0,
+      warns: [], errors: [], channels: 0 };
+    (rows || []).forEach(function (r) {
+      var count = Math.max(0, +r.count || 0);
+      if (!count) return;
+      var par = Math.max(1, +r.parallel || 1);
+      var w = +r.power || 0;
+      var ohm = +r.ohms || 0;
+      var label = r.name || '未命名音响';
+      if (!w) { res.errors.push(label + '：缺功率，无法反推'); return; }
+      if (par > 1 && !ohm) { res.errors.push(label + '：并联必须填写阻抗'); return; }
+      var loadW = w * par;                       /* 并联功率叠加 */
+      var loadOhm = ohm ? Math.round(ohm / par * 100) / 100 : 0;   /* 并联阻抗减半 */
+      var needW = Math.ceil(loadW * ratio);
+      var ch = Math.ceil(count / par);
+      if (loadOhm && loadOhm < minOhms) {
+        res.warns.push('⚠ ' + label + '：并联后 ' + loadOhm + 'Ω 低于功放最低负载 ' +
+          minOhms + 'Ω' + (minOhms === 4 ? '（可切换 2Ω 低阻机型）' : ''));
+      }
+      var a2 = 0, a4 = 0;
+      if (opt.ampMode === '2') {
+        a2 = Math.ceil(ch / 2);
+      } else if (opt.ampMode === '4') {
+        a4 = Math.ceil(ch / 4);
+      } else {
+        a4 = Math.floor(ch / 4);
+        var rem = ch % 4;
+        if (rem === 3) a4 += 1;          /* 余 3 路补 1 台 4 通道 */
+        else if (rem > 0) a2 += 1;       /* 余 1-2 路补 1 台 2 通道 */
+      }
+      if (a2 && opt.amp2W && opt.amp2W < needW) {
+        res.warns.push('⚠ 2通道功放功率不足：' + label + ' 需 ≥' + needW +
+          'W/通道，所选仅 ' + opt.amp2W + 'W');
+      }
+      if (a4 && opt.amp4W && opt.amp4W < needW) {
+        res.warns.push('⚠ 4通道功放功率不足：' + label + ' 需 ≥' + needW +
+          'W/通道，所选仅 ' + opt.amp4W + 'W');
+      }
+      res.amp2N += a2;
+      res.amp4N += a4;
+      res.channels += ch;
+      res.rows.push({ name: label, needW: needW, ch: ch, loadW: loadW,
+        loadOhm: loadOhm, par: par, count: count, a2: a2, a4: a4 });
+    });
+    res.ampInputs = res.amp2N * 2 + res.amp4N * 4;
+    res.dspN = res.ampInputs ? Math.ceil(res.ampInputs / Math.max(1, +opt.dspOuts || 8)) : 0;
+    return res;
   }
 
   function resizeDevice(dev, ins, outs) {
@@ -1066,7 +1406,7 @@ SP.Store = (function () {
       if (dev.specs.grounded === undefined) dev.specs.grounded = true;
       var pairs = Math.ceil(dev.outputs.length / 2);
       if (!Array.isArray(dev.ampPairModes)) dev.ampPairModes = [];
-      while (dev.ampPairModes.length < pairs) dev.ampPairModes.push('P');
+      while (dev.ampPairModes.length < pairs) dev.ampPairModes.push('S');
       dev.ampPairModes.length = pairs;
     }
     if (dev.type === 'dsp') ensureDspRoute(dev);
@@ -1791,6 +2131,8 @@ SP.Store = (function () {
     save: save,
     batch: batch,
     quickLayout: quickLayout,
+    reverseLayout: reverseLayout,
+    reverseCalc: reverseCalc,
     ampPairMode: ampPairMode,
     setAmpPairMode: setAmpPairMode,
     isHiddenOut: isHiddenOut,
@@ -1826,9 +2168,14 @@ SP.Store = (function () {
     setDspLimit: setDspLimit,
     addQuickPreset: addQuickPreset,
     removeQuickPreset: removeQuickPreset,
+    addReversePreset: addReversePreset,
+    removeReversePreset: removeReversePreset,
     baseNameOf: baseNameOf,
     saveDeviceAsTemplate: saveDeviceAsTemplate,
     saveAllTemplates: saveAllTemplates,
+    exportTemplateLib: exportTemplateLib,
+    importTemplateLib: importTemplateLib,
+    mergeTemplate: mergeTemplate,
     clearDeviceConnections: clearDeviceConnections,
     moveDevice: moveDevice,
     cloneDevice: cloneDevice,

@@ -1128,6 +1128,123 @@ html[data-theme="light"] .modal-overlay { background: rgba(30,40,52,.4); }
 .cfg-slot-name { flex: 1; font-weight: 600; font-size: 13px; }
 .cfg-slot-acts { display: flex; gap: 6px; }
 
+/* ---------------- 线材清单分组 / 批量长度 ---------------- */
+
+.cable-group-head td {
+  background: var(--panel-2) !important;
+  padding: 8px 10px;
+}
+.grp-bar {
+  display: inline-block;
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  vertical-align: -2px;
+  margin-right: 8px;
+}
+.grp-batch { float: right; display: inline-flex; align-items: center; gap: 6px; }
+.grp-len { width: 62px; }
+.cable-source-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.cable-source-picker .btn.on,
+.src-port-picks .btn.on {
+  border-color: var(--green);
+  color: var(--green);
+  background: rgba(79,191,139,.1);
+}
+.src-port-picks { display: inline-flex; gap: 5px; flex-wrap: wrap; }
+.cable-dev-head td {
+  border-top: 1px solid var(--line);
+  font-weight: 700;
+}
+.dev-batch { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; width: 100%; }
+.dev-batch .conn-len { width: 62px; }
+/* 组内按信号源设备分块：相邻块交替底色（替代逐行斑马纹） */
+.cable-group tr.dev-block-b td { background: rgba(127,139,153,.07); }
+.cable-group tr.dev-block-a td { background: transparent; }
+.warn-item { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.cable-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.cable-batch-bar .conn-len { width: 70px; }
+.cable-card-lengths { font-size: 11px; color: var(--text-dim); margin: 3px 0; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.cable-card-lengths.muted { color: var(--text-faint); }
+.cable-card-lengths b { color: var(--text); font-family: var(--mono); }
+.cable-card-lengths em { font-style: normal; color: var(--text-faint); margin-left: 2px; }
+.cable-grand-total {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 11px 15px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 9px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.cable-grand-total b { font: 700 20px var(--mono); color: var(--amber); }
+.cable-grand-total em { font-style: normal; color: var(--text-faint); }
+.cable-grand-total i { font-style: normal; color: var(--red); margin-left: 8px; font-size: 11px; }
+
+/* 模板面板：六类横排 */
+.tplp-cats { display: flex; gap: 8px; flex-wrap: wrap; }
+.tplp-cat {
+  flex: 1;
+  min-width: 86px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font: 600 12.5px var(--sans);
+  padding: 11px 8px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.tplp-cat:hover { border-color: var(--text-faint); }
+.tplp-cat.on { border-color: var(--amber); background: var(--amber-soft); }
+
+/* 反推音响行 */
+.rv-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  margin-bottom: 6px;
+}
+.rv-row select, .rv-row input {
+  background: var(--inset);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  font: 12px var(--sans);
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+/* 快速布局：线阵列占位列 / 报告跳转 */
+.ql-col.ql-soon { opacity: .45; }
+.report-jump { cursor: pointer; }
+.report-jump:hover { color: var(--amber); text-decoration: underline; }
+
 /* ---------------- Toast 轻提示 ---------------- */
 
 .toast {
@@ -1175,6 +1292,7 @@ html[data-theme="light"] .modal-overlay { background: rgba(30,40,52,.4); }
 .ql-toggle-active.on { color: var(--green); border-color: var(--green); }
 .ql-col.ql-active-col .ql-cat { color: var(--green); }
 .ql-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; align-items: center; }
+.ql-presets .btn.on { color: var(--green); border-color: var(--green); background: rgba(79,191,139,.1); }
 .ql-preset {
   display: inline-flex;
   align-items: center;

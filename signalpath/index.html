@@ -15,7 +15,8 @@
     <span class="brand-name">SIGNALPATH</span>
   </div>
   <div class="topbar-actions">
-    <button class="btn primary sm" id="btn-quick" title="快速布局：输入数字直接建系统（⌘K / ⌃空格）">⚡ 快速布局</button>
+    <button class="btn primary sm" id="btn-quick" title="快速布局：输入数字直接建系统（⌃1 / ⌘K）">⚡ 快速布局</button>
+    <button class="btn ghost sm" id="btn-templates" title="模板：批量导入 / 自定义新建 / 整库存档">模板</button>
     <button class="btn ghost sm" id="btn-undo" title="撤销（⌘Z）">撤销</button>
     <button class="btn ghost sm" id="btn-redo" title="重做（⇧⌘Z）">重做</button>
     <span class="save-indicator" id="save-indicator">·</span>
@@ -25,6 +26,8 @@
     <button class="btn ghost sm danger" id="btn-clear" title="清空全部数据（可撤销）">清空</button>
     <button class="btn ghost sm theme-btn" id="btn-theme" title="切换黑 / 白主题">☀︎</button>
     <input type="file" id="import-file" accept=".json,application/json" multiple hidden>
+    <input type="file" id="tpl-lib-file" accept=".json,application/json" hidden>
+    <input type="file" id="csv-import-file" accept=".csv,text/csv" hidden>
   </div>
 </header>
 <nav class="tabbar">
@@ -48,6 +51,7 @@
           <button class="btn ghost sm danger" id="btn-clear-devices" title="清空全部设备与连线（可撤销）">清空设备</button>
         </span>
         <span class="tb-group">
+          <select class="config-switch" id="diagram-scope" title="整体视图 / 一调音台一页面"></select>
           <button class="btn ghost sm" id="btn-diagram-orient" title="横版 / 竖版切换">切换横版</button>
           <button class="btn ghost sm" id="btn-diagram-reset" title="清除手动拖动，按上级设备居中对齐排版">对齐上级</button>
           <button class="btn ghost sm" id="btn-diagram-reset-bottom" title="清除手动拖动，尽量对准各自下级设备">对齐下级</button>

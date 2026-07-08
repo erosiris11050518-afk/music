@@ -81,6 +81,9 @@
       '.wire-preview{stroke:#eda63d;stroke-dasharray:6 5;fill:none;stroke-width:1.6;pointer-events:none}' +
       '.edge{fill:none;opacity:.82}' +
       '.edge.warn{stroke-dasharray:5 3}' +
+      '.edge.parallel-chain{stroke-dasharray:7 3;opacity:.95}' +
+      '.parallel-badge-bg{fill:rgba(79,191,139,.16);stroke:#4fbf8b;stroke-width:.8}' +
+      '.parallel-badge{fill:#4fbf8b;font:700 8.5px ' + SANS + '}' +
       '.mx-node{fill:' + t.nodeFill + ';stroke:' + t.nodeStroke + '}' +
       '.mx-node.st{stroke:#eda63d;stroke-width:1.4}' +
       '.mx-label{fill:' + t.dim + ';font:9px ' + MONO + '}' +
@@ -126,12 +129,36 @@
 
   /* ================= 设备连线框图 ================= */
 
+  /* 分台视图：'all' = 整体；否则为调音台 id，只显示该台及其下游可达设备 */
+  SP.diagramScope = SP.diagramScope || 'all';
+
   SP.renderWiringDiagram = function (container) {
-    var st = Store.state;
-    if (!st.devices.length) {
+    var stAll = Store.state;
+    if (!stAll.devices.length) {
       container.innerHTML = '<div class="empty-hint big">还没有设备。<br>' +
-        '按 <kbd>⌃ 空格</kbd> 或 <kbd>⌘ K</kbd> 打开快速布局，输入 5 个数字即可搭好系统。</div>';
+        '按 <kbd>⌃1</kbd> 或 <kbd>⌘K</kbd> 打开快速布局，输入 5 个数字即可搭好系统。</div>';
       return;
+    }
+    /* 作用域过滤后的只读视图（分台模式）；写操作仍走 Store */
+    var st = stAll;
+    var scopeId = SP.diagramScope !== 'all' && Store.getDevice(SP.diagramScope)
+      ? SP.diagramScope : null;
+    if (scopeId) {
+      var keep = {};
+      keep[scopeId] = true;
+      var grow = true;
+      while (grow) {
+        grow = false;
+        stAll.connections.forEach(function (c) {
+          if (keep[c.sid] && !keep[c.tid]) { keep[c.tid] = true; grow = true; }
+        });
+      }
+      st = {
+        devices: stAll.devices.filter(function (d) { return keep[d.id]; }),
+        connections: stAll.connections.filter(function (c) { return keep[c.sid] && keep[c.tid]; }),
+        diagramOrient: stAll.diagramOrient,
+        diagramLayout: stAll.diagramLayout
+      };
     }
     var horiz = st.diagramOrient === 'h';   /* 横版：信号从左到右；竖版：从上到下 */
     var speakerLinkParent = {};             /* 下游 link 音箱 -> 上游音箱 */
@@ -262,16 +289,57 @@
       });
     }
 
-    /* 对齐上级：按层顺序居中排列 */
+    /* 对齐上级：按层顺序居中排列。
+       12：层内用重心法（按上级连线的平均中心）排序减少交叉，
+       但保持音箱的角色分组（全频→超低→有源）不被打乱。 */
     function placeAlignUp() {
       lanes.forEach(function (lane, li) {
+        var order = lane;
+        if (li > 0) {
+          order = lane.map(function (d, i) {
+            var centers = [];
+            primaryConnections.forEach(function (c) {
+              if (c.tid === d.id && pos[c.sid]) centers.push(crossCenter(c.sid));
+            });
+            var bc = centers.length
+              ? centers.reduce(function (a, b) { return a + b; }, 0) / centers.length
+              : null;
+            return { d: d, i: i, bc: bc };
+          }).sort(function (a, b) {
+            var ga = spkOrd(a.d), gb = spkOrd(b.d);
+            if (ga !== gb) return ga - gb;
+            var ka = a.bc === null ? Infinity : a.bc;
+            var kb = b.bc === null ? Infinity : b.bc;
+            if (ka !== kb) return ka - kb;
+            return a.i - b.i;
+          }).map(function (x) { return x.d; });
+        }
         var cross = margin + (maxCross - laneCross[li]) / 2;
-        lane.forEach(function (d) {
+        order.forEach(function (d) {
           setPos(d, lanePos[li], cross);
           cross += crossOf(d) + gapCross;
         });
         applyManual(lane);
       });
+    }
+
+    /* 同层间连线交叉计数（顺序反转即交叉），用于自动挑对齐方式 */
+    function countCrossings() {
+      var edges = [];
+      primaryConnections.forEach(function (c) {
+        if (!pos[c.sid] || !pos[c.tid]) return;
+        edges.push({ s: crossCenter(c.sid), t: crossCenter(c.tid),
+          ls: layer[c.sid], lt: layer[c.tid] });
+      });
+      var n = 0;
+      for (var i = 0; i < edges.length; i++) {
+        for (var j = i + 1; j < edges.length; j++) {
+          var a = edges[i], b = edges[j];
+          if (a.ls !== b.ls || a.lt !== b.lt) continue;
+          if ((a.s - b.s) * (a.t - b.t) < 0) n++;
+        }
+      }
+      return n;
     }
     /* 对齐下级：从末层往回，尽量对准各自下游设备的中心 */
     function placeAlignDown() {
@@ -302,8 +370,18 @@
         applyManual(lane);
       }
     }
-    if (st.diagramLayout === 'bottomup') placeAlignDown();
-    else placeAlignUp();
+    if (st.diagramLayout === 'bottomup') {
+      placeAlignDown();
+    } else if (st.diagramLayout === 'smart') {
+      /* 12：智能模式（快速布局后默认）——上/下两种对齐都算一遍，取交叉更少的 */
+      placeAlignUp();
+      var upCross = countCrossings();
+      var upPos = JSON.parse(JSON.stringify(pos));
+      placeAlignDown();
+      if (countCrossings() > upCross) pos = upPos;
+    } else {
+      placeAlignUp();
+    }
 
     function portLocalCross(d, pi, isInput) {
       var count, rank;
@@ -373,6 +451,19 @@
       totalH = Math.max(totalH, p.y + p.h + margin);
     });
 
+    /* 13：调音台/DSP → 有源音箱的信号线走画布外侧专用通道，
+       不再穿越功放层与无源音箱（有源音箱本就排在最外）。 */
+    function isActiveFeed(c) {
+      var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
+      return !!(s && t && (s.type === 'mixer' || s.type === 'dsp') &&
+        t.type === 'speaker' && Store.speakerPowered(t));
+    }
+    var outerLane = 0;
+    if (st.connections.some(isActiveFeed)) {
+      if (horiz) { totalH += 76; outerLane = totalH - 46; }
+      else { totalW += 76; outerLane = totalW - 46; }
+    }
+
     /* 端口坐标：竖版在上/下边缘按宽度分布；横版在左/右边缘、文字区以下按高度分布。
        输出口只排可见端口（桥接对合并后奇数口隐藏）。 */
     function portPoint(id, pi, isInput) {
@@ -416,6 +507,20 @@
         b.x + ' ' + (b.y - dy) + ' ' + b.x + ' ' + b.y;
     }
 
+    /* 有源音箱专用外侧走线：出口 → 外侧通道 → 目标 */
+    function outerEdgePath(a, b) {
+      if (horiz) {
+        var midX = (a.x + b.x) / 2;
+        return 'M' + a.x + ' ' + a.y +
+          ' C' + (a.x + 46) + ' ' + a.y + ' ' + midX + ' ' + outerLane + ' ' + midX + ' ' + outerLane +
+          ' C' + midX + ' ' + outerLane + ' ' + (b.x - 46) + ' ' + b.y + ' ' + b.x + ' ' + b.y;
+      }
+      var midY = (a.y + b.y) / 2;
+      return 'M' + a.x + ' ' + a.y +
+        ' C' + a.x + ' ' + (a.y + 46) + ' ' + outerLane + ' ' + midY + ' ' + outerLane + ' ' + midY +
+        ' C' + outerLane + ' ' + midY + ' ' + b.x + ' ' + (b.y - 46) + ' ' + b.x + ' ' + b.y;
+    }
+
     var theme = diagramTheme();
     var tickColor = theme.tick;
     var svg = [];
@@ -455,16 +560,21 @@
       var warn = Store.connWarning(c);
       var color = warn ? theme.red : Store.colorOf(c);
       var speakerRun = Store.isSpeakerRun(c);
+      var parallelChain = !!c.reverseParallel;
       var title = '<title>' + esc(Store.cableOf(c)) + (c.lenM ? ' · ' + esc(c.lenM) + 'm' : '') +
-        (c.note ? ' · ' + esc(c.note) : '') + (warn ? ' ⚠ ' + warn : '') + '</title>';
+        (c.note ? ' · ' + esc(c.note) : '') +
+        (parallelChain ? ' · 反推受控并联串接' : '') +
+        (warn ? ' ⚠ ' + warn : '') + '</title>';
       if (speakerRun) {
-        svg.push('<path class="edge' + (warn ? ' warn' : '') + '" stroke="' + color +
+        svg.push('<path class="edge' + (warn ? ' warn' : '') + (parallelChain ? ' parallel-chain' : '') +
+          '" stroke="' + color +
           '" stroke-width="2.2" d="' + edgePath(a, b) + '">' + title + '</path>');
         svg.push(plugRect(a, true));
         svg.push(plugRect(b, false));
       } else {
+        var d2 = (outerLane && isActiveFeed(c)) ? outerEdgePath(a, b) : edgePath(a, b);
         svg.push('<path class="edge' + (warn ? ' warn' : '') + '" stroke="' + color +
-          '" stroke-width="1.4" marker-end="url(#arrow-signal)" d="' + edgePath(a, b) + '">' + title + '</path>');
+          '" stroke-width="1.4" marker-end="url(#arrow-signal)" d="' + d2 + '">' + title + '</path>');
         svg.push('<circle class="edge-dot" fill="' + color + '" cx="' + a.x + '" cy="' + a.y + '" r="2.4"/>');
         svg.push('<circle class="edge-dot" fill="' + color + '" cx="' + b.x + '" cy="' + b.y + '" r="2.6"/>');
       }
@@ -488,6 +598,22 @@
         '" height="' + p.h + '" rx="' + (isSpeaker ? 8 : 6) + '" filter="url(#node-shadow)"' +
         (isSpeaker ? ' style="stroke:' + speakerRoleColor(d) + '"' : '') + '/>');
 
+      /* 14：功率/信号警示角标（hover 看原因），与设备栏 ⚠ 同步 */
+      var warnMsg = '';
+      st.connections.forEach(function (c) {
+        if (warnMsg || (c.sid !== d.id && c.tid !== d.id)) return;
+        var w = Store.connWarning(c);
+        if (w) warnMsg = w;
+      });
+      if (warnMsg) {
+        svg.push('<g data-warn="' + d.id + '" style="cursor:pointer">' +
+          '<circle cx="' + (p.x + p.w - 2) + '" cy="' + (p.y + 2) +
+          '" r="8" fill="' + theme.red + '"/>' +
+          '<text x="' + (p.x + p.w - 2) + '" y="' + (p.y + 5.5) +
+          '" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="700">!</text>' +
+          '<title>点击查看报警详情</title></g>');
+      }
+
       /* 类型/分支标签：居中高对比显示，音箱直接显示全频/超低/线阵等角色 */
       function drawChips(cx, cy) {
         var chipColor = isSpeaker ? speakerRoleColor(d) : color;
@@ -495,6 +621,15 @@
         var c1 = chipSvg(0, cy, label, chipColor);
         c1 = chipSvg(cx - c1.w / 2, cy, label, chipColor);
         svg.push(c1.svg);
+      }
+      function drawParallelBadge(x, y) {
+        var rp = d.reverseParallel;
+        if (!rp || !rp.locked) return;
+        var tx = '并联×' + (rp.parallel || 1) + ' ' + (rp.index || 1) + '/' + (rp.groupSize || rp.parallel || 1);
+        svg.push('<rect class="parallel-badge-bg" x="' + x + '" y="' + y +
+          '" width="74" height="15" rx="3"/>');
+        svg.push('<text class="parallel-badge" x="' + (x + 37) + '" y="' + (y + 10.5) +
+          '" text-anchor="middle">' + esc(tx) + '</text>');
       }
 
       if (horiz) {
@@ -521,6 +656,7 @@
           svg.push('<text class="node-smart" x="' + (hbx + 33) + '" y="' + (hby + 10.5) +
             '" text-anchor="middle">智能 ' + smartH.count + '</text>');
         }
+        drawParallelBadge(p.x + (p.w - 74) / 2, p.y + p.h - (smartH.count ? 38 : 20));
       } else {
         /* 竖版横框：左侧色条 + 标签行 + 大号名称，端口沿上下边缘 */
         var sideColor = isSpeaker ? speakerRoleColor(d) : color;
@@ -546,6 +682,7 @@
           svg.push('<text class="node-smart" x="' + (bx + 33) + '" y="' + (by + 10.5) +
             '" text-anchor="middle">智能 ' + smart.count + '</text>');
         }
+        drawParallelBadge(p.x + 12, p.y + p.h - 21);
       }
 
       /* 端口（两种版式共用数据，仅坐标/文字锚点不同） */
@@ -616,40 +753,57 @@
       var p = L.pos[id];
       return L.horiz ? p.y + p.h / 2 : p.x + p.w / 2;
     }
-    function shiftLane(laneIds, li, useSources) {
-      var deltas = [];
-      laneIds.forEach(function (id) {
-        var centers = [];
+    /* 11：整层排整齐 —— 保持当前左右（上下）顺序不变，等间距排列，
+       整组中心对齐到上级（或下级）连线的平均中心，主轴吸附回本层行。 */
+    var gap = L.horiz ? 40 : 56;
+    function crossSizeOf(id) {
+      var p = L.pos[id];
+      return L.horiz ? p.h : p.w;
+    }
+    function tidyLane(laneIds, li, useSources) {
+      var ids = laneIds.filter(function (id) { return L.pos[id]; });
+      if (!ids.length) return;
+      /* 按当前中心排序 = 保留相对顺序 */
+      ids.sort(function (a, b) { return crossCenterOf(a) - crossCenterOf(b); });
+      var total = 0;
+      ids.forEach(function (id) { total += crossSizeOf(id) + gap; });
+      total -= gap;
+      /* 目标组中心：上级/下级连线的平均中心；没有连线时保持当前组中心 */
+      var centers = [];
+      ids.forEach(function (id) {
         primaryConnections.forEach(function (c) {
           if (useSources && c.tid === id && L.pos[c.sid]) centers.push(crossCenterOf(c.sid));
           if (!useSources && c.sid === id && L.pos[c.tid]) centers.push(crossCenterOf(c.tid));
         });
-        if (centers.length) {
-          var want = centers.reduce(function (a, b) { return a + b; }, 0) / centers.length;
-          deltas.push(want - crossCenterOf(id));
-        }
       });
-      if (!deltas.length) return;
-      var shift = deltas.reduce(function (a, b) { return a + b; }, 0) / deltas.length;
-      laneIds.forEach(function (id) {
+      var target;
+      if (centers.length) {
+        target = centers.reduce(function (a, b) { return a + b; }, 0) / centers.length;
+      } else {
+        var cur = ids.map(crossCenterOf);
+        target = cur.reduce(function (a, b) { return a + b; }, 0) / cur.length;
+      }
+      var cursor = Math.max(8, target - total / 2);
+      ids.forEach(function (id) {
         var d = Store.getDevice(id);
         var p = L.pos[id];
-        if (!d || !p) return;
+        if (!d || !p) { cursor += gap; return; }
         if (L.horiz) {
-          d.py = Math.max(8, Math.round(p.y + shift));
-          d.px = Math.max(8, Math.round(p.x));
-          p.y += shift;
+          d.py = Math.round(cursor);
+          d.px = Math.round(L.lanePos[li]);
+          p.y = cursor;
         } else {
-          d.px = Math.max(8, Math.round(p.x + shift));
-          d.py = Math.max(8, Math.round(p.y));
-          p.x += shift;
+          d.px = Math.round(cursor);
+          d.py = Math.round(L.lanePos[li]);
+          p.x = cursor;
         }
+        cursor += crossSizeOf(id) + gap;
       });
     }
     if (mode === 'down') {
-      for (var li = L.lanes.length - 2; li >= 0; li--) shiftLane(L.lanes[li], li, false);
+      for (var li = L.lanes.length - 1; li >= 0; li--) tidyLane(L.lanes[li], li, false);
     } else {
-      for (var lj = 1; lj < L.lanes.length; lj++) shiftLane(L.lanes[lj], lj, true);
+      for (var lj = 0; lj < L.lanes.length; lj++) tidyLane(L.lanes[lj], lj, lj > 0);
     }
     Store.save();
     SP.renderWiringDiagram(container);
@@ -917,6 +1071,15 @@
       }
       document.addEventListener('pointermove', onMove);
       document.addEventListener('pointerup', onUp);
+    });
+    /* 12：报警角标点击 → 详情弹窗 */
+    svgEl.querySelectorAll('[data-warn]').forEach(function (g) {
+      g.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+      g.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (SP.openWarnDetails) SP.openWarnDetails(g.dataset.warn);
+      });
     });
     svgEl.querySelectorAll('[data-out-device]').forEach(function (g) {
       g.addEventListener('pointerdown', function (e) {

@@ -17,10 +17,24 @@
   var LS_KEY = 'signalpath-keys-v2';
 
   /* 动作定义：combos 为默认键位（可多个），custom 覆盖后整组替换 */
+  function diagramBox() { return document.getElementById('wiring-diagram'); }
+
   var ACTIONS = [
-    { id: 'quickLayout', name: '快速布局', desc: '打开数字快速建系统面板（⌃空格可能被系统输入法占用，主用 ⌘K）',
-      combos: ['Mod+K', 'Ctrl+Space'],
+    { id: 'quickLayout', name: '快速布局', desc: '打开数字快速建系统面板',
+      combos: ['Ctrl+1', 'Mod+K'],
       run: function () { SP.openQuickLayout(); } },
+    { id: 'zoomIn', name: '放大', desc: '框图放大一档（视口中心为锚点）',
+      combos: ['=', 'Shift+='],
+      run: function () { var b = diagramBox(); if (b) SP.zoomAt(b, (SP.diagramZoom || 1) * 1.2); } },
+    { id: 'zoomOut', name: '缩小', desc: '框图缩小一档',
+      combos: ['-'],
+      run: function () { var b = diagramBox(); if (b) SP.zoomAt(b, (SP.diagramZoom || 1) / 1.2); } },
+    { id: 'zoomFit', name: '全局视角 / 定位当前', desc: '双态切换：整图放得下 ↔ 居中到选中设备',
+      combos: ['0'],
+      run: function () {
+        var btn = document.getElementById('btn-zoom-fit');
+        if (btn && btn.click) btn.click();
+      } },
     { id: 'deleteSel', name: '删除选中 / 框选设备', desc: '删除当前选中或框选的设备（可撤销）',
       combos: ['Backspace', 'Delete'],
       run: function () { if (SP.deleteSelected) SP.deleteSelected(); } },

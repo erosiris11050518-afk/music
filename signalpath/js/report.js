@@ -414,7 +414,123 @@
         '<tbody>' + (gearRows || '<tr><td colspan="2">—</td></tr>') + '</tbody></table></div>');
     }
     if (!pages.length) pages.push('<div class="pg">' + cover + '<p class="sub">未选择任何报告内容。</p></div>');
-    return head + pages.join('') + '</body></html>';
+
+    /* 6：目录侧栏 —— 每个 h2 编 id，生成悬浮 TOC，打印时隐藏 */
+    var body = pages.join('');
+    var toc = [];
+    var secIdx = 0;
+    body = body.replace(/<h2>([\s\S]*?)<\/h2>/g, function (m, txt) {
+      var id = 'sec-' + (secIdx++);
+      toc.push({ id: id, txt: txt.replace(/<[^>]+>/g, '') });
+      return '<h2 id="' + id + '">' + txt + '</h2>';
+    });
+    var tocHtml = '';
+    if (toc.length > 1) {
+      tocHtml = '<style>@media screen{body{padding-left:196px}}' +
+        '.toc{position:fixed;left:12px;top:14px;width:168px;max-height:90vh;overflow:auto;' +
+        'background:' + P.dia + ';border:1px solid ' + P.diaB + ';border-radius:8px;padding:10px 12px;font-size:11px}' +
+        '.toc b{display:block;color:' + P.amber + ';margin-bottom:6px;font-size:11.5px;letter-spacing:.08em}' +
+        '.toc a{display:block;color:' + P.sub + ';text-decoration:none;padding:2.5px 0;' +
+        'overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+        '.toc a:hover{color:' + P.amber + '}' +
+        '@media print{.toc{display:none}}</style>' +
+        '<nav class="toc"><b>目录</b>' + toc.map(function (t) {
+          return '<a href="#' + t.id + '">' + t.txt + '</a>';
+        }).join('') + '</nav>';
+    }
+    return head + tocHtml + body + '</body></html>';
+  }
+
+  /* ---------- CSV（Excel 兼容，UTF-8 BOM）：报告导出与批量导入共用 ---------- */
+
+  SP.csvBuild = function (rows) {
+    return '\ufeff' + rows.map(function (r) {
+      return r.map(function (v) {
+        v = v === undefined || v === null ? '' : String(v);
+        return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      }).join(',');
+    }).join('\r\n');
+  };
+  SP.csvDownload = function (filename, rows) {
+    var blob = new Blob([SP.csvBuild(rows)], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  };
+  SP.csvParse = function (text) {
+    text = String(text || '').replace(/^\ufeff/, '');
+    var rows = [], row = [], cur = '', inQ = false;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      if (inQ) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { cur += '"'; i++; } else inQ = false;
+        } else cur += ch;
+      } else if (ch === '"') {
+        inQ = true;
+      } else if (ch === ',') {
+        row.push(cur); cur = '';
+      } else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+        row.push(cur); cur = '';
+        rows.push(row); row = [];
+      } else {
+        cur += ch;
+      }
+    }
+    if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+    return rows.filter(function (r) {
+      return r.some(function (v) { return String(v).trim() !== ''; });
+    });
+  };
+
+  /* 6：报告 Excel 导出（按勾选局部导出；设备按型号合并计数） */
+  function exportExcel(opt) {
+    var st = Store.state;
+    var files = 0;
+    if (opt.deviceList !== false) {
+      var groups = {}, order = [];
+      st.devices.forEach(function (d) {
+        var base = Store.baseNameOf(d.name) || d.name;
+        var key = d.type + '::' + base;
+        if (!groups[key]) { groups[key] = { base: base, d: d, n: 0 }; order.push(key); }
+        groups[key].n++;
+      });
+      var rows = [['型号', '数量', '类型', '规格', '输入路数', '输出路数']];
+      order.forEach(function (k) {
+        var g = groups[k];
+        rows.push([g.base, g.n,
+          Store.typeInfo(g.d.type).name +
+          (g.d.type === 'speaker' ? '·' + SP.speakerRoleInfo(g.d.speakerRole).name : ''),
+          SP.specString(g.d) || '', g.d.inputs.length, Store.visibleOuts(g.d).length]);
+      });
+      SP.csvDownload('signalpath-设备清单.csv', rows);
+      files++;
+    }
+    if (opt.connections !== false) {
+      var conns = st.connections.slice();
+      if (SP.connHierSort) SP.connHierSort(conns);
+      var rows2 = [['信号源设备', '输出口', '目标设备', '输入口', '线材', '长度m', '备注']];
+      conns.forEach(function (c) {
+        var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
+        if (!s || !t) return;
+        rows2.push([s.name, Store.outLabelOf(s, c.sport), t.name,
+          (t.inputs[c.tport] || {}).label || '', Store.cableOf(c), c.lenM || '', c.note || '']);
+      });
+      SP.csvDownload('signalpath-连接清单.csv', rows2);
+      files++;
+    }
+    if (opt.cableSummary !== false) {
+      var rows3 = [['线材类型', '数量(根)', '总长度(米)', '未填长度(根)']];
+      Store.cableSummary().forEach(function (g) {
+        rows3.push([g.type, g.count, g.meters || '', g.missing || 0]);
+      });
+      SP.csvDownload('signalpath-线材汇总.csv', rows3);
+      files++;
+    }
+    SP.toast(files ? '已导出 ' + files + ' 个 Excel（CSV）文件' : '请至少勾选 设备清单/连接清单/线材购买汇总 之一', !files);
   }
 
   SP.openReport = function (opt) {
@@ -439,22 +555,35 @@
       ['teachPages', '接线教学页（每台设备一页）', false],
       ['gear', '输入设备清单', true]
     ];
+    /* 点击条目名称 → 预览滚动到对应章节的关键词映射 */
+    var JUMP = {
+      wiringDiagram: '系统接线示意图', deviceList: '设备清单', connections: '连接清单',
+      cableSummary: '线材购买汇总', rackSummary: '机柜长度建议', powerSummary: '供电功率建议',
+      mixerDiagram: '台内路由', inputPatch: '输入分配', routes: '路由清单',
+      outputPatch: '输出分配', teachPages: '接线教学', gear: '输入设备清单'
+    };
     var overlay = el('modal-overlay');
     var box = el('modal-box');
     box.classList.add('modal-wide');
     box.innerHTML = '<div class="modal-head"><h3>选择报告内容</h3>' +
+      '<span class="head-note">点名称可跳转预览章节</span>' +
       '<button class="btn icon" data-close-modal>✕</button></div>' +
       '<div class="modal-body report-preview-body">' +
       '<div class="report-options">' +
+      '<div style="display:flex;gap:6px">' +
+      '<button class="btn ghost sm" id="report-all">全选</button>' +
+      '<button class="btn ghost sm" id="report-none">全不选</button></div>' +
       items.map(function (it) {
         return '<label><input type="checkbox" data-report-part="' + it[0] + '"' +
-          (it[2] ? ' checked' : '') + '> ' + esc(it[1]) + '</label>';
+          (it[2] ? ' checked' : '') + '> <span class="report-jump" data-jump="' + it[0] + '">' +
+          esc(it[1]) + '</span></label>';
       }).join('') +
       '<label class="report-light-row"><input type="checkbox" data-report-light> 浅色打印版（白底省墨）</label>' +
       '</div>' +
       '<iframe class="report-preview" id="report-preview" title="报告预览"></iframe>' +
       '</div><div class="modal-foot">' +
       '<button class="btn ghost" data-close-modal>取消</button>' +
+      '<button class="btn ghost" id="report-excel" title="导出勾选的 设备清单(同型号合并计数)/连接清单/线材汇总 为 Excel 可打开的 CSV">导出 Excel</button>' +
       '<button class="btn primary" id="report-generate">生成报告</button></div>';
     overlay.hidden = false;
     function currentOpt() {
@@ -472,7 +601,37 @@
     box.querySelectorAll('[data-report-part], [data-report-light]').forEach(function (cb) {
       cb.addEventListener('change', updatePreview);
     });
+    /* 19：全选 / 全不选 */
+    function setAll(v) {
+      box.querySelectorAll('[data-report-part]').forEach(function (cb) { cb.checked = v; });
+      updatePreview();
+    }
+    el('report-all').addEventListener('click', function () { setAll(true); });
+    el('report-none').addEventListener('click', function () { setAll(false); });
+    /* 6：点条目名称 → 预览跳到对应章节 */
+    box.querySelectorAll('.report-jump').forEach(function (sp) {
+      sp.addEventListener('click', function (e) {
+        e.preventDefault();
+        var kw = JUMP[sp.dataset.jump];
+        var frame = el('report-preview');
+        try {
+          var doc = frame.contentDocument;
+          if (!doc || !kw) return;
+          var hs = doc.querySelectorAll('h2');
+          for (var i = 0; i < hs.length; i++) {
+            if (hs[i].textContent.indexOf(kw) >= 0) {
+              hs[i].scrollIntoView({ behavior: 'smooth', block: 'start' });
+              return;
+            }
+          }
+          SP.toast('该章节未勾选或报告中无内容', true);
+        } catch (err) { /* srcdoc 尚未就绪时忽略 */ }
+      });
+    });
     updatePreview();
+    el('report-excel').addEventListener('click', function () {
+      exportExcel(currentOpt());
+    });
     el('report-generate').addEventListener('click', function () {
       var opt = currentOpt();
       overlay.hidden = true;

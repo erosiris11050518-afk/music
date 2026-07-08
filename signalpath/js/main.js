@@ -178,6 +178,67 @@
     SP.toast('配置已导出（含图片）');
   }
 
+  SP.exportTemplateJson = function () {
+    var lib = Store.exportTemplateLib();
+    var blob = new Blob([JSON.stringify(lib, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    var d = new Date();
+    a.download = 'signalpath-模板库-' + d.getFullYear() +
+      ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    SP.toast('模板库 JSON 已导出（型号模板 ' + lib.deviceTemplates.length +
+      ' · 快速预设 ' + lib.quickPresets.length +
+      ' · 反推模板 ' + (lib.reversePresets || []).length +
+      ' · 台面 ' + lib.userMixerTemplates.length + '）');
+  };
+
+  /* 8：模板打包导出 —— 1 个总文件（模板库 JSON）+ 按类别分文件 CSV（可回导） */
+  SP.exportTemplateBundle = function () {
+    var d = new Date();
+    var stamp = d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2);
+    var lib = Store.exportTemplateLib();
+    var blob = new Blob([JSON.stringify(lib, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'signalpath-模板库总文件-' + stamp + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    var tpls = Store.state.deviceTemplates;
+    var roleName = { linearray: '线阵列', fullrange: '全频', sub: '超低' };
+    var spkRows = [['型号名称', '分支(全频/超低/线阵列)', '有源无源(有源/无源)', '功率W', '阻抗Ω', '尺寸（寸）']];
+    var ampRows = [['型号名称', '通道数(2或4)', '功率W', 'U数']];
+    var mixerRows = [['类型(调音台/DSP)', '型号名称', '输入路数', '输出路数', 'U数']];
+    var dspRows = [['类型(调音台/DSP)', '型号名称', '输入路数', '输出路数', 'U数']];
+    tpls.forEach(function (t) {
+      var s = t.specs || {};
+      var outs = Array.isArray(t.outs) ? t.outs.length : t.outs;
+      if (t.type === 'speaker') {
+        spkRows.push([t.name, roleName[t.speakerRole || 'fullrange'] || '全频',
+          s.powered === 'active' ? '有源' : '无源', s.power || '', s.ohms || '', s.size || '']);
+      } else if (t.type === 'amp') {
+        ampRows.push([t.name, t.ins === 4 ? 4 : 2, s.power || '', s.rackU || '']);
+      } else if (t.type === 'mixer') {
+        mixerRows.push(['调音台', t.name, t.ins, outs, s.rackU || '']);
+      } else if (t.type === 'dsp') {
+        dspRows.push(['DSP', t.name, t.ins, outs, s.rackU || '']);
+      }
+    });
+    var files = 1;
+    /* 连续触发下载间隔一点，避免浏览器拦截 */
+    var queue = [];
+    if (spkRows.length > 1) queue.push(['signalpath-模板-音响-' + stamp + '.csv', spkRows]);
+    if (ampRows.length > 1) queue.push(['signalpath-模板-功放-' + stamp + '.csv', ampRows]);
+    if (mixerRows.length > 1) queue.push(['signalpath-模板-调音台-' + stamp + '.csv', mixerRows]);
+    if (dspRows.length > 1) queue.push(['signalpath-模板-DSP-' + stamp + '.csv', dspRows]);
+    queue.forEach(function (q, i) {
+      setTimeout(function () { SP.csvDownload(q[0], q[1]); }, 250 * (i + 1));
+      files++;
+    });
+    SP.toast('模板已导出：1 个总文件 + ' + (files - 1) + ' 个分类 CSV');
+  };
+
   function openConfigPanel() {
     function rows() {
       return ConfigSlots.slots.map(function (s) {
@@ -200,10 +261,14 @@
       '<div class="modal-head"><h3>配置</h3>' +
       '<button class="btn icon" data-close-modal>✕</button></div>' +
       '<div class="modal-body">' +
-      '<div style="display:flex;gap:8px;margin-bottom:12px">' +
+      '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">' +
       '<button class="btn ghost sm" id="cfg-export">导出当前配置</button>' +
       '<button class="btn ghost sm" id="cfg-import">导入配置文件…</button>' +
+      '<button class="btn ghost sm" id="cfg-tpl-export" title="把设备型号模板 + 快速布局预设 + 台面模板整体存档为一个文件">导出模板库</button>' +
+      '<button class="btn ghost sm" id="cfg-tpl-import" title="从模板库文件恢复全部模板（按名称合并去重）">导入模板库</button>' +
       '</div>' +
+      '<p class="cfg-note" style="margin-top:0">模板库存档包含：设备型号模板、快速布局预设、音响反推模板、台面模板。' +
+      '换电脑 / 从链接打开时导入一次即可恢复全部模板。</p>' +
       '<p class="cfg-note" style="margin-top:0">点「切换」在多套配置间对比；「临时移除」只是从列表隐藏（数据保留）；「删除」彻底移除。</p>' +
       '<div id="cfg-slot-list">' + rows() + '</div>' +
       '</div><div class="modal-foot"><button class="btn primary" data-close-modal>完成</button></div>'
@@ -214,6 +279,10 @@
       if (ex) ex.onclick = exportConfig;
       var im = el('cfg-import');
       if (im) im.onclick = function () { el('import-file').click(); };
+      var tex = el('cfg-tpl-export');
+      if (tex) tex.onclick = SP.exportTemplateJson;
+      var tim = el('cfg-tpl-import');
+      if (tim) tim.onclick = function () { el('tpl-lib-file').click(); };
       box.querySelectorAll('[data-slot-use]').forEach(function (b) {
         b.addEventListener('click', function () {
           ConfigSlots.switchTo(b.dataset.slotUse);
@@ -370,7 +439,22 @@
 
   /* ================= 汇总渲染 ================= */
 
+  /* 分台视图选择器：整体 / 每台调音台一页 */
+  function syncScopeSelect() {
+    var sel = el('diagram-scope');
+    if (!sel) return;
+    var mixers = Store.mixerDevices();
+    var html = '<option value="all">整体视图</option>' + mixers.map(function (d) {
+      return '<option value="' + esc(d.id) + '">分台 · ' + esc(d.name) + '</option>';
+    }).join('');
+    sel.innerHTML = html;
+    if (SP.diagramScope !== 'all' && !Store.getDevice(SP.diagramScope)) SP.diagramScope = 'all';
+    sel.value = SP.diagramScope || 'all';
+    sel.style.display = mixers.length > 1 ? '' : 'none';   /* 单台时隐藏，保持干净 */
+  }
+
   SP.renderAll = function () {
+    syncScopeSelect();
     SP.renderInspector();
     SP.renderWiringTable();
     SP.renderWiringDiagram(el('wiring-diagram'));
@@ -418,6 +502,19 @@
       var cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
       applyTheme(cur);
       SP.renderAll();   /* 框图内嵌 SVG 样式需按新主题重新生成 */
+    });
+
+    /* ---------- 分台视图切换 ---------- */
+    var scopeSel = el('diagram-scope');
+    if (scopeSel) scopeSel.addEventListener('change', function () {
+      SP.diagramScope = this.value || 'all';
+      var box = el('wiring-diagram');
+      SP.renderWiringDiagram(box);
+      SP.setDiagramZoom(SP.fitDiagramZoom(box), box);
+      if (box.scrollTo) box.scrollTo({ left: 0, top: 0 });
+      if (SP.syncZoomUI) SP.syncZoomUI();
+      if (SP.syncFitBtn) SP.syncFitBtn();
+      SP.toast(this.value === 'all' ? '已切回整体视图' : '分台视图：只显示该调音台及其下游设备');
     });
 
     /* ---------- 相对对齐 / 清空设备 ---------- */
@@ -608,6 +705,8 @@
       if (Store.redo()) SP.renderAll();
     });
     el('btn-quick').addEventListener('click', function () { SP.openQuickLayout(); });
+    var tplBtn = el('btn-templates');
+    if (tplBtn) tplBtn.addEventListener('click', function () { SP.openTemplatePanel(); });
     el('btn-report').addEventListener('click', SP.openReportOptions);
     el('btn-keys').addEventListener('click', function () { SP.openKeysPanel(); });
     el('btn-config').addEventListener('click', openConfigPanel);
@@ -627,6 +726,27 @@
       }
       return data;
     }
+    /* ---------- 模板库导入（按名称合并去重） ---------- */
+    el('tpl-lib-file').addEventListener('change', function () {
+      var f = this.files[0];
+      this.value = '';
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var data = JSON.parse(reader.result);
+          if (!data || !data.__signalpathTplLib) throw new Error('bad');
+          var r = Store.importTemplateLib(data);
+          SP.renderAll();
+          SP.toast('模板库已导入：型号模板 ' + r.dev + ' · 快速预设 ' + r.presets +
+            ' · 反推模板 ' + (r.reversePresets || 0) + ' · 台面 ' + r.mixerTpls + '（⌘Z 可撤销）');
+        } catch (e) {
+          SP.toast('导入失败：不是有效的 SignalPath 模板库文件', true);
+        }
+      };
+      reader.readAsText(f);
+    });
+
     el('import-file').addEventListener('change', function () {
       var files = Array.prototype.slice.call(this.files || []);
       this.value = '';
