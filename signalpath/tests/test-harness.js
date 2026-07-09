@@ -678,6 +678,82 @@ Store.connect(pS2.id, 0, pBig.id, 0);
 var paBig = Store.powerAlarmForOutput(pBig.id, 0, 'speech');
 T('功率报警：超过最低倍率后不因高于上限提醒', paBig.errors === 0 && paBig.warnings === 0 && paBig.ok);
 
+print('== 17. 调音台输出不足提示（reverseCalc.mixerFeeds）==');
+/* 有 DSP：mixerFeeds = dspN × dspIns（喂满 DSP 输入） */
+var mf1 = Store.reverseCalc(
+  [{ name:'MF全频', power:500, ohms:8, count:24, parallel:1 }],
+  { ratio:1.5, ampMode:'4', amp4W:2500, minOhms:4, dspOuts:8, dspIns:4 });
+T('有 DSP：mixerFeeds = dspN×dspIns',
+  mf1.dspN === Math.ceil(mf1.ampInputs / 8) && mf1.dspInputs === mf1.dspN * 4 &&
+  mf1.mixerFeeds === mf1.dspN * 4);
+/* 无 DSP 直推：mixerFeeds = lineFeeds（功放输入 + 有源） */
+var mf2 = Store.reverseCalc(
+  [{ name:'MF全频', power:500, ohms:8, count:4, parallel:1 }],
+  { ratio:1.5, ampMode:'2', amp2W:1500, minOhms:4, dspOuts:0, activeCount:2 });
+T('无 DSP：mixerFeeds = lineFeeds', mf2.dspN === 0 && mf2.mixerFeeds === mf2.lineFeeds &&
+  mf2.mixerFeeds === mf2.ampInputs + 2);
+
+print('== 18. 单设备智能分配：并联组感知（尊重逻辑整体）==');
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var saMix = { type:'mixer', name:'SA台', ins:16, outs:8 };
+var saDsp = { type:'dsp', name:'SA-DSP', ins:4, outs:8 };
+var saAmp = { type:'amp', name:'SA功放', ins:4, outs:4, specs:{ power:'2500' } };
+var saSpk = { type:'speaker', name:'SA全频', ins:1, outs:1, speakerRole:'fullrange',
+  specs:{ powered:'passive', power:'500', ohms:'8' } };
+Store.reverseLayout({
+  mixerTpl: saMix, mixerCount: 1, dspTpl: saDsp, dspCount: 1,
+  amp2Tpl: null, amp4Tpl: saAmp,
+  speakerRows: [{ tpl: saSpk, count: 4, parallel: 2, a2: 0, a4: 1, ch: 2 }]
+});
+var saSpks = Store.state.devices.filter(function(d){ return d.type==='speaker'; })
+  .sort(function(a,b){ return (a.reverseParallel.groupId+a.reverseParallel.index).localeCompare(b.reverseParallel.groupId+b.reverseParallel.index); });
+/* 找一个并联从属（index 2）与其组长（index 1，同 groupId） */
+var follower = Store.state.devices.filter(function(d){
+  return d.type==='speaker' && d.reverseParallel && d.reverseParallel.index === 2; })[0];
+var gid = follower.reverseParallel.groupId;
+var leader = Store.state.devices.filter(function(d){
+  return d.type==='speaker' && d.reverseParallel && d.reverseParallel.groupId === gid && d.reverseParallel.index === 1; })[0];
+T('parallelGroupOf 返回同组并按 index 排序',
+  Store.parallelGroupOf(follower).length === 2 && Store.parallelGroupOf(follower)[0].id === leader.id);
+/* 断开从属的串接，改接一个功放空闲口（模拟被打乱），再单设备智能分配从属 → 应串回组长 */
+Store.disconnect(follower.id, 0);
+var freeAmpOut = null;
+Store.state.devices.forEach(function(d){
+  if (d.type!=='amp' || freeAmpOut) return;
+  Store.visibleOuts(d).forEach(function(oi){
+    if (!freeAmpOut && !Store.consumersOf(d.id, oi).length) freeAmpOut = { id:d.id, port:oi };
+  });
+});
+if (freeAmpOut) Store.connect(follower.id, 0, freeAmpOut.id, freeAmpOut.port);
+T('打乱：从属暂接到功放输出',
+  !freeAmpOut || Store.getDevice(Store.sourceFor(follower.id,0).sid).type === 'amp');
+var saRes = Store.smartAssign(follower.id);
+T('智能分配从属 → 串回组长（不抢功放口）',
+  Store.sourceFor(follower.id,0).sid === leader.id && saRes.lines.length > 0);
+/* 记录其它组连线数，验证「不影响整体」 */
+var otherGroupLeader = Store.state.devices.filter(function(d){
+  return d.type==='speaker' && d.reverseParallel && d.reverseParallel.index === 1 &&
+    d.reverseParallel.groupId !== gid; })[0];
+var otherSrcBefore = otherGroupLeader ? (Store.sourceFor(otherGroupLeader.id,0)||{}).sid : null;
+/* 断开组长功放、单设备智能分配组长 → 组长接功放 + 从属串好 */
+Store.clearDeviceConnections(leader.id, 'inputs');
+Store.disconnect(follower.id, 0);
+Store.smartAssign(leader.id);
+T('智能分配组长 → 组长接功放且从属串回',
+  Store.getDevice(Store.sourceFor(leader.id,0).sid).type === 'amp' &&
+  Store.sourceFor(follower.id,0).sid === leader.id);
+T('不影响整体：其它并联组组长连线未变',
+  !otherGroupLeader || (Store.sourceFor(otherGroupLeader.id,0)||{}).sid === otherSrcBefore);
+/* 普通（非并联）音箱仍按 reverseRow 接对应功放 */
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var nAmp = Store.addDevice({ type:'amp', name:'普通功放', ins:2, outs:2, specs:{ power:'1000' } });
+var nSpk = Store.addDevice({ type:'speaker', name:'普通全频', ins:1, outs:1, speakerRole:'fullrange', specs:{ powered:'passive', power:'400', ohms:'8' } });
+var nRes = Store.smartAssign(nSpk.id);
+T('普通音箱智能分配 → 接功放', nRes.lines.length === 1 &&
+  Store.getDevice(Store.sourceFor(nSpk.id,0).sid).type === 'amp');
+
 print('');
 print('结果: ' + pass + ' 通过, ' + fail + ' 失败');
 if (fail) throw new Error(fail + ' tests failed');

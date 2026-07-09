@@ -61,9 +61,35 @@
       var fed = d.inputs.some(function (p, i) { return !!Store.sourceFor(d.id, i); });
       if (!fed) left++;
     });
+    /* 调音台输出侧不足兜底提示（含数量布局；只提示、不自动加台） */
+    var mixShort = mixerShortage();
     var msg = '已创建 ' + added.length + ' 台设备并完成智能连接（⌘Z 一步撤销）';
-    if (left) msg += '；还有 ' + left + ' 只音响未接上（功放输出不足）';
-    SP.toast(msg, !!left);
+    if (mixShort) msg += '；⚠ 调音台输出不足（需 ' + mixShort.need + ' 路仅 ' + mixShort.have +
+      ' 路），部分下游未接，请手动加调音台或换更大型号';
+    else if (left) msg += '；还有 ' + left + ' 只音响未接上（功放输出不足）';
+    SP.toast(msg, !!(mixShort || left));
+  }
+
+  /* 画布上调音台输出是否喂不满下游：有 DSP 喂 DSP 输入，无 DSP 直推功放输入+有源音箱 */
+  function mixerShortage() {
+    var devs = Store.state.devices;
+    var mixers = devs.filter(function (d) { return d.type === 'mixer'; });
+    if (!mixers.length) return null;
+    var dsps = devs.filter(function (d) { return d.type === 'dsp'; });
+    var have = 0;
+    mixers.forEach(function (m) { have += Store.visibleOuts(m).length; });
+    var need;
+    if (dsps.length) {
+      need = dsps.reduce(function (a, d) { return a + d.inputs.length; }, 0);
+    } else {
+      var ampIns = devs.filter(function (d) { return d.type === 'amp'; })
+        .reduce(function (a, d) { return a + d.inputs.length; }, 0);
+      var activeN = devs.filter(function (d) {
+        return d.type === 'speaker' && d.specs && d.specs.powered === 'active';
+      }).length;
+      need = ampIns + activeN;
+    }
+    return have < need ? { need: need, have: have } : null;
   }
 
   SP.openQuickLayout = function () {
@@ -741,7 +767,8 @@
         amp2W4: amp2 ? pow4Tpl(amp2) : 0,
         amp4W4: amp4 ? pow4Tpl(amp4) : 0,
         minOhms: +((el('rv-minohm') || {}).value) || 4,
-        dspOuts: dspT ? outsOf(dspT) : 8,
+        dspOuts: dspT ? outsOf(dspT) : 0,   /* 无 DSP 模板 = 直推，不建 DSP */
+        dspIns: dspT ? dspT.ins : 0,
         activeCount: activeCount
       });
       return { rows: rows, activeRows: actRows, activeCount: activeCount, calc: calc,
@@ -846,12 +873,14 @@
         parts.push('<span class="insp-stat rv-active">有源占用 <b>' + r.activeCount + '</b> 路线路输出（不反推功放）</span>');
       }
       if (c.dspN) parts.push('<span class="insp-stat">DSP <b>' + c.dspN + '</b> 台</span>');
-      /* 无 DSP 直推：校验调音台输出是否够（功放输入 + 有源） */
-      if (!r.dspT && c.lineFeeds) {
+      /* 调音台输出侧不足：有 DSP 时喂满全部 DSP 输入，无 DSP 时直推功放+有源。
+         只提示、不自动加台（型号/数量仍手动填） */
+      if (c.mixerFeeds) {
         var mixOuts = r.mixT ? outsOf(r.mixT) * Math.max(1, r.mixN) : 0;
-        if (mixOuts < c.lineFeeds) {
+        if (mixOuts < c.mixerFeeds) {
           parts.push('<span class="insp-stat" style="color:var(--red);border-color:var(--red)">⚠ 调音台输出不足：需 ' +
-            c.lineFeeds + ' 路，仅 ' + mixOuts + ' 路</span>');
+            c.mixerFeeds + ' 路' + (c.dspN ? '（喂 ' + c.dspN + ' 台 DSP）' : '') +
+            '，仅 ' + mixOuts + ' 路，请手动增加调音台数量或换更大型号</span>');
         }
       }
       c.warns.forEach(function (w) {

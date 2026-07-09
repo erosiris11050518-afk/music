@@ -990,9 +990,50 @@ SP.Store = (function () {
     return outs;
   }
 
+  /* 设备所属的反推并联锁定组（按 index 排序）；非锁定组返回 null */
+  function parallelGroupOf(dev) {
+    var rp = dev && dev.type === 'speaker' && dev.reverseParallel && dev.reverseParallel.locked
+      ? dev.reverseParallel : null;
+    if (!rp || !rp.groupId) return null;
+    return state.devices.filter(function (d) {
+      return d.type === 'speaker' && d.reverseParallel && d.reverseParallel.groupId === rp.groupId;
+    }).sort(function (a, b) {
+      return ((a.reverseParallel || {}).index || 1) - ((b.reverseParallel || {}).index || 1);
+    });
+  }
+
+  /* 单设备智能分配（与一键智能连接同款规则，但只动这台设备 / 它所在并联组）。
+     · 尊重功放匹配（autoFreeOuts 的 reverseRow 行绑定）
+     · 属于并联锁定组：接顺整组（组长接同行功放、从属串接组长）——组是一个逻辑整体
+     · 严格不影响其他链路 */
   function smartAssign(id) {
     var dev = getDevice(id);
     if (!dev) return { lines: [], msg: '' };
+
+    /* 并联锁定组：把这一组接顺 */
+    var group = parallelGroupOf(dev);
+    if (group && group.length) {
+      var leader = group[0];
+      var lines0 = [];
+      if (!sourceFor(leader.id, 0)) {
+        var outs0 = autoFreeOuts(leader);
+        if (outs0.length) {
+          var o0 = outs0[0];
+          var r0 = connect(leader.id, 0, o0.dev.id, o0.port);
+          if (!(r0 && r0.ok === false)) {
+            lines0.push(o0.dev.name + ' · ' + o0.dev.outputs[o0.port].label + ' → ' + leader.name);
+          }
+        }
+      }
+      var chained = chainLockedGroup(group);
+      if (chained) lines0.push('并联串接 ' + chained + ' 条（' + leader.name + ' 组）');
+      if (!lines0.length) {
+        return { lines: [], msg: sourceFor(leader.id, 0)
+          ? '该并联组已接好。'
+          : '并联组组长没有可用的功放空闲输出（可手动增加/更换功放）。' };
+      }
+      return { lines: lines0, msg: '' };
+    }
 
     var freeInputs = [];
     dev.inputs.forEach(function (p, i) {
@@ -1021,6 +1062,14 @@ SP.Store = (function () {
       if (r && r.ok === false) continue;
       lines.push(o.dev.name + ' · ' + o.dev.outputs[o.port].label +
         ' → ' + dev.inputs[ti].label);
+    }
+    /* 普通音箱若是某并联组组长，顺带把从属串接好（逻辑整体） */
+    if (dev.type === 'speaker') {
+      var g2 = parallelGroupOf(dev);
+      if (g2 && g2[0] && g2[0].id === dev.id) {
+        var c2 = chainLockedGroup(g2);
+        if (c2) lines.push('并联串接 ' + c2 + ' 条');
+      }
     }
     return { lines: lines, msg: '' };
   }
@@ -1091,6 +1140,17 @@ SP.Store = (function () {
   function smartAssignPreview(id) {
     var dev = getDevice(id);
     if (!dev) return { count: 0, msg: '' };
+    /* 并联锁定组：预览待接顺的连线数（组长缺功放 + 未正确串接的从属） */
+    var group = parallelGroupOf(dev);
+    if (group && group.length) {
+      var leader = group[0];
+      var need = (!sourceFor(leader.id, 0) && autoFreeOuts(leader).length) ? 1 : 0;
+      for (var gi = 1; gi < group.length; gi++) {
+        var c = sourceFor(group[gi].id, 0);
+        if (!c || c.sid !== group[gi - 1].id) need++;
+      }
+      return { count: need, inputs: need, outputs: need, group: true };
+    }
     var freeInputs = [];
     dev.inputs.forEach(function (p, i) {
       if (!sourceFor(dev.id, i)) freeInputs.push(i);
@@ -1474,7 +1534,13 @@ SP.Store = (function () {
     /* 有源音响不参与功放反推，但占用 DSP（或调音台）线路输出通道 */
     res.activeCount = Math.max(0, +opt.activeCount || 0);
     res.lineFeeds = res.ampInputs + res.activeCount;
-    res.dspN = res.lineFeeds ? Math.ceil(res.lineFeeds / Math.max(1, +opt.dspOuts || 8)) : 0;
+    /* dspOuts 显式为 0 = 无 DSP 直推（不建 DSP）；省略时按默认 8 假设有 DSP（向后兼容） */
+    var dspOuts = (opt.dspOuts === 0 || opt.dspOuts === '0') ? 0 : (+opt.dspOuts || 8);
+    res.dspN = (res.lineFeeds && dspOuts > 0) ? Math.ceil(res.lineFeeds / dspOuts) : 0;
+    /* 调音台需喂出的输出路数：有 DSP 时喂满全部 DSP 输入（dspN × dspIns）；
+       无 DSP 时直推功放输入 + 有源。用于「调音台输出不足」提示（只提示、不自动加） */
+    res.dspInputs = res.dspN * Math.max(1, +opt.dspIns || 0);
+    res.mixerFeeds = res.dspN ? res.dspInputs : res.lineFeeds;
     return res;
   }
 
@@ -2381,6 +2447,7 @@ SP.Store = (function () {
     numberedNames: numberedNames,
     smartAssign: smartAssign,
     smartAssignAll: smartAssignAll,
+    parallelGroupOf: parallelGroupOf,
     clearAllConnections: clearAllConnections,
     smartAssignPreview: smartAssignPreview,
     addDeviceTemplate: addDeviceTemplate,

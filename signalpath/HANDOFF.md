@@ -180,6 +180,24 @@ Chrome MCP 扩展连不上，**浏览器可视回归一直靠用户人工验证*
 - parseTemplatesFromText(text, opt) 新增 opt.catHint：内容缺「类别/类型」列时按类目逐行强制解析。
 - 测试：test-ui 加 catFromFilename、超低/功放/DSP 单表归类、总表不被 hint 覆盖等用例。
 
+## v2.9 调音台不足提示 + 单设备智能分配升级（本轮）
+
+- **调音台输出侧不足只提示、不自动加**：reverseCalc 新增 `res.dspInputs / res.mixerFeeds`
+  （有 DSP＝dspN×dspIns 喂满 DSP 输入，无 DSP＝lineFeeds 直推功放+有源）；
+  `dspOuts` 显式传 0 = 无 DSP 直推（quick.js 无 DSP 模板时传 0，向后兼容：省略仍按 8）。
+  反推实时结果把「调音台输出不足」检查从"仅无 DSP"扩展到有 DSP 情形；
+  afterCreate 用 `mixerShortage()`（画布上调音台可见输出 vs DSP 输入/功放输入+有源）
+  兜底 toast，数量布局(count 页)同样覆盖。型号/数量仍手动填，不自动加台。
+- **单设备智能分配（右键菜单 + 设备栏，均走 Store.smartAssign）升级为并联组感知**：
+  `parallelGroupOf(dev)` 取该设备的反推并联锁定组（按 index 排序）。smartAssign：
+  · 设备属锁定组 → 接顺整组（组长接同行功放 autoFreeOuts、chainLockedGroup 串接从属），
+    从属不再乱抢功放口；组是一个逻辑整体，会顺带把同组组长/从属接顺（用户确认保留）。
+  · 普通设备 → 原 autoFreeOuts 分配（已尊重 reverseRow 功放行绑定）；普通音箱若恰为
+    某锁定组组长也顺带串接从属。严格只动这台设备 + 它所在并联组，不重排其它链路。
+  smartAssignPreview 对锁定组成员返回"待接顺"连线数（组长缺功放 + 未正确串接的从属）。
+- 测试：§17 mixerFeeds（有/无 DSP）；§18 并联从属被打乱后智能分配串回组长、组长智能分配
+  接功放+串从属、"不影响整体"（其它组不变）、普通音箱仍接功放。
+
 ## 已知缺口 / 下一步候选
 
 - **浏览器人工回归未做**：反推页、分台视图、外侧走线、分组线材表、CSV 导入全流程，都只过了 DOM 桩测试。
