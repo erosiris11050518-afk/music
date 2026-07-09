@@ -75,12 +75,18 @@
 
     function tplOptions(def, selName) {
       var html = '';
+      /* 功放列首项「智能配接」并默认选中：不点具体型号即按欧姆/功率自动配 */
+      if (def.key === 'amp') {
+        html += '<option value="auto"' + (selName ? '' : ' selected') + '>智能配接</option>';
+      }
       tpls.forEach(function (t, i) {
         if (!catMatches(t, def)) return;
         var sel = selName && t.name === selName ? ' selected' : '';
         html += '<option value="' + i + '"' + sel + '>' + esc(t.name) +
           '（' + t.ins + '进' + outsOf(t) + '出' +
-          (t.specs && t.specs.power ? ' · ' + t.specs.power + 'W' : '') + '）</option>';
+          (t.specs && t.specs.power ? ' · ' + t.specs.power + (def.key === 'amp' ? 'W@8Ω' : 'W') : '') +
+          (def.key === 'amp' && t.specs && t.specs.power4 ? ' · ' + t.specs.power4 + 'W@4Ω' : '') +
+          '）</option>';
       });
       return html || '<option value="">无可用模板</option>';
     }
@@ -173,7 +179,10 @@
     /* ================= 音响反推（reverse 页）：多组卡片 ================= */
 
     function powTpl(t) { return powerNum(t.specs && t.specs.power); }
-    function rvSelect(id, type, chFilter, defName) {
+    function pow4Tpl(t) { return powerNum(t.specs && t.specs.power4); }
+    function ohmTpl(t) { return +(t.specs && t.specs.ohms) || 0; }
+    /* auto=true 时首项为「智能配接」并默认选中（功放下拉用）；不点具体型号即自动配 */
+    function rvSelect(id, type, chFilter, defName, auto) {
       var items = [];
       tpls.forEach(function (t, i) {
         if (t.type !== type) return;
@@ -181,23 +190,27 @@
         items.push({ t: t, idx: i, outs: outsOf(t) });
       });
       var selIdx = -1;
-      items.forEach(function (it, n) {
-        if (selIdx < 0 && id === 'rv-dsp-tpl' && it.t.name === 'Unit48' &&
-            it.t.ins === 4 && it.outs === 8) selIdx = n;
-      });
-      items.forEach(function (it, n) {
-        if (selIdx < 0 && id === 'rv-dsp-tpl' && it.t.ins === 4 && it.outs === 8) selIdx = n;
-      });
-      items.forEach(function (it, n) {
-        if (selIdx < 0 && defName && it.t.name.indexOf(defName) >= 0) selIdx = n;
-      });
+      if (!auto) {
+        items.forEach(function (it, n) {
+          if (selIdx < 0 && id === 'rv-dsp-tpl' && it.t.name === 'Unit48' &&
+              it.t.ins === 4 && it.outs === 8) selIdx = n;
+        });
+        items.forEach(function (it, n) {
+          if (selIdx < 0 && id === 'rv-dsp-tpl' && it.t.ins === 4 && it.outs === 8) selIdx = n;
+        });
+        items.forEach(function (it, n) {
+          if (selIdx < 0 && defName && it.t.name.indexOf(defName) >= 0) selIdx = n;
+        });
+      }
       var html = items.map(function (it, n) {
         var t = it.t;
         return '<option value="' + it.idx + '"' + (n === selIdx ? ' selected' : '') + '>' + esc(t.name) +
           '（' + t.ins + '进' + outsOf(t) + '出' +
-          (t.specs && t.specs.power ? ' · ' + t.specs.power + 'W' : '') + '）</option>';
+          (t.specs && t.specs.power ? ' · ' + t.specs.power + 'W@8Ω' : '') +
+          (t.specs && t.specs.power4 ? ' · ' + t.specs.power4 + 'W@4Ω' : '') + '）</option>';
       }).join('');
-      return '<select id="' + id + '">' + (html || '<option value="">无可用模板</option>') + '</select>';
+      var autoOpt = auto ? '<option value="auto" selected>智能配接（按欧姆/功率自动选）</option>' : '';
+      return '<select id="' + id + '">' + autoOpt + (html || '<option value="">无可用模板</option>') + '</select>';
     }
 
     /* 组模型：支持同类多组（不同型号全频/超低同时入场）；active 组不参与功放反推 */
@@ -207,8 +220,7 @@
     }
     var rvGroups = [newGroup('fullrange', false), newGroup('sub', false)];
     var rvShowActive = false;
-    /* 4：功放自动匹配（最接近满足需求）——手动选过后不再自动改 */
-    var amp2Manual = false, amp4Manual = false;
+    /* 功放「智能配接」状态即下拉 value==='auto'（选具体型号则固定），无需额外标志 */
     /* 5：「查看当前案例反推过程」双态：点亮载入画布，点灭还原之前的填写 */
     var rvViewing = false, rvViewStash = null;
 
@@ -249,9 +261,10 @@
       var ohmsVal = usingTpl ? String((t.specs && t.specs.ohms) || '') : g.ohms;
       var ro = usingTpl ? ' readonly' : '';
       var canDel = rvGroups.filter(groupVisible).length > 1;
+      var ratioNote = (!g.active && g.role === 'sub') ? '<i class="rv-tag-note">超低余量×' + rvSubRatio() + '</i>' : '';
       return '<div class="rv-card' + (g.active ? ' rv-active' : '') + '" data-rv-card="' + i + '">' +
         '<div class="rv-card-head"><span>' + esc(groupTitle(g, i)) +
-        (g.active ? '<i class="rv-tag-note">不反推</i>' : '') + '</span>' +
+        (g.active ? '<i class="rv-tag-note">不反推</i>' : ratioNote) + '</span>' +
         (canDel ? '<button class="btn icon danger" data-act="rv-del" data-i="' + i + '" title="删除本组">✕</button>' : '') +
         '</div>' +
         '<input type="text" inputmode="numeric" class="rv-count" data-rv-cnt="' + i +
@@ -298,7 +311,7 @@
       '<div id="rv-preset-tools">' + reversePresetToolsHtml() + '</div>' +
       '<section class="rv-settings-panel">' +
       '<div class="insp-grid2">' +
-      '<div class="cfg-field"><label>功率倍率（场景）</label>' +
+      '<div class="cfg-field"><label>余量倍率（场景）</label>' +
       '<select id="rv-ratio">' +
       '<option value="1.2">1.2 · 会议人声</option>' +
       '<option value="1.5" selected>1.5 · 驻唱小场</option>' +
@@ -308,6 +321,14 @@
       '<option value="custom">自定义…</option></select></div>' +
       '<div class="cfg-field" id="rv-ratio-custom-wrap" style="display:none"><label>自定义倍率</label>' +
       '<input type="text" inputmode="decimal" data-num id="rv-ratio-custom" value="1.5"></div>' +
+      '<div class="cfg-field"><label>超低余量倍率</label>' +
+      '<select id="rv-subratio">' +
+      '<option value="2" selected>2 · 默认超低</option>' +
+      '<option value="3">3 · 大动态超低</option>' +
+      '<option value="4">4 · 电音超低</option>' +
+      '<option value="custom">自定义…</option></select></div>' +
+      '<div class="cfg-field" id="rv-subratio-custom-wrap" style="display:none"><label>超低自定义</label>' +
+      '<input type="text" inputmode="decimal" data-num id="rv-subratio-custom" value="2"></div>' +
       '<div class="cfg-field"><label>功放最低负载</label>' +
       '<select id="rv-minohm"><option value="4" selected>4Ω（常规机型）</option>' +
       '<option value="2">2Ω（低阻机型）</option></select></div>' +
@@ -315,9 +336,9 @@
       '<select id="rv-ampmode"><option value="mix" selected>搭配使用（4通道优先）</option>' +
       '<option value="2">只用 2 通道</option><option value="4">只用 4 通道</option></select></div>' +
       '<div class="cfg-field" id="rv-amp2-wrap"><label>2 通道功放模板' +
-      '<em class="rv-auto-flag" id="rv-amp2-flag" hidden>已自动匹配</em></label>' + rvSelect('rv-amp2-tpl', 'amp', 2) + '</div>' +
+      '<em class="rv-auto-flag" id="rv-amp2-flag" hidden></em></label>' + rvSelect('rv-amp2-tpl', 'amp', 2, '', true) + '</div>' +
       '<div class="cfg-field" id="rv-amp4-wrap"><label>4 通道功放模板' +
-      '<em class="rv-auto-flag" id="rv-amp4-flag" hidden>已自动匹配</em></label>' + rvSelect('rv-amp4-tpl', 'amp', 4) + '</div>' +
+      '<em class="rv-auto-flag" id="rv-amp4-flag" hidden></em></label>' + rvSelect('rv-amp4-tpl', 'amp', 4, '', true) + '</div>' +
       '<div class="cfg-field"><label>DSP 模板（默认 4进8出）</label>' + rvSelect('rv-dsp-tpl', 'dsp', 4) + '</div>' +
       '<div class="cfg-field"><label>调音台模板 / 数量</label><div style="display:flex;gap:6px">' +
       rvSelect('rv-mixer-tpl', 'mixer') +
@@ -347,6 +368,7 @@
       '<div id="ql-preset-tools">' + countPresetToolsHtml() + '</div>' +
       '<p class="cfg-note ql-note" style="margin-top:0">依次输入 <b>调音台 · DSP · 功放 · 全频 · 超低</b> 的数量，回车创建并自动智能连接（一步可撤销）。</p>' +
       '<div class="ql-grid">' + CATS.map(catColumn).join('') + '</div>' +
+      '<div class="insp-stats" id="ql-calc" style="display:block;margin-top:10px"></div>' +
       '<div style="margin-top:9px"><button class="ql-toggle-active" id="ql-show-active" data-act="ql-toggle-active">▸ 展开有源音箱（Shift）</button></div>' +
       '<div class="ql-presets" id="ql-presets">' +
       '<button class="btn ghost sm" data-act="ql-view-current" title="把当前画布数量和模板选择刷新到本面板">查看当前</button>' +
@@ -421,6 +443,7 @@
     function toggleActive() {
       showActive = !showActive;
       syncActiveCols();
+      qlCalcShow();
     }
 
     function applyPreset(p) {
@@ -438,6 +461,7 @@
         }
       });
       if (d.counts && (d.counts.afullrange || d.counts.asub) && !showActive) toggleActive();
+      qlCalcShow();
       SP.toast('已套用预设「' + p.name + '」，回车创建');
     }
     function loadCurrentCount() {
@@ -465,6 +489,7 @@
         }
       });
       if ((countsByKey.afullrange || countsByKey.asub) && !showActive) toggleActive();
+      qlCalcShow();
       SP.toast('已刷新为当前画布的数量布局');
     }
     function saveCountPreset() {
@@ -536,11 +561,100 @@
       SP.toast('一键模板：新增 ' + r.added + ' · 更新 ' + r.updated + '，已开始导出存档');
     }
 
+    function qlSelectedTpl(key) {
+      var sel = box.querySelector('[data-ql-tpl="' + key + '"]');
+      if (!sel || sel.value === '' || sel.value === 'auto') return null;
+      return tpls[+sel.value];
+    }
+    function qlCountOf(def) {
+      var inp = box.querySelector('[data-ql-count="' + CATS.indexOf(def) + '"]');
+      return Math.max(0, Math.min(128, parseInt(inp && inp.value, 10) || 0));
+    }
+    function qlBuildAutoPlan() {
+      var passive = [], activeRows = [];
+      var mixerTpl = null, dspTpl = null, mixerCount = 0, dspCount = 0;
+      CATS.forEach(function (def) {
+        if (def.soon) return;
+        var n = qlCountOf(def);
+        if (!n) return;
+        var t = qlSelectedTpl(def.key);
+        if (def.key === 'mixer') { mixerTpl = t; mixerCount = t ? n : 0; return; }
+        if (def.key === 'dsp') { dspTpl = t; dspCount = t ? n : 0; return; }
+        if (!t || def.type !== 'speaker') return;
+        if (def.active) activeRows.push({ tpl: t, count: n });
+        else passive.push({ tpl: t, name: t.name, power: powTpl(t), ohms: ohmTpl(t),
+          count: n, parallel: 1, role: def.role });
+      });
+      var calc = Store.reverseCalc(passive, {
+        ratio: 1.5, subRatio: 2, ampMode: 'mix', minOhms: 4,
+        dspOuts: dspTpl ? outsOf(dspTpl) : 8,
+        activeCount: activeRows.reduce(function (a, r) { return a + r.count; }, 0)
+      });
+      var speakerRows = [], ampWarns = [];
+      calc.rows.forEach(function (row, i) {
+        var src = passive[i];
+        var choice = autoAmpChoice(row);
+        var ch = choice.channels || 4;
+        if (!choice.tpl) ampWarns.push(row.name + '：模板库暂无可用功放');
+        else if (!choice.fit) ampWarns.push(row.name + '：未找到完全满足功率/负载的功放，暂用 ' + choice.tpl.name);
+        speakerRows.push({
+          tpl: src.tpl, count: src.count, parallel: src.parallel,
+          a2: ch === 2 ? Math.ceil(row.ch / 2) : 0,
+          a4: ch === 4 ? Math.ceil(row.ch / 4) : 0,
+          amp2Tpl: ch === 2 ? choice.tpl : null,
+          amp4Tpl: ch === 4 ? choice.tpl : null,
+          calcRow: row, ampTpl: choice.tpl, ampChannels: ch
+        });
+      });
+      return { passive: passive, activeRows: activeRows, calc: calc, speakerRows: speakerRows,
+        mixerTpl: mixerTpl, mixerCount: mixerCount, dspTpl: dspTpl, dspCount: dspCount,
+        ampWarns: ampWarns };
+    }
+    function qlCalcShow() {
+      var host = el('ql-calc');
+      if (!host) return;
+      var ampSel = box.querySelector('[data-ql-tpl="amp"]');
+      if (!ampSel || ampSel.value !== 'auto') {
+        host.innerHTML = '<span class="insp-stat">功放已固定型号，创建后按现有智能连接规则接线</span>';
+        return;
+      }
+      var plan = qlBuildAutoPlan();
+      if (!plan.passive.length && !plan.activeRows.length) {
+        host.innerHTML = '<span class="insp-stat">填写无源音响数量后自动显示单通道功率和功放配接</span>';
+        return;
+      }
+      var parts = [];
+      plan.calc.rows.forEach(function (row, i) {
+        var boosted = row.loadOhm && Math.abs(row.loadOhm - 8) > 0.01;
+        var sp = plan.speakerRows[i] || {};
+        parts.push('<span class="insp-stat' + (boosted ? ' rv-boost' : '') + '">' +
+          reverseRowStatHtml(row) +
+          (sp.ampTpl ? ' · ' + esc(sp.ampTpl.name) + ' ×' + ((sp.a4 || 0) + (sp.a2 || 0)) + '台' : '') +
+          '</span>');
+      });
+      if (plan.activeRows.length) {
+        var activeN = plan.activeRows.reduce(function (a, r) { return a + r.count; }, 0);
+        parts.push('<span class="insp-stat rv-active">有源占用 <b>' + activeN + '</b> 路线路输出（不配功放）</span>');
+      }
+      plan.calc.warns.concat(plan.ampWarns).forEach(function (w) {
+        parts.push('<span class="insp-stat" style="color:var(--red);border-color:var(--red)">⚠ ' + esc(w) + '</span>');
+      });
+      plan.calc.errors.forEach(function (w) {
+        parts.push('<span class="insp-stat" style="color:var(--red);border-color:var(--red)">✕ ' + esc(w) + '</span>');
+      });
+      host.innerHTML = parts.join('');
+    }
+
     /* ================= 反推：数据与计算 ================= */
 
     function rvTpl(id) {
       var sel = el(id);
-      return sel && sel.value !== '' ? tpls[+sel.value] : null;
+      if (!sel || sel.value === '' || sel.value === 'auto') return null;
+      return tpls[+sel.value];
+    }
+    function rvIsAuto(id) {
+      var sel = el(id);
+      return !sel || sel.value === 'auto';
     }
     function rvRatio() {
       var sel = el('rv-ratio');
@@ -548,6 +662,13 @@
         return Math.max(1, +((el('rv-ratio-custom') || {}).value) || 1.5);
       }
       return +((sel && sel.value) || 1.5);
+    }
+    function rvSubRatio() {
+      var sel = el('rv-subratio');
+      if (sel && sel.value === 'custom') {
+        return Math.max(1, +((el('rv-subratio-custom') || {}).value) || 2);
+      }
+      return +((sel && sel.value) || 2);
     }
     function groupData(g, idx) {
       var count = Math.max(0, parseInt(g.count, 10) || 0);
@@ -572,72 +693,141 @@
       return rvGroups.map(function (g, i) { return g.active ? groupData(g, i) : null; })
         .filter(function (r) { return r && r.count > 0; });
     }
+    /* 达标所需 8Ω 标称功率（各无源组 needRatedW 的最大值，含并联/阻抗换算） */
+    function rvNeedProfile(rows) {
+      var probe = Store.reverseCalc(rows, {
+        ratio: rvRatio(), subRatio: rvSubRatio(), ampMode: 'mix',
+        minOhms: +((el('rv-minohm') || {}).value) || 4
+      });
+      var best = { needRatedW: 0, needW: 0, needLoadW: 0, loadOhm: 0 };
+      probe.rows.forEach(function (r) {
+        var w = r.needRatedW || r.needW || 0;
+        if (w > best.needRatedW) {
+          best = { needRatedW: w, needW: r.needW || 0, needLoadW: r.needLoadW || 0, loadOhm: r.loadOhm || 0 };
+        }
+      });
+      return best;
+    }
+    /* 智能配接 or 手动固定：返回 {tpl, auto} */
+    function rvResolveAmp(id, channels, needProfile) {
+      if (rvIsAuto(id)) {
+        return { tpl: Store.pickAmpTemplate(tpls, {
+          channels: channels,
+          needRatedW: needProfile.needRatedW,
+          needW: needProfile.needW,
+          needLoadW: needProfile.needLoadW,
+          loadOhm: needProfile.loadOhm
+        }), auto: true };
+      }
+      return { tpl: rvTpl(id), auto: false };
+    }
     function rvCompute() {
       var rows = rvPassiveRows();
       var actRows = rvActiveRows();
       var activeCount = actRows.reduce(function (a, r) { return a + r.count; }, 0);
       var ampMode = (el('rv-ampmode') || {}).value || 'mix';
-      var amp2 = rvTpl('rv-amp2-tpl'), amp4 = rvTpl('rv-amp4-tpl');
+      var needProfile = rvNeedProfile(rows);
+      var a2 = rvResolveAmp('rv-amp2-tpl', 2, needProfile);
+      var a4 = rvResolveAmp('rv-amp4-tpl', 4, needProfile);
+      var amp2 = a2.tpl, amp4 = a4.tpl;
       var dspT = rvTpl('rv-dsp-tpl'), mixT = rvTpl('rv-mixer-tpl');
       var mixN = Math.max(0, parseInt((el('rv-mixer-n') || {}).value, 10) || 0);
       var calc = Store.reverseCalc(rows, {
         ratio: rvRatio(),
+        subRatio: rvSubRatio(),
         ampMode: ampMode,
         amp2W: amp2 ? powTpl(amp2) : 0,
         amp4W: amp4 ? powTpl(amp4) : 0,
+        amp2W4: amp2 ? pow4Tpl(amp2) : 0,
+        amp4W4: amp4 ? pow4Tpl(amp4) : 0,
         minOhms: +((el('rv-minohm') || {}).value) || 4,
         dspOuts: dspT ? outsOf(dspT) : 8,
         activeCount: activeCount
       });
       return { rows: rows, activeRows: actRows, activeCount: activeCount, calc: calc,
-        ampMode: ampMode, amp2: amp2, amp4: amp4, dspT: dspT, mixT: mixT, mixN: mixN };
+        ampMode: ampMode, amp2: amp2, amp4: amp4, amp2Auto: a2.auto, amp4Auto: a4.auto,
+        needRated: needProfile.needRatedW, ratio: rvRatio(), subRatio: rvSubRatio(),
+        dspT: dspT, mixT: mixT, mixN: mixN };
     }
 
-    /* 4：功放自动选用 —— 满足功率倍率需求里最接近的那台；都不满足选最大（保留红警） */
-    function rvMaxNeedW() {
-      var ratio = rvRatio(), maxW = 0;
-      rvGroups.forEach(function (g, i) {
-        if (g.active) return;
-        var d = groupData(g, i);
-        if (!d.count || !d.power) return;
-        maxW = Math.max(maxW, Math.ceil(d.power * d.parallel * ratio));
-      });
-      return maxW;
+    function reverseRowStatHtml(row) {
+      var name = esc(row.name) + (row.par > 1 ? '（并联' + row.par + '只）' : '');
+      var load = +row.loadOhm || 8;
+      var specialLoad = Math.abs(load - 8) > 0.01;
+      var notes = [];
+      if (specialLoad) notes.push(load + 'Ω 负载');
+      if (row.ratio) notes.push((row.role === 'sub' ? '超低余量×' : '余量×') + row.ratio);
+      if (row.factor) notes.push('折算系数×' + Math.round(row.factor * 100) / 100);
+      return name + '：单通道需 <b>≥' + (row.needRatedW || row.needW) + 'W</b>' +
+        (specialLoad ? '@8Ω' : '/通道') +
+        (notes.length ? '（' + notes.join('，') + '）' : '') +
+        ' 共' + row.count + '只 占 ' + row.ch + ' 路';
     }
-    function autoPickAmp(selId, flagId, manual) {
-      var sel = el(selId), flag = el(flagId);
-      if (!sel) return;
-      if (manual) { if (flag) flag.hidden = true; return; }
-      var need = rvMaxNeedW();
-      if (!need) { if (flag) flag.hidden = true; return; }
-      var bestFit = null, bestFitW = Infinity, bestMax = null, bestMaxW = -1;
-      Array.prototype.forEach.call(sel.options || [], function (o) {
-        if (o.value === '' || o.disabled) return;
-        var t = tpls[+o.value];
-        if (!t) return;
-        var w = powTpl(t);
-        if (!w) return;
-        if (w >= need && w < bestFitW) { bestFitW = w; bestFit = o.value; }
-        if (w > bestMaxW) { bestMaxW = w; bestMax = o.value; }
+
+    function reverseActiveNeedW(rows, ratio, subRatio) {
+      return (rows || []).reduce(function (sum, row) {
+        var rr = row.role === 'sub' ? (subRatio || ratio || 1) : (ratio || 1);
+        return sum + Math.ceil((+row.power || 0) * (+row.count || 0) * rr);
+      }, 0);
+    }
+    function reverseTotalStatHtml(calc, activeRows, ratio, subRatio) {
+      var passive = calc.totalNeedW || (calc.rows || []).reduce(function (sum, row) {
+        return sum + (row.needRatedW || row.needW || 0) * (row.ch || 0);
+      }, 0);
+      var active = reverseActiveNeedW(activeRows, ratio, subRatio);
+      var total = Math.ceil(passive + active);
+      if (!total) return '';
+      var detail = active ? '（无源功放 ' + passive + 'W + 有源音响 ' + active + 'W）' : '（所有通道合计）';
+      return '总功率 <b>≥' + total + 'W</b>' + detail;
+    }
+
+    function ampFitsRow(t, row) {
+      if (!t || !row) return false;
+      var minOhm = +(t.specs && t.specs.ohms) || 4;
+      if (row.loadOhm && row.loadOhm < minOhm) return false;
+      return Store.ampRatedEquivalentPower(t.specs || {}, row.loadOhm) >= (row.needRatedW || row.needW || 0);
+    }
+    function pickAmpForRow(channels, row) {
+      return Store.pickAmpTemplate(tpls, {
+        channels: channels,
+        needRatedW: row.needRatedW,
+        needW: row.needW,
+        needLoadW: row.needLoadW,
+        loadOhm: row.loadOhm
       });
-      var target = bestFit !== null ? bestFit : bestMax;
-      if (target !== null) {
-        if (sel.value !== String(target)) sel.value = target;
-        if (flag) flag.hidden = false;
-      } else if (flag) {
-        flag.hidden = true;
+    }
+    function autoAmpChoice(row) {
+      var a4 = pickAmpForRow(4, row);
+      var a2 = pickAmpForRow(2, row);
+      if (ampFitsRow(a4, row)) return { tpl: a4, channels: 4, fit: true };
+      if (ampFitsRow(a2, row)) return { tpl: a2, channels: 2, fit: true };
+      if (a4) return { tpl: a4, channels: 4, fit: false };
+      if (a2) return { tpl: a2, channels: 2, fit: false };
+      return { tpl: null, channels: 0, fit: false };
+    }
+
+    /* 智能配接时，在标签处显示解析到的实际型号 */
+    function rvShowAmpAutoFlag(r) {
+      function upd(flagId, wrapId, auto, tpl) {
+        var flag = el(flagId), wrap = el(wrapId);
+        var visible = wrap && (!wrap.hidden);
+        if (!flag) return;
+        if (auto && visible) {
+          flag.hidden = false;
+          flag.textContent = tpl ? '→ ' + tpl.name : '（模板库暂无功放）';
+        } else {
+          flag.hidden = true;
+        }
       }
-    }
-    function autoPickAmps() {
-      autoPickAmp('rv-amp2-tpl', 'rv-amp2-flag', amp2Manual);
-      autoPickAmp('rv-amp4-tpl', 'rv-amp4-flag', amp4Manual);
+      upd('rv-amp2-flag', 'rv-amp2-wrap', r.amp2Auto, r.amp2);
+      upd('rv-amp4-flag', 'rv-amp4-wrap', r.amp4Auto, r.amp4);
     }
 
     function rvCalcShow() {
       var host = el('rv-calc');
       if (!host) return;
-      autoPickAmps();   /* 先自动匹配功放，再按所选功放计算 */
       var r = rvCompute();
+      rvShowAmpAutoFlag(r);
       var c = r.calc;
       var act = r.activeRows || [];
       if (!c.rows.length && !c.errors.length && !act.length) {
@@ -646,9 +836,9 @@
       }
       var parts = [];
       c.rows.forEach(function (row) {
-        parts.push('<span class="insp-stat">' + esc(row.name) + '：需 <b>≥' + row.needW +
-          'W</b>/通道' + (row.par > 1 ? ' · 并联' + row.par + '只 ' + row.loadOhm + 'Ω/' + row.loadW + 'W' : '') +
-          ' · 占 ' + row.ch + ' 路</span>');
+        var boosted = row.loadOhm && Math.abs(row.loadOhm - 8) > 0.01;
+        parts.push('<span class="insp-stat' + (boosted ? ' rv-boost' : '') + '">' +
+          reverseRowStatHtml(row) + '</span>');
       });
       if (c.amp2N) parts.push('<span class="insp-stat">2通道功放 <b>' + c.amp2N + '</b> 台</span>');
       if (c.amp4N) parts.push('<span class="insp-stat">4通道功放 <b>' + c.amp4N + '</b> 台</span>');
@@ -670,6 +860,8 @@
       c.errors.forEach(function (w) {
         parts.push('<span class="insp-stat" style="color:var(--red);border-color:var(--red)">✕ ' + esc(w) + '</span>');
       });
+      var totalHtml = reverseTotalStatHtml(c, act, r.ratio || rvRatio(), r.subRatio || rvSubRatio());
+      if (totalHtml) parts.push('<span class="insp-stat rv-total">' + totalHtml + '</span>');
       host.innerHTML = parts.join('');
     }
 
@@ -714,6 +906,8 @@
         rows: rows,
         ratio: ratioSel ? ratioSel.value : '1.5',
         ratioCustom: (el('rv-ratio-custom') || {}).value || '1.5',
+        subRatio: (el('rv-subratio') || {}).value || '2',
+        subRatioCustom: (el('rv-subratio-custom') || {}).value || '2',
         minOhms: (el('rv-minohm') || {}).value || '4',
         ampMode: (el('rv-ampmode') || {}).value || 'mix',
         amp2Name: nameOf('rv-amp2-tpl'), amp4Name: nameOf('rv-amp4-tpl'),
@@ -743,18 +937,23 @@
       refreshRvCards();
       if (el('rv-ratio')) el('rv-ratio').value = d.ratio || '1.5';
       if (el('rv-ratio-custom')) el('rv-ratio-custom').value = d.ratioCustom || '1.5';
+      if (el('rv-subratio')) el('rv-subratio').value = d.subRatio || '2';
+      if (el('rv-subratio-custom')) el('rv-subratio-custom').value = d.subRatioCustom || '2';
       if (el('rv-minohm')) el('rv-minohm').value = d.minOhms || '4';
       if (el('rv-ampmode')) el('rv-ampmode').value = d.ampMode || 'mix';
       if (el('rv-mixer-n')) el('rv-mixer-n').value = d.mixerN || '1';
-      setSelectByTplName('rv-amp2-tpl', d.amp2Name);
-      setSelectByTplName('rv-amp4-tpl', d.amp4Name);
+      /* 快照带功放名 = 固定该型号；没带 = 回到「智能配接」 */
+      if (el('rv-amp2-tpl')) el('rv-amp2-tpl').value = 'auto';
+      if (el('rv-amp4-tpl')) el('rv-amp4-tpl').value = 'auto';
+      if (d.amp2Name) setSelectByTplName('rv-amp2-tpl', d.amp2Name);
+      if (d.amp4Name) setSelectByTplName('rv-amp4-tpl', d.amp4Name);
       setSelectByTplName('rv-dsp-tpl', d.dspName);
       setSelectByTplName('rv-mixer-tpl', d.mixerName);
-      /* 快照里带功放名 = 尊重原选择；没带 = 交给自动匹配 */
-      amp2Manual = !!d.amp2Name;
-      amp4Manual = !!d.amp4Name;
       if (el('rv-ratio-custom-wrap')) {
         el('rv-ratio-custom-wrap').style.display = (el('rv-ratio') || {}).value === 'custom' ? '' : 'none';
+      }
+      if (el('rv-subratio-custom-wrap')) {
+        el('rv-subratio-custom-wrap').style.display = (el('rv-subratio') || {}).value === 'custom' ? '' : 'none';
       }
       syncAmpModeUI();
       rvCalcShow();
@@ -787,6 +986,8 @@
         rows: order.map(function (k) { return map[k]; }),
         ratio: (el('rv-ratio') || {}).value || '1.5',
         ratioCustom: (el('rv-ratio-custom') || {}).value || '1.5',
+        subRatio: (el('rv-subratio') || {}).value || '2',
+        subRatioCustom: (el('rv-subratio-custom') || {}).value || '2',
         minOhms: (el('rv-minohm') || {}).value || '4',
         ampMode: amp2.length && amp4.length ? 'mix' : amp4.length ? '4' : amp2.length ? '2' : 'mix',
         amp2Name: amp2[0] ? tplNameOfDevice(amp2[0]) : '',
@@ -862,8 +1063,7 @@
 
     function confirm2() {
       if (mode === 'reverse') {
-        autoPickAmps();   /* 创建前兜底跑一次自动匹配（未触发过实时计算时） */
-        var r = rvCompute();
+        var r = rvCompute();   /* 智能配接在 rvCompute 内已解析为具体功放 */
         var c = r.calc;
         var actRows = r.activeRows || [];
         if (c.errors.length) { SP.toast(c.errors[0], true); return; }
@@ -905,19 +1105,89 @@
         }
         return;
       }
-      var items2 = [];
+      /* 收集各列：功放列默认「智能配接」，按无源音箱功率/阻抗/通道自动解析 */
+      var picks = [], ampAuto = null, passiveRows = [];
+      var ampSel0 = box.querySelector('[data-ql-tpl="amp"]');
+      var ampWantsAuto = ampSel0 && ampSel0.value === 'auto';
       CATS.forEach(function (def, i) {
         if (def.soon) return;
         var inp = box.querySelector('[data-ql-count="' + i + '"]');
         var n = Math.max(0, Math.min(128, parseInt(inp && inp.value, 10) || 0));
         if (!n) return;
         var sel = box.querySelector('[data-ql-tpl="' + def.key + '"]');
-        var t = sel && sel.value !== '' ? tpls[+sel.value] : null;
+        var val = sel ? sel.value : '';
+        if (def.key === 'amp' && val === 'auto') { ampAuto = { count: n }; return; }
+        var t = val !== '' && val !== 'auto' ? tpls[+val] : null;
         if (!t) return;
-        items2.push({ tpl: t, count: n, powered: def.active ? 'active' : 'passive' });
+        if (def.type === 'speaker' && !def.active) {
+          passiveRows.push({ name: t.name, power: powTpl(t), ohms: ohmTpl(t),
+            count: n, parallel: 1, role: def.role });
+        }
+        picks.push({ tpl: t, count: n, powered: def.active ? 'active' : 'passive' });
       });
-      if (!items2.length) { SP.toast('请至少给一类设备填数量，例如 1 2 6 10 2', true); return; }
-      afterCreate(Store.quickLayout(items2));
+      if (ampWantsAuto && passiveRows.length && !ampAuto) {
+        var plan = qlBuildAutoPlan();
+        if (plan.calc.errors.length) { SP.toast(plan.calc.errors[0], true); return; }
+        var missAmp = plan.speakerRows.filter(function (r) { return !r.ampTpl; });
+        if (missAmp.length) { SP.toast(missAmp[0].calcRow.name + '：模板库暂无可用功放', true); return; }
+        var addedAuto = Store.reverseLayout({
+          mixerTpl: plan.mixerTpl, mixerCount: plan.mixerCount,
+          dspTpl: plan.dspTpl, dspCount: plan.dspCount,
+          speakerRows: plan.speakerRows,
+          activeRows: plan.activeRows
+        });
+        afterCreate(addedAuto);
+        var warnAuto = plan.calc.warns.concat(plan.ampWarns)[0];
+        if (warnAuto) setTimeout(function () { SP.toast(warnAuto, true); }, 2800);
+        return;
+      }
+      if (ampWantsAuto) {
+        var calcAuto = Store.reverseCalc(passiveRows, {
+          ratio: 1.5, subRatio: 2, ampMode: 'mix', minOhms: 4
+        });
+        var profile = { needRatedW: 0, needW: 0, needLoadW: 0, loadOhm: 0 };
+        (calcAuto.rows || []).forEach(function (r) {
+          var w = r.needRatedW || r.needW || 0;
+          if (w > profile.needRatedW) profile = {
+            needRatedW: w, needW: r.needW || 0, needLoadW: r.needLoadW || 0, loadOhm: r.loadOhm || 0
+          };
+        });
+        function pickCountAmp(channels) {
+          return Store.pickAmpTemplate(tpls, {
+            channels: channels || 0,
+            needRatedW: profile.needRatedW,
+            needW: profile.needW,
+            needLoadW: profile.needLoadW,
+            loadOhm: profile.loadOhm
+          }) || (channels ? Store.pickAmpTemplate(tpls, {
+            needRatedW: profile.needRatedW,
+            needW: profile.needW,
+            needLoadW: profile.needLoadW,
+            loadOhm: profile.loadOhm
+          }) : null);
+        }
+        if (ampAuto && ampAuto.count) {
+          var avgCh = calcAuto.channels ? Math.ceil(calcAuto.channels / ampAuto.count) : 0;
+          var chPref = avgCh > 2 ? 4 : avgCh ? 2 : 0;
+          var ampT = pickCountAmp(chPref);
+          if (!ampT) { SP.toast('模板库暂无功放，无法智能配接（请先在模板库新建功放）', true); return; }
+          picks.push({ tpl: ampT, count: ampAuto.count, powered: 'passive' });
+        } else if (passiveRows.length) {
+          if (calcAuto.errors.length) { SP.toast(calcAuto.errors[0], true); return; }
+          if (calcAuto.amp2N) {
+            var amp2T = pickCountAmp(2);
+            if (!amp2T) { SP.toast('需要 2 通道功放模板（可在模板库新建）', true); return; }
+            picks.push({ tpl: amp2T, count: calcAuto.amp2N, powered: 'passive' });
+          }
+          if (calcAuto.amp4N) {
+            var amp4T = pickCountAmp(4);
+            if (!amp4T) { SP.toast('需要 4 通道功放模板（可在模板库新建）', true); return; }
+            picks.push({ tpl: amp4T, count: calcAuto.amp4N, powered: 'passive' });
+          }
+        }
+      }
+      if (!picks.length) { SP.toast('请至少给一类设备填数量，例如 1 2 6 10 2', true); return; }
+      afterCreate(Store.quickLayout(picks));
     }
 
     /* ================= 事件委托：click ================= */
@@ -991,15 +1261,13 @@
       } else if (act === 'rv-view-current') {
         /* 5：双态 —— 点亮载入画布反推过程，点灭还原之前的填写内容 */
         if (!rvViewing) {
-          rvViewStash = { snap: reverseSnapshot(), m2: amp2Manual, m4: amp4Manual };
+          rvViewStash = { snap: reverseSnapshot() };
           applyReverseSnapshot(reverseFromCurrent());
           rvViewing = true;
           actBtn.classList.add('on');
           SP.toast('已按当前画布还原本次案例的反推过程（再点一次返回）');
         } else {
           applyReverseSnapshot((rvViewStash && rvViewStash.snap) || {});
-          amp2Manual = rvViewStash ? rvViewStash.m2 : false;
-          amp4Manual = rvViewStash ? rvViewStash.m4 : false;
           rvViewing = false;
           rvViewStash = null;
           actBtn.classList.remove('on');
@@ -1027,6 +1295,12 @@
         var clean = String(t.value || '').replace(/[^\d.]/g, '');
         if (clean !== t.value) t.value = clean;
       }
+      if (t.getAttribute('data-ql-count') !== null) {
+        var cleanN = t.value.replace(/\D/g, '');
+        if (cleanN !== t.value) t.value = cleanN;
+        qlCalcShow();
+        return;
+      }
       if (t.getAttribute('data-rv-cnt') !== null) {
         var g1 = rvGroups[+t.getAttribute('data-rv-cnt')];
         if (g1) { g1.count = t.value.replace(/\D/g, ''); if (g1.count !== t.value) t.value = g1.count; rvCalcShow(); }
@@ -1047,12 +1321,13 @@
         if (g4) g4.name = t.value;
         return;
       }
-      if (t.id === 'rv-ratio-custom' || t.id === 'rv-mixer-n') rvCalcShow();
+      if (t.id === 'rv-ratio-custom' || t.id === 'rv-subratio-custom' || t.id === 'rv-mixer-n') rvCalcShow();
     });
 
     on('change', function (e) {
       var t = e.target;
       if (!t || !t.getAttribute) return;
+      if (t.getAttribute('data-ql-tpl') !== null) { qlCalcShow(); return; }
       if (t.getAttribute('data-rv-tpl') !== null) {
         var i = +t.getAttribute('data-rv-tpl');
         var g = rvGroups[i];
@@ -1080,10 +1355,16 @@
         rvCalcShow();
         return;
       }
+      if (t.id === 'rv-subratio') {
+        if (el('rv-subratio-custom-wrap')) {
+          el('rv-subratio-custom-wrap').style.display = t.value === 'custom' ? '' : 'none';
+        }
+        refreshRvCards();
+        return;
+      }
       if (t.id === 'rv-ampmode') { syncAmpModeUI(); rvCalcShow(); return; }
-      if (t.id === 'rv-amp2-tpl') { amp2Manual = true; rvCalcShow(); return; }
-      if (t.id === 'rv-amp4-tpl') { amp4Manual = true; rvCalcShow(); return; }
-      if (t.id === 'rv-minohm' || t.id === 'rv-dsp-tpl' || t.id === 'rv-mixer-tpl') { rvCalcShow(); return; }
+      if (t.id === 'rv-amp2-tpl' || t.id === 'rv-amp4-tpl' ||
+          t.id === 'rv-minohm' || t.id === 'rv-dsp-tpl' || t.id === 'rv-mixer-tpl') { rvCalcShow(); return; }
     });
 
     /* ================= 事件委托：keydown / keyup（含 Shift） ================= */
@@ -1126,10 +1407,12 @@
           e.preventDefault();
           if (t.value !== '') {
             t.value = '';
+            if (isQlCell) qlCalcShow();
             if (isRvCell) { var gg = rvGroups[+t.getAttribute('data-rv-cnt')]; if (gg) { gg.count = ''; rvCalcShow(); } }
           } else if (pos > 0) {
             var pv = list[pos - 1];
             pv.value = '';
+            if (isQlCell) qlCalcShow();
             if (isRvCell && pv.getAttribute('data-rv-cnt') !== null) {
               var gp2 = rvGroups[+pv.getAttribute('data-rv-cnt')];
               if (gp2) { gp2.count = ''; rvCalcShow(); }
@@ -1141,6 +1424,7 @@
           e.preventDefault();
           var v = (t.value + e.key).replace(/^0+(\d)/, '$1');
           t.value = String(Math.min(128, +v));
+          if (isQlCell) qlCalcShow();
           if (isRvCell) { var gg2 = rvGroups[+t.getAttribute('data-rv-cnt')]; if (gg2) { gg2.count = t.value; rvCalcShow(); } }
         } else if (e.key.length === 1) {
           e.preventDefault();   /* 数量格只接受数字 */
@@ -1159,6 +1443,7 @@
           }
           target.focus();
           target.value = e.key;
+          if (target.getAttribute('data-ql-count') !== null) qlCalcShow();
           if (target.getAttribute('data-rv-cnt') !== null) {
             var gf = rvGroups[+target.getAttribute('data-rv-cnt')];
             if (gf) { gf.count = e.key; rvCalcShow(); }
@@ -1181,6 +1466,7 @@
 
     syncActiveCols();
     syncAmpModeUI();
+    qlCalcShow();
     raf(function () { focusFirstCount(false); });
   };
 })();

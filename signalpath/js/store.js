@@ -91,7 +91,11 @@ SP.specString = function (d) {
     return /^\d+(\.\d+)?$/.test(v) ? v + u : v;
   }
   var parts = [];
-  if (d.type === 'amp' && s.power) parts.push(fmt(s.power, 'W'));
+  if (d.type === 'amp') {
+    if (s.power) parts.push(fmt(s.power, 'W') + '@8Ω');
+    if (s.power4) parts.push(fmt(s.power4, 'W') + '@4Ω');
+    if (s.ohms) parts.push('最低 ' + fmt(s.ohms, 'Ω'));
+  }
   if (d.type === 'speaker') {
     parts.push(s.powered === 'active' ? '有源' : '无源');
     if (s.ohms) parts.push(fmt(s.ohms, 'Ω'));
@@ -1277,8 +1281,8 @@ SP.Store = (function () {
       var ampInputs = [];
       var rowPlans = [];
       (plan.speakerRows || []).forEach(function (row, ri) {
-        var amps4 = makeDevicesFromTemplate(plan.amp4Tpl, row.a4 || 0);
-        var amps2 = makeDevicesFromTemplate(plan.amp2Tpl, row.a2 || 0);
+        var amps4 = makeDevicesFromTemplate(row.amp4Tpl || plan.amp4Tpl, row.a4 || 0);
+        var amps2 = makeDevicesFromTemplate(row.amp2Tpl || plan.amp2Tpl, row.a2 || 0);
         var amps = amps4.concat(amps2);
         /* 功放绑定音响行：清线后智能连接按行回配，保证功放-音响功率匹配 */
         amps.forEach(function (amp) { amp.reverseRow = ri + 1; });
@@ -1390,7 +1394,7 @@ SP.Store = (function () {
     var ratio = +opt.ratio || 1.5;
     var minOhms = +opt.minOhms || 4;
     var res = { rows: [], amp2N: 0, amp4N: 0, dspN: 0, ampInputs: 0,
-      warns: [], errors: [], channels: 0 };
+      warns: [], errors: [], channels: 0, totalNeedW: 0, totalLoadW: 0, totalSpeakerW: 0 };
     (rows || []).forEach(function (r) {
       var count = Math.max(0, +r.count || 0);
       if (!count) return;
@@ -1401,9 +1405,16 @@ SP.Store = (function () {
       if (!w) { res.errors.push(label + '：缺功率，无法反推'); return; }
       if (par > 1 && !ohm) { res.errors.push(label + '：并联必须填写阻抗'); return; }
       var loadW = w * par;                       /* 并联功率叠加 */
-      var loadOhm = ohm ? Math.round(ohm / par * 100) / 100 : 0;   /* 并联阻抗减半 */
-      var needW = Math.ceil(loadW * ratio);
+      var baseOhm = ohm || 8;                    /* 单只未填阻抗按 8Ω 标准箱计算 */
+      var loadOhm = Math.round(baseOhm / par * 100) / 100;   /* 并联阻抗减半 */
+      var rowRatio = +r.ratio || (((r.role || r.speakerRole) === 'sub') ? (+opt.subRatio || 2) : ratio);
+      var needLoadW = Math.ceil(loadW * rowRatio);  /* 实际负载侧功率（含余量） */
       var ch = Math.ceil(count / par);
+      /* 反推先把当前负载折算回 8Ω 标称口径，再乘余量：
+         单只功率 × 并联数量 ÷ 当前负载倍率 × 余量倍率。 */
+      var factor = ampImpedanceFactor(loadOhm);
+      var needRatedW = Math.ceil(loadW / factor * rowRatio);
+      var needW = needRatedW;
       if (loadOhm && loadOhm < minOhms) {
         res.warns.push('⚠ ' + label + '：并联后 ' + loadOhm + 'Ω 低于功放最低负载 ' +
           minOhms + 'Ω' + (minOhms === 4 ? '（可切换 2Ω 低阻机型）' : ''));
@@ -1414,24 +1425,50 @@ SP.Store = (function () {
       } else if (opt.ampMode === '4') {
         a4 = Math.ceil(ch / 4);
       } else {
-        a4 = Math.floor(ch / 4);
-        var rem = ch % 4;
-        if (rem === 3) a4 += 1;          /* 余 3 路补 1 台 4 通道 */
-        else if (rem > 0) a2 += 1;       /* 余 1-2 路补 1 台 2 通道 */
+        /* 搭配模式：先看功率是否合适；都合适或都不合适时优先 4 通道，只有
+           4 通道不够而 2 通道够时才回退到 2 通道。 */
+        function ampFits(rated8, rated4) {
+          if (!rated8 && !rated4) return false;
+          return ampRatedEquivalentPower({ power: rated8, power4: rated4 }, loadOhm) >= needRatedW;
+        }
+        var fit4 = ampFits(opt.amp4W, opt.amp4W4);
+        var fit2 = ampFits(opt.amp2W, opt.amp2W4);
+        if (fit4 || !fit2) a4 = Math.ceil(ch / 4);
+        else a2 = Math.ceil(ch / 2);
       }
-      if (a2 && opt.amp2W && opt.amp2W < needW) {
-        res.warns.push('⚠ 2通道功放功率不足：' + label + ' 需 ≥' + needW +
-          'W/通道，所选仅 ' + opt.amp2W + 'W');
+      function ohmNote() {
+        return loadOhm && loadOhm !== 8 ? '（' + loadOhm + 'Ω 负载折算）' : '';
       }
-      if (a4 && opt.amp4W && opt.amp4W < needW) {
-        res.warns.push('⚠ 4通道功放功率不足：' + label + ' 需 ≥' + needW +
-          'W/通道，所选仅 ' + opt.amp4W + 'W');
+      function ampEquiv(rated8, rated4) {
+        return ampRatedEquivalentPower({ power: rated8, power4: rated4 }, loadOhm);
+      }
+      function ampPickedNote(rated8, rated4) {
+        var r4 = powerNumber(rated4);
+        var equiv = ampEquiv(rated8, rated4);
+        if (r4 && loadOhm && loadOhm < 8 && loadOhm >= 4) {
+          return '，所选 4Ω 实标 ' + r4 + 'W（折算 @8Ω ' + equiv + 'W）';
+        }
+        return '，所选 8Ω 标称 ' + powerNumber(rated8) + 'W' + ohmNote();
+      }
+      /* 比较所选功放折算 @8Ω 后的功率与 needRatedW（4Ω实填优先折算）。 */
+      if (a2 && (opt.amp2W || opt.amp2W4) && ampEquiv(opt.amp2W, opt.amp2W4) < needRatedW) {
+        res.warns.push('⚠ 2通道功放功率不足：' + label + ' 需 8Ω标称 ≥' + needRatedW +
+          'W' + ampPickedNote(opt.amp2W, opt.amp2W4));
+      }
+      if (a4 && (opt.amp4W || opt.amp4W4) && ampEquiv(opt.amp4W, opt.amp4W4) < needRatedW) {
+        res.warns.push('⚠ 4通道功放功率不足：' + label + ' 需 8Ω标称 ≥' + needRatedW +
+          'W' + ampPickedNote(opt.amp4W, opt.amp4W4));
       }
       res.amp2N += a2;
       res.amp4N += a4;
       res.channels += ch;
-      res.rows.push({ name: label, needW: needW, ch: ch, loadW: loadW,
-        loadOhm: loadOhm, par: par, count: count, a2: a2, a4: a4 });
+      res.totalNeedW += needRatedW * ch;
+      res.totalLoadW += needLoadW * ch;
+      res.totalSpeakerW += w * count;
+      res.rows.push({ name: label, needW: needW, needRatedW: needRatedW, ch: ch,
+        needLoadW: needLoadW, loadW: loadW, loadOhm: loadOhm, factor: factor,
+        ohmScale: 1 / factor, ratio: rowRatio, role: r.role || r.speakerRole || '',
+        par: par, count: count, a2: a2, a4: a4 });
     });
     res.ampInputs = res.amp2N * 2 + res.amp4N * 4;
     /* 有源音响不参与功放反推，但占用 DSP（或调音台）线路输出通道 */
@@ -1650,10 +1687,96 @@ SP.Store = (function () {
       .reduce(function (a, b) { return Math.min(a, b); }, Infinity) || 0;
   }
 
+  /* ---------- 功放阻抗-功率换算 ----------
+     功放标称功率按 8Ω 计。2–16Ω 内连续折算：
+       16Ω → ×0.5，8Ω → ×1.0，4Ω → ×1.5，2Ω → ×2.0。
+     中间值（例如 6Ω）线性过渡；超出范围按 2Ω/16Ω 边界钳制。
+     若模板/设备填写了 4Ω 实际功率（specs.power4），4Ω 附近优先用实填值插值。 */
+  function ampImpedanceFactor(loadOhm) {
+    loadOhm = +loadOhm || 0;
+    if (!loadOhm) return 1;
+    if (loadOhm <= 2) return 2;
+    if (loadOhm < 4) return 2 - (loadOhm - 2) * 0.25;
+    if (loadOhm < 8) return 1.5 - (loadOhm - 4) * 0.125;
+    if (loadOhm < 16) return 1 - (loadOhm - 8) * 0.0625;
+    return 0.5;
+  }
+  function interp(a, b, t) { return a + (b - a) * t; }
+  /* 功放在给定负载阻抗下的可用功率（rated8 = 8Ω 标称；rated4 选填） */
+  function ampEffectivePower(rated8W, loadOhm, rated4W) {
+    var load = +loadOhm || 0;
+    var r8 = powerNumber(rated8W);
+    var r4 = powerNumber(rated4W);
+    if (load && r4 && load >= 4 && load < 8) {
+      if (r8) return Math.round(interp(r8, r4, (8 - load) / 4));
+      return Math.round(r4 * ampImpedanceFactor(load) / ampImpedanceFactor(4));
+    }
+    return Math.round(r8 * ampImpedanceFactor(load));
+  }
+  function ampEffectivePowerFromSpecs(specs, loadOhm) {
+    specs = specs || {};
+    return ampEffectivePower(specs.power, loadOhm, specs.power4);
+  }
+  /* 把功放在当前负载下的能力折算回 8Ω 标称口径，供反推选型使用。 */
+  function ampRatedEquivalentPower(specs, loadOhm) {
+    specs = specs || {};
+    var load = +loadOhm || 8;
+    var factor = ampImpedanceFactor(load);
+    return factor ? Math.round(ampEffectivePower(specs.power, load, specs.power4) / factor) : 0;
+  }
+  function ampRatedOhmFromSpecs(specs) {
+    var o = ohmsNumber(specs && specs.ohms);
+    return o || 4;
+  }
+  /* 功放额定阻抗（其可安全驱动的最低负载），默认 4Ω */
+  function ampRatedOhm(dev) {
+    return ampRatedOhmFromSpecs(dev && dev.specs);
+  }
+
+  /* 智能配接：从模板库挑最合适的功放。
+     opt.channels（2/4/空=任意）按通道过滤；opt.needRatedW = 达标所需 8Ω 标称功率。
+     4Ω 负载若填了 power4，会折算回 8Ω 口径参与排序。
+     选功率 ≥ 需求里最小的（最接近够用）；都不够则选最大的；无功率信息则第一台。 */
+  function pickAmpTemplate(templates, opt) {
+    opt = opt || {};
+    var ch = +opt.channels || 0;
+    var need = +opt.needRatedW || +opt.needW || 0;
+    var loadOhm = +opt.loadOhm || 0;
+    var cand = (templates || []).filter(function (t) {
+      if (!t || t.type !== 'amp') return false;
+      if (ch) {
+        var outs = Array.isArray(t.outs) ? t.outs.length : +t.outs || 0;
+        if (t.ins !== ch && outs !== ch) return false;
+      }
+      return true;
+    });
+    if (!cand.length) return null;
+    if (loadOhm) {
+      var safe = cand.filter(function (t) { return loadOhm >= ampRatedOhmFromSpecs(t.specs); });
+      if (safe.length) cand = safe;
+    }
+    function candPower(t) {
+      return loadOhm ? ampRatedEquivalentPower(t.specs, loadOhm) : powerNumber(t.specs && t.specs.power);
+    }
+    var target = need;
+    var withW = cand.filter(function (t) { return candPower(t) > 0; });
+    if (!withW.length) return cand[0];
+    var fit = null, fitW = Infinity, max = null, maxW = -1;
+    withW.forEach(function (t) {
+      var w = candPower(t);
+      if (w >= target && w < fitW) { fitW = w; fit = t; }
+      if (w > maxW) { maxW = w; max = t; }
+    });
+    if (!target) return max || fit || withW[0];
+    return fit || max;
+  }
+
   var POWER_ALARM_MODES = [
-    { key: 'speech', name: '会议 / 广播（人声）', min: 1.0, max: 1.3 },
-    { key: 'show', name: '商演 / 流行乐队 / KTV', min: 1.5, max: 2.0 },
-    { key: 'heavy', name: '电音 / 说唱 / 重金属 / 超低炮', min: 2.0, max: 4.0 }
+    { key: 'speech', name: '1.2 · 会议人声', factor: 1.2, min: 1.2 },
+    { key: 'show', name: '1.5 · 驻唱小场', factor: 1.5, min: 1.5 },
+    { key: 'band', name: '2 · 商演乐队', factor: 2, min: 2 },
+    { key: 'dj', name: '3 · DJ摇滚', factor: 3, min: 3 },
+    { key: 'electro', name: '4 · 电音超低', factor: 4, min: 4 }
   ];
 
   function powerAlarmMode(key) {
@@ -1697,7 +1820,8 @@ SP.Store = (function () {
     if (!speakers.length) return null;
 
     var mode = powerAlarmMode(modeKey || state.powerAlarmMode);
-    var ampW = powerNumber(amp.specs && amp.specs.power);
+    var ratedW = powerNumber(amp.specs && amp.specs.power);    /* 8Ω 标称 */
+    var rated4W = powerNumber(amp.specs && amp.specs.power4);  /* 4Ω 实填，选填 */
     var totalW = 0, invOhms = 0;
     var missingPower = [], missingOhms = [], hasSub = false;
     speakers.forEach(function (sp) {
@@ -1708,54 +1832,77 @@ SP.Store = (function () {
       if ((sp.speakerRole || 'fullrange') === 'sub') hasSub = true;
     });
     var loadOhms = (!missingOhms.length && invOhms > 0) ? 1 / invOhms : 0;
-    var minFactor = hasSub ? 2 : mode.min;
-    var maxFactor = hasSub ? 4 : mode.max;
+    /* 功放在当前负载阻抗下的可用功率（4Ω→×1.5 等）；阻抗未知时按标称 */
+    var factor = ampImpedanceFactor(loadOhms);
+    var ampW = loadOhms ? ampEffectivePower(ratedW, loadOhms, rated4W) : ratedW;
+    var usedRated4 = !!(rated4W && loadOhms && loadOhms < 8 && loadOhms >= 4);
+    var boosted = factor > 1 && (ratedW > 0 || rated4W > 0);
+    var minFactor = mode.factor || mode.min || 1.5;
     var minNeed = totalW ? totalW * minFactor : 0;
-    var maxNeed = totalW ? totalW * maxFactor : 0;
     var issues = [];
     function issue(level, text) { issues.push({ level: level, text: text }); }
 
-    if (!ampW) {
+    if (!ratedW) {
       issue('warn', '功放未填写功率，无法判断余量。');
     }
     if (missingPower.length) {
       issue('warn', '以下音箱未填写功率：' + missingPower.map(function (d) { return d.name; }).join('、'));
     }
     if (totalW && ampW) {
+      /* 用负载阻抗下的可用功率 ampW 比较（而非 8Ω 标称） */
       if (ampW < totalW) {
-        issue('error', '功放功率 ' + fmtPower(ampW) + ' 小于音箱总功率 ' + fmtPower(totalW) + '。');
+        issue('error', '功放功率 ' + fmtPower(ampW) +
+          (boosted ? '（' + fmtOhms(loadOhms) + '负载）' : '') +
+          ' 小于音箱总功率 ' + fmtPower(totalW) + '。');
       }
       if (ampW < minNeed) {
-        issue('error', '功放余量不足：' + mode.name + ' 建议至少 ×' + minFactor +
-          '，需要 ' + fmtPower(minNeed) + '。');
-      } else if (ampW > maxNeed) {
-        issue('warn', '功放高于建议上限 ×' + maxFactor + '（' + fmtPower(maxNeed) +
-          '），请设置 DSP RMS/PEAK Limit 做限幅保护。');
+        issue('error', '功放余量不足：' + mode.name + ' 最低需要 ×' + minFactor +
+          '，需要 ' + fmtPower(minNeed) +
+          (boosted ? '（当前 ' + fmtOhms(loadOhms) + ' 负载可用 ' + fmtPower(ampW) + '）' : '') + '。');
       }
     }
     if (speakers.length > 1 && missingOhms.length) {
       issue('warn', '并联负载缺少阻抗，无法完整计算：' +
         missingOhms.map(function (d) { return d.name; }).join('、'));
     }
-    if (loadOhms && loadOhms < 4) {
+    if (loadOhms && loadOhms < ampRatedOhm(amp)) {
       issue('error', (speakers.length > 1 ? '并联后' : '') + '负载阻抗 ' +
-        fmtOhms(loadOhms) + ' 小于 4Ω，请减少并联或更换功放/接法。');
+        fmtOhms(loadOhms) + ' 低于功放额定 ' + fmtOhms(ampRatedOhm(amp)) +
+        '，请减少并联或更换功放/接法。');
     }
     if (hasSub) {
-      issue('info', '含超低负载，默认按总功率 ×2～×4 选配，并严格设置限幅。');
+      issue('info', '含超低负载，请结合节目动态设置 DSP RMS/PEAK Limit。');
     }
 
     var errors = issues.filter(function (x) { return x.level === 'error'; }).length;
     var warns = issues.filter(function (x) { return x.level === 'warn'; }).length;
     return {
       amp: amp, sport: sport, mode: mode, speakers: speakers, hasSub: hasSub,
-      ampW: ampW, totalW: Math.round(totalW * 10) / 10,
+      ampW: ampW, ratedW: ratedW, rated4W: rated4W, factor: factor,
+      boosted: boosted, usedRated4: usedRated4,
+      totalW: Math.round(totalW * 10) / 10,
       loadOhms: loadOhms ? Math.round(loadOhms * 100) / 100 : 0,
-      minFactor: minFactor, maxFactor: maxFactor,
-      minNeed: Math.round(minNeed * 10) / 10, maxNeed: Math.round(maxNeed * 10) / 10,
+      minFactor: minFactor,
+      minNeed: Math.round(minNeed * 10) / 10,
       issues: issues, errors: errors, warnings: warns,
-      ok: !errors && !warns && !!ampW && !!totalW
+      ok: !errors && !warns && !!ratedW && !!totalW
     };
+  }
+
+  /* 功放各输出的负载概览（供设备栏详情/报告显示 4Ω 加成标注） */
+  function ampLoadSummary(ampId) {
+    var amp = getDevice(ampId);
+    if (!amp || amp.type !== 'amp') return [];
+    var out = [];
+    visibleOuts(amp).forEach(function (oi) {
+      var r = powerAlarmForOutput(amp.id, oi, state.powerAlarmMode);
+      if (!r || !r.speakers.length) return;
+      out.push({ port: oi, label: outLabelOf(amp, oi),
+        loadOhms: r.loadOhms, factor: r.factor, boosted: r.boosted,
+        ratedW: r.ratedW, rated4W: r.rated4W, usedRated4: r.usedRated4,
+        ampW: r.ampW, totalW: r.totalW, count: r.speakers.length });
+    });
+    return out;
   }
 
   function powerAlarmResults(modeKey) {
@@ -2052,7 +2199,9 @@ SP.Store = (function () {
     save();
   }
   function hasInPatch(inIdx, chIdx) {
-    var r = M().inPatch[inIdx];
+    var m = M();
+    if (!m.inPatch) normalizeMixer(m);
+    var r = m.inPatch[inIdx];
     return !!r && r.indexOf(chIdx) >= 0;
   }
   function resetInPatch() {
@@ -2251,6 +2400,14 @@ SP.Store = (function () {
     powerAlarmModes: POWER_ALARM_MODES,
     setPowerAlarmMode: setPowerAlarmMode,
     powerAlarmResults: powerAlarmResults,
+    powerAlarmForOutput: powerAlarmForOutput,
+    ampImpedanceFactor: ampImpedanceFactor,
+    ampEffectivePower: ampEffectivePower,
+    ampEffectivePowerFromSpecs: ampEffectivePowerFromSpecs,
+    ampRatedEquivalentPower: ampRatedEquivalentPower,
+    ampRatedOhm: ampRatedOhm,
+    ampLoadSummary: ampLoadSummary,
+    pickAmpTemplate: pickAmpTemplate,
     cableOf: cableOf,
     colorOf: colorOf,
     isSpeakerRun: isSpeakerRun,

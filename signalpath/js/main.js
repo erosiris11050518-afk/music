@@ -204,7 +204,8 @@
     var tpls = Store.state.deviceTemplates;
     var roleName = { linearray: '线阵列', fullrange: '全频', sub: '超低' };
     var spkRows = [['型号名称', '分支(全频/超低/线阵列)', '有源无源(有源/无源)', '输入路数', '输出路数', '功率W', '阻抗Ω', '尺寸（寸）']];
-    var ampRows = [['型号名称', '通道数(2或4)', '输入路数', '输出路数', '机柜U数', '功率W']];
+    var ampRows = [['型号名称', '通道数(2或4)', '输入路数', '输出路数', '机柜U数',
+      '功率W@8Ω', '4Ω功率W(选填)', '最低负载Ω(选填，默认4)']];
     var mixerRows = [['类型(调音台/DSP)', '型号名称', '输入路数', '输出路数', '机柜U数']];
     var dspRows = [['类型(调音台/DSP)', '型号名称', '输入路数', '输出路数', '机柜U数']];
     tpls.forEach(function (t) {
@@ -215,7 +216,8 @@
           s.powered === 'active' ? '有源' : '无源', t.ins || 1, outs || 1,
           s.power || '', s.powered === 'active' ? '' : (s.ohms || ''), s.size || '']);
       } else if (t.type === 'amp') {
-        ampRows.push([t.name, outs === 4 ? 4 : 2, t.ins || outs || 2, outs || t.ins || 2, s.rackU || '', s.power || '']);
+        ampRows.push([t.name, outs === 4 ? 4 : 2, t.ins || outs || 2, outs || t.ins || 2,
+          s.rackU || '', s.power || '', s.power4 || '', s.ohms || '']);
       } else if (t.type === 'mixer') {
         mixerRows.push(['调音台', t.name, t.ins, outs, s.rackU || '']);
       } else if (t.type === 'dsp') {

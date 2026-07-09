@@ -286,6 +286,21 @@
     });
   }
 
+  /* 功放推低阻负载（4Ω 等）时的特别标注；推 8Ω / 未接负载时不显示 */
+  function ampLoadBadgeHtml(dev) {
+    if (!dev || dev.type !== 'amp') return '';
+    var loads = Store.ampLoadSummary(dev.id).filter(function (x) { return x.boosted; });
+    if (!loads.length) return '';
+    return '<div class="amp-load-badge">' + loads.map(function (x) {
+      var src = x.usedRated4
+        ? '（4Ω实标 ' + x.rated4W + 'W）'
+        : '（额定 ' + x.ratedW + 'W@8Ω ×' + x.factor + '）';
+      return '<div class="amp-load-line"><b>' + esc(x.label) + '</b> 推 <b>' + x.loadOhms +
+        'Ω</b> 负载 · 可用 <b>' + x.ampW + 'W</b>' +
+        '<span class="cfg-hint">' + src + '</span></div>';
+    }).join('') + '</div>';
+  }
+
   /* --- 选中设备详情 --- */
   function renderDetail(host, dev) {
     var info = Store.typeInfo(dev.type);
@@ -299,9 +314,11 @@
     if (dev.type === 'amp') {
       specHtml =
         '<div class="insp-grid2">' +
-        '<div class="cfg-field"><label>功率 W</label><input type="text" data-spec="power" value="' + esc(s.power || '') + '" placeholder="如 800"></div>' +
+        '<div class="cfg-field"><label>功率 W <em class="cfg-hint">@8Ω</em></label><input type="text" data-spec="power" value="' + esc(s.power || '') + '" placeholder="如 800"></div>' +
+        '<div class="cfg-field"><label>4Ω功率 W <em class="cfg-hint">选填，空=8Ω×1.5</em></label><input type="text" data-spec="power4" value="' + esc(s.power4 || '') + '" placeholder="如 1200"></div>' +
+        '<div class="cfg-field"><label>最低负载 Ω <em class="cfg-hint">选填，默认4</em></label><input type="text" data-spec="ohms" value="' + esc(s.ohms || '') + '" placeholder="如 4 / 2"></div>' +
         '<div class="cfg-field"><label>机柜 U 数</label><input type="number" data-spec="rackU" min="0" max="20" step="0.5" value="' + esc(s.rackU || '') + '" placeholder="如 2"></div>' +
-        '</div>';
+        '</div>' + ampLoadBadgeHtml(dev);
     } else if (dev.type === 'speaker') {
       specHtml =
         '<div class="insp-grid2">' +
@@ -704,7 +721,23 @@
   /* CSV 批量导入（模块级，添加设备弹窗与模板面板共用）。
      表头自动识别：通道数→功放；分支/阻抗→音响；类型(→调音台/DSP */
   /* 纯解析：文本 → { templates:[], skipped:n } ；表头无法识别返回 null（不做任何提示/写库）*/
-  SP.parseTemplatesFromText = function (text) {
+  /* 从文件名推断类目（供文件夹里按类目命名的单表 CSV 用）：有源优先匹配 */
+  SP.catFromFilename = function (name) {
+    name = String(name || '');
+    if (/全频有源|有源全频/.test(name)) return 'afullrange';
+    if (/超低有源|有源超低/.test(name)) return 'asub';
+    if (/线阵/.test(name)) return 'linearray';
+    if (/全频/.test(name)) return 'fullrange';
+    if (/超低|低音/.test(name)) return 'sub';
+    if (/功放/.test(name)) return 'amp';
+    if (/DSP|dsp/.test(name)) return 'dsp';
+    if (/调音台/.test(name)) return 'mixer';
+    return null;
+  };
+
+  /* opt.catHint：内容缺“类别/类型”列时，按文件名给出的类目强制解析每一行 */
+  SP.parseTemplatesFromText = function (text, opt) {
+    opt = opt || {};
     text = String(text || '');
     var rows = /<Workbook[\s>]/i.test(text) && /<Worksheet\b/i.test(text)
       ? SP.templateWorkbookRowsFromXml(text)
@@ -725,6 +758,65 @@
       var i = col(names, fallback);
       return i >= 0 ? String(r[i] || '').trim() : '';
     }
+    function power8Val(r, fallback) {
+      return val(r, ['功率W@8Ω', '8Ω功率W', '8欧姆功率', '功率W'], fallback);
+    }
+    function power4Val(r, fallback) {
+      return val(r, ['4Ω功率W', '功率W@4Ω', '4欧姆功率'], fallback);
+    }
+    function ampOhmsVal(r, fallback) {
+      return val(r, ['最低负载Ω', '最低阻抗Ω', '额定阻抗Ω', '阻抗Ω', '阻抗'], fallback);
+    }
+
+    /* 单类目强制解析（文件夹里 全频.csv / 功放.csv / DSP.csv 这类按类目命名的表） */
+    function forcedTemplate(catKey, r) {
+      var name = val(r, '型号名称', 0);
+      if (!name) return null;
+      var ins = Math.max(1, parseInt(val(r, '输入路数', 1), 10) || 1);
+      var outs = Math.max(0, parseInt(val(r, '输出路数', 2), 10) || 0);
+      var rackU = val(r, ['机柜U数', '机柜 U 数', 'U数'], -1);
+      var power = power8Val(r, -1);
+      var power4 = power4Val(r, -1);
+      var ohms = val(r, ['阻抗Ω', '阻抗'], -1);
+      var size = val(r, ['尺寸（寸）', '尺寸'], -1);
+      if (catKey === 'amp') {
+        var ch = parseInt(val(r, '通道数', -1), 10) || 0;
+        var ain = Math.max(1, parseInt(val(r, '输入路数', -1), 10) || ch || 2);
+        var aout = Math.max(1, parseInt(val(r, '输出路数', -1), 10) || ch || ain);
+        var at = { type: 'amp', name: name, ins: ain, outs: aout, specs: {} };
+        if (power) at.specs.power = power;
+        if (power4) at.specs.power4 = power4;
+        var ao = ampOhmsVal(r, -1);
+        if (ao) at.specs.ohms = ao;
+        if (rackU) at.specs.rackU = rackU;
+        return at;
+      }
+      if (catKey === 'dsp' || catKey === 'mixer') {
+        var mt = { type: catKey, name: name,
+          ins: ins || (catKey === 'dsp' ? 4 : 16), outs: outs || 8, specs: {} };
+        if (rackU) mt.specs.rackU = rackU;
+        return mt;
+      }
+      var active = catKey === 'afullrange' || catKey === 'asub';
+      var role = catKey === 'linearray' ? 'linearray'
+        : (catKey === 'sub' || catKey === 'asub') ? 'sub' : 'fullrange';
+      var st = { type: 'speaker', name: name, ins: ins || 1, outs: outs || 1,
+        speakerRole: role, specs: { powered: active ? 'active' : 'passive' } };
+      if (power) st.specs.power = power;
+      if (!active && ohms) st.specs.ohms = ohms;
+      if (size) st.specs.size = size;
+      return st;
+    }
+    /* 仅当内容本身不带类目列时才套用文件名类目，避免覆盖总表/多 sheet 数据 */
+    if (opt.catHint && head.indexOf('型号名称') >= 0 &&
+        head.indexOf('类别') < 0 && head.indexOf('类型(') < 0) {
+      var fout = [], fskip = 0;
+      rows.slice(1).forEach(function (r) {
+        var ft = forcedTemplate(opt.catHint, r);
+        if (ft) fout.push(ft); else fskip++;
+      });
+      return { templates: fout, skipped: fskip };
+    }
     function totalRowTemplate(r) {
       var cat = val(r, ['类别', '类型'], 0);
       var name = val(r, '型号名称', 1);
@@ -732,13 +824,17 @@
       var ins = Math.max(1, parseInt(val(r, '输入路数', 2), 10) || 1);
       var outs = Math.max(0, parseInt(val(r, '输出路数', 3), 10) || 0);
       var rackU = val(r, ['机柜U数', '机柜 U 数', 'U数'], 4);
-      var power = val(r, '功率W', 5);
-      var ohms = val(r, ['阻抗Ω', '阻抗'], 6);
-      var size = val(r, ['尺寸（寸）', '尺寸'], 7);
+      var power = power8Val(r, 5);
+      var power4 = power4Val(r, -1);
+      var ohms = val(r, ['阻抗Ω', '阻抗'], 7);
+      var size = val(r, ['尺寸（寸）', '尺寸'], 8);
       var t;
       if (/功放/.test(cat)) {
         t = { type: 'amp', name: name, ins: ins || outs || 2, outs: outs || ins || 2, specs: {} };
         if (power) t.specs.power = power;
+        if (power4) t.specs.power4 = power4;
+        var minO = ampOhmsVal(r, 7);
+        if (minO) t.specs.ohms = minO;
         if (rackU) t.specs.rackU = rackU;
       } else if (/DSP|dsp/.test(cat)) {
         t = { type: 'dsp', name: name, ins: ins || 4, outs: outs || 8, specs: {} };
@@ -787,9 +883,13 @@
           var ain = Math.max(1, hasAmpIn ? (parseInt(val(r, '输入路数', -1), 10) || ch || 2) : (ch || 2));
           var aout = Math.max(1, hasAmpOut ? (parseInt(val(r, '输出路数', -1), 10) || ch || ain) : (ch || ain));
           t = { type: 'amp', name: name, ins: ain, outs: aout, specs: {} };
-          var ap = val(r, '功率W', -1);
+          var ap = power8Val(r, -1);
+          var ap4 = power4Val(r, -1);
+          var aohm = ampOhmsVal(r, -1);
           var au = val(r, ['机柜U数', '机柜 U 数', 'U数'], -1);
           if (ap) t.specs.power = ap;
+          if (ap4) t.specs.power4 = ap4;
+          if (aohm) t.specs.ohms = aohm;
           if (au) t.specs.rackU = au;
         } else {
           var roleTx = val(r, '分支', 1);
@@ -798,7 +898,7 @@
           var sout = Math.max(0, col('输出路数', -1) >= 0 ? (parseInt(val(r, '输出路数', -1), 10) || 1) : 1);
           t = { type: 'speaker', name: name, ins: sin, outs: sout, speakerRole: role, specs: {} };
           t.specs.powered = /有源/.test(val(r, '有源无源', 2)) ? 'active' : 'passive';
-          var sp = val(r, '功率W', -1);
+          var sp = power8Val(r, -1);
           var so = val(r, ['阻抗Ω', '阻抗'], -1);
           var ss = val(r, ['尺寸（寸）', '尺寸'], -1);
           if (sp) t.specs.power = sp;
@@ -839,15 +939,24 @@
     var texts = [], done = 0;
     files.forEach(function (f, idx) {
       var reader = new FileReader();
-      reader.onload = function () { texts[idx] = reader.result; finish(); };
-      reader.onerror = function () { texts[idx] = ''; finish(); };
+      reader.onload = function () { texts[idx] = { text: reader.result, name: f.name }; finish(); };
+      reader.onerror = function () { texts[idx] = { text: '', name: f.name }; finish(); };
       reader.readAsText(f, 'utf-8');
     });
     function finish() {
       if (++done < files.length) return;
       var all = [], skipped = 0, okFiles = 0, badFiles = 0;
-      texts.forEach(function (txt) {
-        var parsed = SP.parseTemplatesFromText(txt);
+      texts.forEach(function (item) {
+        /* 先按内容识别；不认（如按类目命名的 功放.csv/DSP.csv）再用文件名类目强制解析 */
+        var hint = SP.catFromFilename(item.name);
+        var parsed = SP.parseTemplatesFromText(item.text);
+        if ((parsed === null || !parsed.templates.length) && hint) {
+          parsed = SP.parseTemplatesFromText(item.text, { catHint: hint });
+        } else if (parsed && parsed.templates.length && hint) {
+          /* 内容能解析但文件名类目更权威（如 超低.csv 内容会被误判为全频）：以文件名类目为准 */
+          var forced = SP.parseTemplatesFromText(item.text, { catHint: hint });
+          if (forced && forced.templates.length) parsed = forced;
+        }
         if (parsed === null) { badFiles++; return; }
         okFiles++;
         all = all.concat(parsed.templates);
@@ -948,8 +1057,8 @@
         columns: ['型号名称', '输入路数', '输出路数', '功率W', '尺寸（寸）'],
         rows: [['有源超低18', '1', '1', '1200', '18']] },
       { name: '功放',
-        columns: ['型号名称', '输入路数', '输出路数', '机柜U数', '功率W'],
-        rows: [['四通道功放', '4', '4', '2', '900']] },
+        columns: ['型号名称', '输入路数', '输出路数', '机柜U数', '功率W@8Ω', '4Ω功率W(选填)', '最低负载Ω(选填，默认4)'],
+        rows: [['四通道功放', '4', '4', '2', '900', '', '4']] },
       { name: 'DSP',
         columns: ['型号名称', '输入路数', '输出路数', '机柜U数'],
         rows: [['Unit48', '4', '8', '1']] },
@@ -975,20 +1084,24 @@
     function totalRow(sheet, r) {
       if (!r.join('').trim()) return null;
       if (sheet === '全频' || sheet === '超低') {
-        return [sheet, r[0] || '', r[1] || '1', r[2] || '1', '', r[3] || '', r[4] || '', r[5] || ''];
+        return [sheet, r[0] || '', r[1] || '1', r[2] || '1', '',
+          r[3] || '', '', r[4] || '', r[5] || ''];
       }
       if (sheet === '全频有源' || sheet === '超低有源') {
-        return [sheet, r[0] || '', r[1] || '1', r[2] || '1', '', r[3] || '', '', r[4] || ''];
+        return [sheet, r[0] || '', r[1] || '1', r[2] || '1', '',
+          r[3] || '', '', '', r[4] || ''];
       }
       if (sheet === '功放') {
-        return [sheet, r[0] || '', r[1] || '2', r[2] || '2', r[3] || '', r[4] || '', '', ''];
+        return [sheet, r[0] || '', r[1] || '2', r[2] || '2', r[3] || '',
+          r[4] || '', r[5] || '', r[6] || '', ''];
       }
       if (sheet === 'DSP' || sheet === '调音台') {
-        return [sheet, r[0] || '', r[1] || '', r[2] || '', r[3] || '', '', '', ''];
+        return [sheet, r[0] || '', r[1] || '', r[2] || '', r[3] || '', '', '', '', ''];
       }
       return null;
     }
-    var rows = [['类别', '型号名称', '输入路数', '输出路数', '机柜U数', '功率W', '阻抗Ω', '尺寸（寸）']];
+    var rows = [['类别', '型号名称', '输入路数', '输出路数', '机柜U数',
+      '功率W@8Ω', '4Ω功率W(选填)', '阻抗Ω', '尺寸（寸）']];
     var sh, sheetRe = /<Worksheet\b[^>]*(?:ss:)?Name="([^"]+)"[^>]*>([\s\S]*?)<\/Worksheet>/g;
     while ((sh = sheetRe.exec(String(text || '')))) {
       var sheetName = u(sh[1]);
@@ -1146,8 +1259,9 @@
       var s = t.specs || {};
       var a = [t.ins + '进' + outsOfTpl(t) + '出'];
       if (s.rackU) a.push(s.rackU + 'U');
-      if (s.power) a.push(s.power + 'W');
-      if (s.ohms) a.push(s.ohms + 'Ω');
+      if (s.power) a.push(t.type === 'amp' ? (s.power + 'W@8Ω') : (s.power + 'W'));
+      if (t.type === 'amp' && s.power4) a.push(s.power4 + 'W@4Ω');
+      if (s.ohms) a.push((t.type === 'amp' ? '最低 ' : '') + s.ohms + 'Ω');
       if (s.size) a.push('尺寸 ' + s.size);
       if (t.type === 'speaker') a.push(s.powered === 'active' ? '有源' : '无源');
       return a.join(' · ');
@@ -1156,9 +1270,10 @@
       var c = catForTemplate(t);
       var s = t.specs || {};
       return [c.title, t.name, t.ins || '', outsOfTpl(t) || '', s.rackU || '',
-        s.power || '', s.powered === 'active' ? '' : (s.ohms || ''), s.size || ''];
+        s.power || '', t.type === 'amp' ? (s.power4 || '') : '',
+        s.powered === 'active' ? '' : (s.ohms || ''), s.size || ''];
     }
-    function makeTemplate(c, name, ins, outs, rackU, power, ohms, size) {
+    function makeTemplate(c, name, ins, outs, rackU, power, power4, ohms, size) {
       var t;
       ins = Math.max(1, parseInt(ins, 10) || (c.type === 'dsp' ? 4 : c.type === 'mixer' ? 16 : 1));
       outs = Math.max(0, parseInt(outs, 10) || (c.type === 'dsp' ? 8 : c.type === 'mixer' ? 8 : c.type === 'amp' ? ins : 1));
@@ -1171,6 +1286,8 @@
         t = { type: 'amp', name: name, ins: ins, outs: outs, specs: {} };
         if (rackU) t.specs.rackU = rackU;
         if (power) t.specs.power = power;
+        if (power4) t.specs.power4 = power4;
+        if (ohms) t.specs.ohms = ohms;
       } else {
         t = { type: 'speaker', name: name, ins: ins, outs: outs,
           speakerRole: c.role, specs: { powered: c.active ? 'active' : 'passive' } };
@@ -1187,14 +1304,17 @@
       var outs = (row.querySelector('[data-cap-outs]').value || '').trim();
       var rackU = (row.querySelector('[data-cap-u]').value || '').trim();
       var power = (row.querySelector('[data-cap-power]').value || '').trim();
+      var power4El = row.querySelector('[data-cap-power4]');
+      var power4 = (power4El && power4El.value || '').trim();
       var ohms = (row.querySelector('[data-cap-ohms]').value || '').trim();
       var size = (row.querySelector('[data-cap-size]').value || '').trim();
-      if (![name, ins, outs, rackU, power, ohms, size].join('').trim()) return null;
+      if (![name, ins, outs, rackU, power, power4, ohms, size].join('').trim()) return null;
       if (!name || !cat) return null;
-      return makeTemplate(cat, name, ins, outs, rackU, power, ohms, size);
+      return makeTemplate(cat, name, ins, outs, rackU, power, power4, ohms, size);
     }
     function totalHeader() {
-      return ['类别', '型号名称', '输入路数', '输出路数', '机柜U数', '功率W', '阻抗Ω', '尺寸（寸）'];
+      return ['类别', '型号名称', '输入路数', '输出路数', '机柜U数',
+        '功率W@8Ω', '4Ω功率W(选填)', '阻抗Ω', '尺寸（寸）'];
     }
     function sampleRows() {
       return [
@@ -1202,9 +1322,9 @@
         ['超低', 'SUB218', '1', '1', '', '1000', '4', '18'],
         ['全频有源', '有源双6寸', '1', '1', '', '350', '', '双6寸'],
         ['超低有源', '有源超低18', '1', '1', '', '1200', '', '18'],
-        ['功放', '四通道功放', '4', '4', '2', '900', '', ''],
-        ['DSP', 'Unit48', '4', '8', '1', '', '', ''],
-        ['调音台', 'WING RACK', '16', '8', '3', '', '', '']
+        ['功放', '四通道功放', '4', '4', '2', '900', '', '4', ''],
+        ['DSP', 'Unit48', '4', '8', '1', '', '', '', ''],
+        ['调音台', 'WING RACK', '16', '8', '3', '', '', '', '']
       ];
     }
     function navHtml() {
@@ -1247,10 +1367,12 @@
     function importHtml() {
       return '<section class="tplp-section"><h4>导出导入</h4>' +
         '<p class="cfg-note">「模板库导出」把当前整体模板库存为一个 JSON 文件；「模板库导入」可选择覆盖或合并；' +
-        '「批量导入CSV」可选择一个文件夹，自动识别其中所有符合填写标准的 CSV 并查重合并入库。</p>' +
+        '「导入CSV模板」直接读入一个「下载填写模版表」（.xls / .csv）并合并入库；' +
+        '「批量导入CSV」选一个文件夹，自动识别其中全部 CSV（按类目命名的单表也可识别）并查重合并入库。</p>' +
         '<div class="tplp-actions">' +
         '<button class="btn primary sm" id="tplp-lib-out">模板库导出</button>' +
         '<button class="btn ghost sm" id="tplp-lib-in">模板库导入</button>' +
+        '<button class="btn ghost sm" id="tplp-csv-single">导入CSV模板</button>' +
         '<button class="btn ghost sm" id="tplp-csv-folder">批量导入CSV（选文件夹）</button>' +
         '</div></section>';
     }
@@ -1288,6 +1410,7 @@
           '<td><input data-cap-outs type="number" value="' + d.outputs.length + '"></td>' +
           '<td><input data-cap-u value="' + esc(s.rackU || '') + '"></td>' +
           '<td><input data-cap-power value="' + esc(s.power || '') + '"></td>' +
+          '<td><input data-cap-power4 value="' + esc(c.type === 'amp' ? (s.power4 || '') : '') + '"' + (c.type === 'amp' ? '' : ' disabled') + '></td>' +
           '<td><input data-cap-ohms value="' + esc(c.active ? '' : (s.ohms || '')) + '"' + (c.active ? ' disabled' : '') + '></td>' +
           '<td><input data-cap-size value="' + esc(s.size || '') + '"></td>' +
           '<td class="cap-status">' + (complete ? '<span class="tag ok">完整</span>' : '<span class="tag warn">待补全</span>') + '</td></tr>';
@@ -1302,7 +1425,7 @@
         '</div>' +
         '<div class="tpl-capture-wrap"><table class="mini-table tpl-capture-table"><thead><tr>' +
         '<th></th>' + totalHeader().map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '<th>状态</th>' +
-        '</tr></thead><tbody>' + (rows || '<tr><td colspan="10" class="cfg-note">当前画布没有设备。</td></tr>') +
+        '</tr></thead><tbody>' + (rows || '<tr><td colspan="11" class="cfg-note">当前画布没有设备。</td></tr>') +
         '</tbody></table></div><div class="tplp-actions">' +
         '<button class="btn primary sm" id="tplp-capture-merge">确认加入模板库</button></div></section>';
     }
@@ -1333,7 +1456,9 @@
           '<div class="cfg-field"><label>输入路数</label><input type="number" id="tf-ins" min="1" max="4" value="' + esc(t ? t.ins : 2) + '"></div>' +
           '<div class="cfg-field"><label>输出路数（2或4）</label><select id="tf-outs"><option value="2"' + (!t || outsOfTpl(t) !== 4 ? ' selected' : '') + '>2</option><option value="4"' + (t && outsOfTpl(t) === 4 ? ' selected' : '') + '>4</option></select></div>' +
           '<div class="cfg-field"><label>机柜U数</label><input type="number" id="tf-u" min="0" step="0.5" value="' + esc(s.rackU || '') + '" placeholder="选填"></div>' +
-          '<div class="cfg-field"><label>功率 W</label><input type="number" id="tf-w" min="0" value="' + esc(s.power || '') + '" placeholder="如 900"></div></div>';
+          '<div class="cfg-field"><label>功率 W @8Ω</label><input type="number" id="tf-w" min="0" value="' + esc(s.power || '') + '" placeholder="如 900"></div>' +
+          '<div class="cfg-field"><label>4Ω功率 W（选填）</label><input type="number" id="tf-w4" min="0" value="' + esc(s.power4 || '') + '" placeholder="空=8Ω×1.5"></div>' +
+          '<div class="cfg-field"><label>最低负载 Ω（选填）</label><input type="number" id="tf-ohm" min="0" value="' + esc(s.ohms || '') + '" placeholder="默认4"></div></div>';
       } else {
         f += '<div class="cfg-inline">' +
           '<div class="cfg-field"><label>输入路数</label><input type="number" id="tf-ins" min="1" max="8" value="' + esc(t ? t.ins : 1) + '"></div>' +
@@ -1388,7 +1513,8 @@
       function v(id) { var x = el(id); return x ? String(x.value || '').trim() : ''; }
       var name = v('tf-name');
       if (!name) { SP.toast('请填写型号名称', true); return; }
-      var t = makeTemplate(c, name, v('tf-ins'), v('tf-outs'), v('tf-u'), v('tf-w'), v('tf-ohm'), v('tf-size'));
+      var t = makeTemplate(c, name, v('tf-ins'), v('tf-outs'), v('tf-u'),
+        v('tf-w'), v('tf-w4'), v('tf-ohm'), v('tf-size'));
       remember();
       if (editIdx >= 0 && Store.state.deviceTemplates[editIdx]) {
         Store.updateDeviceTemplate(editIdx, t);
@@ -1464,7 +1590,9 @@
         SP.downloadTemplateWorkbook();
       };
 
-      /* 导入导出：批量导入CSV（文件夹）/ 模板库导入（覆盖或合并）/ 模板库导出 */
+      /* 导入导出：模板库导出/导入 · 导入CSV模板（单文件）· 批量导入CSV（文件夹） */
+      var csvSingleBtn = el('tplp-csv-single');
+      if (csvSingleBtn) csvSingleBtn.onclick = function () { SP.pickCsvImport(render); };
       var csvFolderBtn = el('tplp-csv-folder');
       if (csvFolderBtn) csvFolderBtn.onclick = function () { SP.pickCsvFolder(render); };
       var libIn = el('tplp-lib-in');
@@ -1648,7 +1776,7 @@
       '<button class="btn primary sm" id="csv-upload">选择填好的 CSV 导入…</button>' +
       '</div>' +
       '<p class="cfg-note">音响列：型号名称 / 分支(全频·超低·线阵列) / 有源无源 / 功率W / 阻抗Ω / 尺寸（寸）<br>' +
-      '功放列：型号名称 / 通道数(2或4) / 功率W / U数。缺型号名或数值非法的行会跳过并汇总提示。</p>' +
+      '功放列：型号名称 / 通道数(2或4) / 功率W@8Ω / 4Ω功率W(选填) / 最低负载Ω(选填，默认4) / U数。缺型号名或数值非法的行会跳过并汇总提示。</p>' +
       '</div>' +
 
       '<div id="add-pane-tpl">' +
@@ -1670,6 +1798,8 @@
       '<div class="cfg-field"><label>输出路数</label><input type="number" id="tplf-outs" min="0" max="128" value="2"></div>' +
       '<div class="cfg-field"><label>机柜 U 数</label><input type="number" id="tplf-racku" min="0" max="20" step="0.5" placeholder="选填"></div>' +
       '<div class="cfg-field"><label>功率 W</label><input type="text" id="tplf-power" placeholder="功放/有源音箱填"></div>' +
+      '<div class="cfg-field" id="tplf-power4-wrap" style="display:none"><label>4Ω功率 W（选填）</label><input type="text" id="tplf-power4" placeholder="空=8Ω×1.5"></div>' +
+      '<div class="cfg-field" id="tplf-ohms-wrap" style="display:none"><label>最低负载 Ω（选填）</label><input type="text" id="tplf-ohms" placeholder="默认4"></div>' +
       '</div>' +
       '<div style="display:flex;gap:8px;margin-bottom:12px">' +
       '<button class="btn primary sm" id="tplf-save">保存型号</button>' +
@@ -1733,8 +1863,8 @@
     });
     el('csv-dl-amp').addEventListener('click', function () {
       SP.csvDownload('signalpath-功放填写模板.csv', [
-        ['型号名称', '通道数(2或4)', '功率W', 'U数'],
-        ['FA900', '4', '900', '2']
+        ['型号名称', '通道数(2或4)', '功率W@8Ω', '4Ω功率W(选填)', '最低负载Ω(选填，默认4)', 'U数'],
+        ['FA900', '4', '900', '', '4', '2']
       ]);
     });
 
@@ -1756,6 +1886,12 @@
     /* --- 模板新增 / 编辑（编辑保存后可同步到实例） --- */
     var editingTpl = -1;
 
+    function syncTplfAmpFields(type) {
+      var on = type === 'amp';
+      if (el('tplf-power4-wrap')) el('tplf-power4-wrap').style.display = on ? '' : 'none';
+      if (el('tplf-ohms-wrap')) el('tplf-ohms-wrap').style.display = on ? '' : 'none';
+    }
+
     function showTplForm(idx) {
       editingTpl = idx;
       var t = idx >= 0 ? tpls[idx] : null;
@@ -1772,6 +1908,9 @@
         el('tplf-outs').value = Array.isArray(t.outs) ? t.outs.length : t.outs;
         el('tplf-racku').value = (t.specs && t.specs.rackU) || '';
         el('tplf-power').value = (t.specs && t.specs.power) || '';
+        el('tplf-power4').value = (t.specs && t.specs.power4) || '';
+        el('tplf-ohms').value = (t.specs && t.specs.ohms) || '';
+        syncTplfAmpFields(t.type);
       } else {
         el('tplf-type').value = 'mixer';
         el('tplf-speaker-wrap').style.display = 'none';
@@ -1780,6 +1919,9 @@
         el('tplf-outs').value = 2;
         el('tplf-racku').value = '';
         el('tplf-power').value = '';
+        el('tplf-power4').value = '';
+        el('tplf-ohms').value = '';
+        syncTplfAmpFields('mixer');
       }
       el('tpl-form').style.display = '';
     }
@@ -1803,6 +1945,7 @@
     el('tplf-type').addEventListener('change', function () {
       el('tplf-newtype-wrap').style.display = this.value === '__new__' ? '' : 'none';
       el('tplf-speaker-wrap').style.display = this.value === 'speaker' ? '' : 'none';
+      syncTplfAmpFields(this.value);
       if (this.value === 'speaker') {
         el('tplf-ins').value = 1;
         el('tplf-outs').value = 1;
@@ -1825,8 +1968,17 @@
       t.specs = Object.assign({}, old && old.specs);
       var u = el('tplf-racku').value.trim();
       var pw = el('tplf-power').value.trim();
+      var pw4 = el('tplf-power4').value.trim();
+      var ohm = el('tplf-ohms').value.trim();
       if (u) t.specs.rackU = u; else delete t.specs.rackU;
       if (pw) t.specs.power = pw; else delete t.specs.power;
+      if (type === 'amp') {
+        if (pw4) t.specs.power4 = pw4; else delete t.specs.power4;
+        if (ohm) t.specs.ohms = ohm; else delete t.specs.ohms;
+      } else {
+        delete t.specs.power4;
+        if (type !== 'speaker') delete t.specs.ohms;
+      }
       if (type === 'speaker') {
         t.speakerRole = el('tplf-role').value || 'fullrange';
         t.specs.powered = el('tplf-powered').value === 'active' ? 'active' : 'passive';
@@ -1966,6 +2118,11 @@
         ampInfo = '档位 ' + (sp.gain || '未填') + ' · ' +
           (s.specs && s.specs.grounded ? '接地' : '不接地') +
           ' · ' + (mode === 'B' ? 'B桥接' : mode + '档');
+        /* 推低阻负载时标注负载阻抗与可用功率 */
+        var la = Store.powerAlarmForOutput(s.id, c.sport);
+        if (la && la.boosted) {
+          ampInfo += ' · ' + la.loadOhms + 'Ω 可用 ' + la.ampW + 'W';
+        }
       }
       var cable = Store.cableOf(c);
       var cableOpts = SP.CABLE_TYPES.map(function (ct) {
@@ -2079,7 +2236,7 @@
         modes.map(function (m) {
           return '<button class="' + (m.key === res.mode.key ? 'on' : '') +
             '" data-power-mode="' + m.key + '">' + esc(m.name) +
-            '<small>×' + m.min + '–×' + m.max + '</small></button>';
+            '<small>最低 ×' + (m.factor || m.min) + '</small></button>';
         }).join('') + '</div>';
       var summary = '<div class="power-summary">' +
         '<span class="bad">报警 ' + res.summary.errors + '</span>' +
@@ -2091,7 +2248,7 @@
           '<div class="empty-hint">没有检测到「功放 → 无源音箱」的连接。<br>填好功放功率、音箱功率和阻抗后再检查。</div>';
       } else {
         body.innerHTML = modeHtml + summary +
-          '<p class="cfg-note">按每个功放输出口计算：link / 并联音箱会合并总功率；阻抗按并联公式计算。含超低负载时默认按 ×2–×4 选配并提示限幅。</p>' +
+          '<p class="cfg-note">按每个功放输出口计算：link / 并联音箱会合并总功率；阻抗按并联公式计算。只检查是否达到当前余量倍率的最低需求，达到后不再报警。</p>' +
           '<div class="power-alarm-list">' + res.rows.map(function (r) {
             var st = statusOf(r);
             var spkNames = r.speakers.map(function (d) { return d.name; }).join('、');
@@ -2109,7 +2266,7 @@
               '<span>负载：' + esc(spkNames) + '</span>' +
               '<span>音箱总功率 <b>' + fmtW(r.totalW) + '</b></span>' +
               '<span>功放功率 <b>' + fmtW(r.ampW) + '</b></span>' +
-              '<span>建议 <b>' + fmtW(r.minNeed) + ' – ' + fmtW(r.maxNeed) + '</b></span>' +
+              '<span>最低需求 <b>' + fmtW(r.minNeed) + '</b></span>' +
               '<span>等效阻抗 <b>' + fmtOhm(r.loadOhms) + '</b></span>' +
               '</div>' + issues +
               '</div>';
@@ -2189,5 +2346,17 @@
     };
     var clearBtn = el('btn-clear-all-wires-diagram');
     if (clearBtn) clearBtn.addEventListener('click', SP.clearAllWiresPrompt);
+
+    SP.clearDiagramDevicesPrompt = function () {
+      var n = Store.clearAllDevices();
+      if (!n) { SP.toast('当前设备连线图没有设备', true); return; }
+      SP.selectedDeviceId = '';
+      SP.multiSelected = [];
+      SP.diagramScope = 'all';
+      SP.renderAll();
+      SP.toast('已清空当前设备连线图 ' + n + ' 台设备（⌘Z 可撤销）');
+    };
+    var clearDevBtn = el('btn-clear-devices-diagram');
+    if (clearDevBtn) clearDevBtn.addEventListener('click', SP.clearDiagramDevicesPrompt);
   });
 })();

@@ -168,6 +168,18 @@ Chrome MCP 扩展连不上，**浏览器可视回归一直靠用户人工验证*
   min(1280px, 100vw-32px)、max-height 94vh；≤900px 自动堆叠。
 - Shift 逻辑未动（用户确认正常）。
 
+## v2.7 模板 CSV 导入增强（本轮）
+
+- **导出导入区新增「导入CSV模板」单文件按钮**（tplp-csv-single → SP.pickCsvImport → csv-import-file
+  单文件 → SP.importCsvTemplates）：直接读一个「下载填写模版表」(.xls SpreadsheetML / .csv) 合并入库。
+  已用用户提供的 ErosIris-Link+…-模板总表.xls 验证：36 个型号一次导入。
+- **文件夹批量导入按文件名推断类目**（SP.catFromFilename）：从工作簿拆出的单表 CSV
+  （超低.csv / 功放.csv / DSP.csv / 全频有源.csv…）本来丢了类目——超低会被误判全频、
+  功放/DSP/调音台因无类目列直接被拒。现在 importCsvFolder 先按内容解析，
+  再用文件名类目 hint 强制归类（有源优先匹配；有类目列/类型列的总表不被覆盖）。
+- parseTemplatesFromText(text, opt) 新增 opt.catHint：内容缺「类别/类型」列时按类目逐行强制解析。
+- 测试：test-ui 加 catFromFilename、超低/功放/DSP 单表归类、总表不被 hint 覆盖等用例。
+
 ## 已知缺口 / 下一步候选
 
 - **浏览器人工回归未做**：反推页、分台视图、外侧走线、分组线材表、CSV 导入全流程，都只过了 DOM 桩测试。

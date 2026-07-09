@@ -1401,6 +1401,19 @@ html[data-theme="light"] .modal-overlay { background: rgba(30,40,52,.4); }
   .ql-template-call label { grid-column: 1 / -1; }
 }
 
+/* 功放阻抗-功率标注（推 4Ω 负载时特别显示） */
+.cfg-hint { font-style: normal; font-size: 10px; color: var(--text-faint); font-weight: 500; }
+.amp-load-badge {
+  margin: -4px 0 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--amber-soft);
+  border: 1px solid var(--amber);
+}
+.amp-load-line { font-size: 12px; color: var(--text); line-height: 1.7; }
+.amp-load-line b { color: var(--amber); }
+.insp-stat.rv-boost { border-color: var(--amber); color: var(--amber); }
+
 /* 3：数字输入全部打字，取消加减按钮（全局兜底隐藏 spinner） */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }

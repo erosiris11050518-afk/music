@@ -289,7 +289,8 @@ var rc1 = Store.reverseCalc(
   [{ name:'A', power:500, ohms:8, count:4, parallel:2 }],
   { ratio:2, ampMode:'4', amp4W:2500, minOhms:4, dspOuts:8 });
 T('并联功率需求：500W×2 = 1000W', rc1.rows[0].loadW === 1000);
-T('并联功率叠加：需 ≥2000W/通道', rc1.rows[0].needW === 2000);
+T('并联折算：需 ≥1334W@8Ω/通道，实际负载侧 2000W',
+  rc1.rows[0].needW === 1334 && rc1.rows[0].needLoadW === 2000);
 T('并联阻抗减半：4Ω', rc1.rows[0].loadOhm === 4);
 T('4只并联2 → 占2路 → 1台4通道', rc1.rows[0].ch === 2 && rc1.amp4N === 1 && rc1.amp2N === 0);
 T('功率足够无警告', rc1.warns.length === 0);
@@ -304,8 +305,12 @@ T('切 2Ω 低阻机型后不再警告', rc2b.warns.length === 0);
 var rc3 = Store.reverseCalc(
   [{ name:'C', power:500, ohms:8, count:10, parallel:1 }],
   { ratio:1.5, ampMode:'mix', amp2W:800, amp4W:800, minOhms:4, dspOuts:8 });
-T('搭配 10路 = 2×4通道 + 1×2通道', rc3.amp4N === 2 && rc3.amp2N === 1);
-T('DSP = ⌈10输入 ÷ 8出⌉ = 2', rc3.dspN === 2);
+T('搭配 10路：功率合适时优先 4通道 = 3×4通道', rc3.amp4N === 3 && rc3.amp2N === 0);
+T('DSP = ⌈12输入 ÷ 8出⌉ = 2', rc3.dspN === 2);
+var rc3b = Store.reverseCalc(
+  [{ name:'C2', power:500, ohms:8, count:10, parallel:1 }],
+  { ratio:1.5, ampMode:'mix', amp2W:900, amp4W:500, minOhms:4, dspOuts:8 });
+T('搭配模式：4通道功率不够而2通道够时回退2通道', rc3b.amp4N === 0 && rc3b.amp2N === 5);
 var rc4 = Store.reverseCalc(
   [{ name:'D', power:500, count:11, parallel:1 }],
   { ratio:1.5, ampMode:'mix', amp2W:800, amp4W:800 });
@@ -318,6 +323,25 @@ var rc7 = Store.reverseCalc(
   [{ name:'G', power:500, ohms:8, count:2, parallel:2 }],
   { ratio:2, ampMode:'2', amp2W:500, minOhms:4 });
 T('功放功率不足出警告', rc7.warns.some(function(w){ return w.indexOf('功率不足') >= 0; }));
+var rc8 = Store.reverseCalc(
+  [{ name:'H12', power:500, ohms:12, count:1, parallel:1 }],
+  { ratio:1.5, ampMode:'4', amp4W:1200, minOhms:4 });
+T('12Ω 单只按连续负载倍率折算：500÷0.75×1.5 = 1000W@8Ω', rc8.rows[0].needW === 1000);
+var rc9 = Store.reverseCalc(
+  [{ name:'H4', power:500, ohms:4, count:1, parallel:1 }],
+  { ratio:1.5, ampMode:'4', amp4W:400, minOhms:4 });
+T('4Ω 单只按连续负载倍率折算：500÷1.5×1.5 = 500W@8Ω', rc9.rows[0].needW === 500);
+var rc10 = Store.reverseCalc(
+  [{ name:'H6', power:500, ohms:6, count:1, parallel:1 }],
+  { ratio:1.5, ampMode:'4', amp4W:700, minOhms:4 });
+T('6Ω 单只按连续负载倍率折算：500÷1.25×1.5 = 600W@8Ω', rc10.rows[0].needW === 600);
+var rcSub = Store.reverseCalc(
+  [{ name:'DO218S', power:1200, ohms:4, count:2, parallel:1, role:'sub' }],
+  { ratio:1.5, subRatio:2, ampMode:'4', amp4W:1600, minOhms:4 });
+T('超低默认单独2倍：1200W/4Ω → 1600W@8Ω，2只占2路，总3200W',
+  rcSub.rows[0].needW === 1600 && rcSub.rows[0].ratio === 2 &&
+  rcSub.rows[0].ch === 2 && rcSub.totalNeedW === 3200);
+T('反推总功率 = 单通道需求×占用通道', rc3.totalNeedW === 7500);
 
 print('== 12. 反推创建 + 并联自动串接 ==');
 Store.replaceState(Store.defaultState());
@@ -536,6 +560,123 @@ var chain15 = Store.state.connections.filter(function(c){
 });
 T('智连恢复：并联串接链完整（2 条）', chain15.length === 2);
 T('智连恢复：无硬错误', Store.state.connections.every(function(c){ return !Store.connectionError(c); }));
+
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var q15mix = { type:'mixer', name:'数量行台', ins:16, outs:8 };
+var q15dsp = { type:'dsp', name:'数量行DSP', ins:4, outs:8 };
+var q15ampFull = { type:'amp', name:'数量全频专属功放', ins:2, outs:2, specs:{ power:'900' } };
+var q15ampSub = { type:'amp', name:'数量超低专属功放', ins:2, outs:2, specs:{ power:'1800' } };
+var q15full = { type:'speaker', name:'数量全频', ins:1, outs:1, speakerRole:'fullrange',
+  specs:{ powered:'passive', power:'500', ohms:'8' } };
+var q15sub = { type:'speaker', name:'数量超低', ins:1, outs:1, speakerRole:'sub',
+  specs:{ powered:'passive', power:'900', ohms:'8' } };
+Store.reverseLayout({
+  mixerTpl: q15mix, mixerCount: 1,
+  dspTpl: q15dsp, dspCount: 1,
+  speakerRows: [
+    { tpl: q15full, count: 2, parallel: 1, a2: 1, a4: 0, amp2Tpl: q15ampFull },
+    { tpl: q15sub, count: 2, parallel: 1, a2: 1, a4: 0, amp2Tpl: q15ampSub }
+  ]
+});
+function ampNameOfSpeakerPrefix(prefix) {
+  var out = [];
+  Store.state.devices.forEach(function(d){
+    if (d.name.indexOf(prefix) !== 0) return;
+    var c = Store.sourceFor(d.id, 0);
+    if (!c) return;
+    var src = Store.getDevice(c.sid);
+    if (src && src.type === 'amp') out.push(src.name);
+  });
+  return out;
+}
+T('数量布局行级功放：创建时全频/超低走各自专属功放',
+  ampNameOfSpeakerPrefix('数量全频').length === 2 &&
+  ampNameOfSpeakerPrefix('数量超低').length === 2 &&
+  ampNameOfSpeakerPrefix('数量全频').every(function(n){ return n.indexOf('数量全频专属功放') === 0; }) &&
+  ampNameOfSpeakerPrefix('数量超低').every(function(n){ return n.indexOf('数量超低专属功放') === 0; }));
+Store.clearAllConnections();
+Store.smartAssignAll();
+T('数量布局行级功放：清线后智连仍回各自专属功放',
+  ampNameOfSpeakerPrefix('数量全频').length === 2 &&
+  ampNameOfSpeakerPrefix('数量超低').length === 2 &&
+  ampNameOfSpeakerPrefix('数量全频').every(function(n){ return n.indexOf('数量全频专属功放') === 0; }) &&
+  ampNameOfSpeakerPrefix('数量超低').every(function(n){ return n.indexOf('数量超低专属功放') === 0; }));
+
+print('== 16. 功放阻抗-功率换算（2–16Ω 连续折算 / 4Ω×1.5）==');
+T('阻抗倍率：16Ω→0.5 / 12Ω→0.75 / 8Ω→1',
+  Store.ampImpedanceFactor(16) === 0.5 &&
+  Store.ampImpedanceFactor(12) === 0.75 &&
+  Store.ampImpedanceFactor(8) === 1);
+T('阻抗倍率：6Ω→1.25 / 4Ω→1.5', Store.ampImpedanceFactor(6) === 1.25 && Store.ampImpedanceFactor(4) === 1.5);
+T('阻抗倍率：3Ω→1.75 / 2Ω→2', Store.ampImpedanceFactor(3) === 1.75 && Store.ampImpedanceFactor(2) === 2);
+T('阻抗未知→不加成', Store.ampImpedanceFactor(0) === 1);
+T('可用功率：1000W@8→1000 / @6→1250 / @4→1500 / @2→2000',
+  Store.ampEffectivePower(1000, 8) === 1000 &&
+  Store.ampEffectivePower(1000, 6) === 1250 &&
+  Store.ampEffectivePower(1000, 4) === 1500 &&
+  Store.ampEffectivePower(1000, 2) === 2000);
+T('4Ω实填功率优先于默认1.5倍',
+  Store.ampEffectivePower(1000, 4, 1650) === 1650 &&
+  Store.ampEffectivePowerFromSpecs({ power:'1000', power4:'1650' }, 4) === 1650);
+T('4Ω实填功率在6Ω时与8Ω标称插值',
+  Store.ampEffectivePower(1000, 6, 1600) === 1300);
+/* reverseCalc：先按当前负载倍率折算 @8Ω，再乘余量倍率 */
+var rcZ = Store.reverseCalc(
+  [{ name:'Z全频', power:500, ohms:8, count:2, parallel:2 }],
+  { ratio:1.5, ampMode:'4', amp4W:1200, minOhms:4 });
+T('反推行带 factor=1.5', rcZ.rows[0].factor === 1.5 && rcZ.rows[0].loadOhm === 4);
+T('反推行 needLoadW=1500 / needRatedW=1000',
+  rcZ.rows[0].needLoadW === 1500 && rcZ.rows[0].needW === 1000 && rcZ.rows[0].needRatedW === 1000);
+T('1200W 功放 @8Ω 标称 ≥1000 → 无警告', rcZ.warns.length === 0);
+var rcZ2 = Store.reverseCalc(
+  [{ name:'Z全频', power:500, ohms:8, count:2, parallel:2 }],
+  { ratio:1.5, ampMode:'4', amp4W:900, minOhms:4 });
+T('900W 功放 @8Ω 标称 <1000 → 警告且提示 8Ω标称≥1000',
+  rcZ2.warns.length === 1 && rcZ2.warns[0].indexOf('≥1000W') >= 0);
+var rcZ3 = Store.reverseCalc(
+  [{ name:'Z全频', power:500, ohms:8, count:2, parallel:2 }],
+  { ratio:1.5, ampMode:'4', amp4W:900, amp4W4:1600, minOhms:4 });
+T('填写4Ω实标1600W后折算 @8Ω≈1067W，满足1000W无报警', rcZ3.warns.length === 0);
+/* powerAlarmForOutput / ampLoadSummary：真实 4Ω 并联负载 */
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var zAmp = Store.addDevice({ type:'amp', name:'Z功放', ins:2, outs:2, specs:{ power:'1000', power4:'1600', ohms:'4' } });
+var zS1 = Store.addDevice({ type:'speaker', name:'Z音箱1', ins:1, outs:1, speakerRole:'fullrange', specs:{ powered:'passive', power:'500', ohms:'8' } });
+var zS2 = Store.addDevice({ type:'speaker', name:'Z音箱2', ins:1, outs:1, speakerRole:'fullrange', specs:{ powered:'passive', power:'500', ohms:'8' } });
+Store.connect(zS1.id, 0, zAmp.id, 0);      /* 功放 OUT1 → 音箱1 */
+Store.connect(zS2.id, 0, zS1.id, 0);       /* 音箱1 → 音箱2（并联串接）*/
+var la = Store.powerAlarmForOutput(zAmp.id, 0);
+T('并联负载阻抗 = 4Ω', la.loadOhms === 4);
+T('功放可用功率按 4Ω 实填 = 1600W', la.ampW === 1600 && la.ratedW === 1000 && la.rated4W === 1600 && la.usedRated4 === true);
+T('4Ω 负载 1000W 音箱：1600 可用无 error', la.errors === 0);
+var summ = Store.ampLoadSummary(zAmp.id);
+T('ampLoadSummary 标注 4Ω 实填', summ.length === 1 && summ[0].boosted && summ[0].loadOhms === 4 && summ[0].ampW === 1600 && summ[0].usedRated4);
+/* 单只 8Ω：不加成、不标注 */
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var eAmp = Store.addDevice({ type:'amp', name:'E功放', ins:2, outs:2, specs:{ power:'1000' } });
+var eS = Store.addDevice({ type:'speaker', name:'E音箱', ins:1, outs:1, speakerRole:'fullrange', specs:{ powered:'passive', power:'500', ohms:'8' } });
+Store.connect(eS.id, 0, eAmp.id, 0);
+var la8 = Store.powerAlarmForOutput(eAmp.id, 0);
+T('8Ω 单只：不加成', la8.loadOhms === 8 && la8.factor === 1 && la8.boosted === false && la8.ampW === 1000);
+T('8Ω：ampLoadSummary 无 boosted 项', Store.ampLoadSummary(eAmp.id).filter(function(x){return x.boosted;}).length === 0);
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var pAmp = Store.addDevice({ type:'amp', name:'倍率功放', ins:2, outs:2, specs:{ power:'800' } });
+var pS = Store.addDevice({ type:'speaker', name:'倍率音箱', ins:1, outs:1, speakerRole:'fullrange',
+  specs:{ powered:'passive', power:'500', ohms:'8' } });
+Store.connect(pS.id, 0, pAmp.id, 0);
+var pa15 = Store.powerAlarmForOutput(pAmp.id, 0, 'show');
+var pa2 = Store.powerAlarmForOutput(pAmp.id, 0, 'band');
+T('功率报警：1.5倍档 800W ≥ 500×1.5，不报警', pa15.errors === 0 && pa15.warnings === 0 && pa15.ok);
+T('功率报警：2倍档 800W < 500×2，报警', pa2.errors === 1 && pa2.issues[0].text.indexOf('最低需要 ×2') >= 0);
+var pBig = Store.addDevice({ type:'amp', name:'大功放', ins:2, outs:2, specs:{ power:'3000' } });
+var pS2 = Store.addDevice({ type:'speaker', name:'小音箱', ins:1, outs:1, speakerRole:'fullrange',
+  specs:{ powered:'passive', power:'500', ohms:'8' } });
+Store.connect(pS2.id, 0, pBig.id, 0);
+var paBig = Store.powerAlarmForOutput(pBig.id, 0, 'speech');
+T('功率报警：超过最低倍率后不因高于上限提醒', paBig.errors === 0 && paBig.warnings === 0 && paBig.ok);
 
 print('');
 print('结果: ' + pass + ' 通过, ' + fail + ' 失败');

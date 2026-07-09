@@ -150,6 +150,13 @@ Promise.resolve().then(function () {
   T('数量布局和反推模板都有明确调用入口',
     qlHtml.indexOf('调用数量模板') >= 0 && qlHtml.indexOf('id="ql-preset-select"') >= 0 &&
     qlHtml.indexOf('调用反推模板') >= 0 && qlHtml.indexOf('id="rv-preset-select"') >= 0);
+  T('数量布局含智能配接结果区',
+    qlHtml.indexOf('id="ql-calc"') >= 0 && qlHtml.indexOf('智能配接') >= 0);
+  T('反推功率倍率文案改为余量倍率',
+    qlHtml.indexOf('余量倍率（场景）') >= 0 && qlHtml.indexOf('功率倍率（场景）') < 0);
+  T('反推含超低独立余量倍率',
+    qlHtml.indexOf('超低余量倍率') >= 0 && qlHtml.indexOf('id="rv-subratio"') >= 0 &&
+    qlHtml.indexOf('2 · 默认超低') >= 0);
   T('反推为上下结构 + 功放自动匹配标记',
     qlHtml.indexOf('rv-stack') >= 0 && qlHtml.indexOf('rv-settings-panel') >= 0 &&
     qlHtml.indexOf('rv-result-panel') >= 0 && qlHtml.indexOf('rv-right') < 0 &&
@@ -195,6 +202,35 @@ Promise.resolve().then(function () {
     tplPanelHtml.indexOf('导出导入') >= 0 &&
     tplPanelHtml.indexOf('提取当前案例中的模板') >= 0 &&
     tplPanelHtml.indexOf('模板库内部操作') >= 0);
+  T('单文件与文件夹 CSV 导入入口就绪',
+    typeof SP.pickCsvImport === 'function' && typeof SP.pickCsvFolder === 'function' &&
+    typeof SP.importCsvFolder === 'function' && typeof SP.catFromFilename === 'function');
+  /* 文件名类目推断：按类目命名的单表 CSV 正确归类 */
+  T('catFromFilename：有源优先于同名', SP.catFromFilename('全频有源.csv') === 'afullrange' &&
+    SP.catFromFilename('超低有源.csv') === 'asub' &&
+    SP.catFromFilename('全频.csv') === 'fullrange' && SP.catFromFilename('超低.csv') === 'sub' &&
+    SP.catFromFilename('功放.csv') === 'amp' && SP.catFromFilename('DSP.csv') === 'dsp' &&
+    SP.catFromFilename('调音台.csv') === 'mixer' && SP.catFromFilename('模板总表.xls') === null);
+  var subCsv = '型号名称,输入路数,输出路数,功率W,阻抗Ω,尺寸（寸）\nSUB218,1,1,1000,4,18';
+  var subPlain = SP.parseTemplatesFromText(subCsv);
+  var subHinted = SP.parseTemplatesFromText(subCsv, { catHint: 'sub' });
+  T('超低.csv 无提示误判全频、有提示归类超低',
+    subPlain.templates[0].speakerRole === 'fullrange' &&
+    subHinted.templates[0].speakerRole === 'sub' && subHinted.templates[0].specs.ohms === '4');
+  var ampPlain = SP.parseTemplatesFromText('型号名称,输入路数,输出路数,机柜U数,功率W\nFA900,2,2,2,900');
+  var ampHinted = SP.parseTemplatesFromText('型号名称,输入路数,输出路数,机柜U数,功率W\nFA900,2,2,2,900', { catHint: 'amp' });
+  T('功放.csv 无提示不认、有提示识别为功放',
+    ampPlain === null && ampHinted.templates[0].type === 'amp' &&
+    ampHinted.templates[0].specs.power === '900' && ampHinted.templates[0].specs.rackU === '2');
+  var dspHinted = SP.parseTemplatesFromText('型号名称,输入路数,输出路数,机柜U数\nUnit48,4,8,1', { catHint: 'dsp' });
+  T('DSP.csv 有提示识别为 DSP', dspHinted.templates[0].type === 'dsp' &&
+    dspHinted.templates[0].ins === 4 && dspHinted.templates[0].outs === 8);
+  /* 总表（带类别列）不被文件名提示覆盖 */
+  var totalCsv = '类别,型号名称,输入路数,输出路数,机柜U数,功率W,阻抗Ω,尺寸（寸）\n功放,FA900,2,2,2,900,,\n超低,SUB,1,1,,1000,4,18';
+  var totalHinted = SP.parseTemplatesFromText(totalCsv, { catHint: 'fullrange' });
+  T('总表带类别列时忽略文件名提示',
+    totalHinted.templates.length === 2 && totalHinted.templates[0].type === 'amp' &&
+    totalHinted.templates[1].speakerRole === 'sub');
   var wbSheets = SP.templateWorkbookSheets();
   T('模板总表按类目分 sheet 且顺序正确',
     wbSheets.map(function (s) { return s.name; }).join('|') ===
@@ -202,7 +238,7 @@ Promise.resolve().then(function () {
   T('模板总表各类字段差异化',
     wbSheets[0].columns.join('|') === '型号名称|输入路数|输出路数|功率W|阻抗Ω|尺寸（寸）' &&
     wbSheets[2].columns.join('|') === '型号名称|输入路数|输出路数|功率W|尺寸（寸）' &&
-    wbSheets[4].columns.join('|') === '型号名称|输入路数|输出路数|机柜U数|功率W' &&
+    wbSheets[4].columns.join('|') === '型号名称|输入路数|输出路数|机柜U数|功率W@8Ω|4Ω功率W(选填)|最低负载Ω(选填，默认4)' &&
     wbSheets[5].columns.join('|') === '型号名称|输入路数|输出路数|机柜U数');
   SP.closeModal();
   tryRun('CSV 批量导入支持尺寸文本', function () {
@@ -211,7 +247,7 @@ Promise.resolve().then(function () {
   var textSizeTpl = Store.state.deviceTemplates.filter(function (t) { return t.name === '双6寸测试'; })[0];
   T('CSV 尺寸（寸）可保存“双6寸”', textSizeTpl && textSizeTpl.specs && textSizeTpl.specs.size === '双6寸');
   tryRun('CSV 总表批量导入支持多类模板', function () {
-    SP.importCsvTemplates('\ufeff类别,型号名称,输入路数,输出路数,机柜U数,功率W,阻抗Ω,尺寸（寸）\n全频有源,总表双6寸,1,1,,350,,双6寸\n功放,总表四通道功放,4,4,2,1200,,');
+    SP.importCsvTemplates('\ufeff类别,型号名称,输入路数,输出路数,机柜U数,功率W@8Ω,4Ω功率W(选填),阻抗Ω,尺寸（寸）\n全频有源,总表双6寸,1,1,,350,,,双6寸\n功放,总表四通道功放,4,4,2,1200,1800,4,');
   });
   var totalActiveTpl = Store.state.deviceTemplates.filter(function (t) { return t.name === '总表双6寸'; })[0];
   var totalAmpTpl = Store.state.deviceTemplates.filter(function (t) { return t.name === '总表四通道功放'; })[0];
@@ -219,7 +255,8 @@ Promise.resolve().then(function () {
     totalActiveTpl && totalActiveTpl.specs.powered === 'active' &&
     totalActiveTpl.specs.size === '双6寸' &&
     totalAmpTpl && totalAmpTpl.ins === 4 && totalAmpTpl.outs === 4 &&
-    totalAmpTpl.specs.power === '1200');
+    totalAmpTpl.specs.power === '1200' && totalAmpTpl.specs.power4 === '1800' &&
+    totalAmpTpl.specs.ohms === '4');
   tryRun('模板总表 xls 多 sheet 可导入', function () {
     SP.importCsvTemplates(SP.buildTemplateWorkbookXml());
   });
@@ -227,9 +264,10 @@ Promise.resolve().then(function () {
   T('xls sheet 导入保留有源尺寸文本',
     xlsActiveTpl && xlsActiveTpl.specs.powered === 'active' && xlsActiveTpl.specs.size === '双6寸');
   /* 纯解析函数：识别表头返回模板数组，不识别返回 null */
-  var parsedGood = SP.parseTemplatesFromText('\ufeff型号名称,通道数(2或4),功率W,U数\nFA解析,4,900,2');
+  var parsedGood = SP.parseTemplatesFromText('\ufeff型号名称,通道数(2或4),功率W@8Ω,4Ω功率W(选填),最低负载Ω(选填，默认4),U数\nFA解析,4,900,1350,4,2');
   T('parseTemplatesFromText 识别功放表', parsedGood && parsedGood.templates.length === 1 &&
-    parsedGood.templates[0].type === 'amp' && parsedGood.templates[0].ins === 4);
+    parsedGood.templates[0].type === 'amp' && parsedGood.templates[0].ins === 4 &&
+    parsedGood.templates[0].specs.power4 === '1350' && parsedGood.templates[0].specs.ohms === '4');
   T('parseTemplatesFromText 无法识别返回 null', SP.parseTemplatesFromText('无关内容\n1,2,3') === null);
   T('folder/prompt 导入入口存在',
     typeof SP.importCsvFolder === 'function' && typeof SP.pickCsvFolder === 'function' &&
@@ -300,6 +338,12 @@ Promise.resolve().then(function () {
   T('报告含机柜长度建议', registry['report-preview'].srcdoc.indexOf('机柜长度建议') >= 0);
   T('报告含供电功率建议', registry['report-preview'].srcdoc.indexOf('供电功率建议') >= 0);
   T('报告含三档演出级别', registry['report-preview'].srcdoc.indexOf('摇滚') >= 0);
+  tryRun('功率报警弹窗 openPowerAlarm', function () { SP.openPowerAlarm(); });
+  T('功率报警追随余量倍率档位',
+    registry['power-alarm-body'].innerHTML.indexOf('1.5 · 驻唱小场') >= 0 &&
+    registry['power-alarm-body'].innerHTML.indexOf('最低 ×') >= 0 &&
+    registry['power-alarm-body'].innerHTML.indexOf('–×') < 0);
+  SP.closeModal();
   tryRun('清 IN / 清 OUT / 复制（选中功放）', function () {
     SP.selectDevice(amp.id, false);
     SP.clearSelectedWires('inputs');
@@ -320,6 +364,13 @@ Promise.resolve().then(function () {
     SP.fitDiagramZoom(box);
     SP.focusSelectedInDiagram(box);
   });
+  tryRun('清设备：清空当前设备连线图全部设备', function () {
+    if (!Store.state.devices.length) throw new Error('测试前应有设备');
+    SP.clearDiagramDevicesPrompt();
+  });
+  T('清设备后设备与连线均为空，模板库保留',
+    Store.state.devices.length === 0 && Store.state.connections.length === 0 &&
+    Store.state.deviceTemplates.length > 0);
 
   done = true;
   print('');

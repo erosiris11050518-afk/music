@@ -44,6 +44,8 @@
         amp = '档位 ' + (sp.gain || '未填') + ' · ' +
           (s.specs && s.specs.grounded ? '接地' : '不接地') +
           ' · ' + (mode === 'B' ? 'B桥接' : mode + '档');
+        var la = Store.powerAlarmForOutput(s.id, c.sport);
+        if (la && la.boosted) amp += ' · ' + la.loadOhms + 'Ω 可用 ' + la.ampW + 'W';
       }
       var warn = Store.connWarning(c);
       var lenTx = (c.lenM ? c.lenM + 'm' : '') + (c.note ? (c.lenM ? ' · ' : '') + c.note : '');
