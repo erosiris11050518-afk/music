@@ -451,17 +451,10 @@
       totalH = Math.max(totalH, p.y + p.h + margin);
     });
 
-    /* 13：调音台/DSP → 有源音箱的信号线走画布外侧专用通道，
-       不再穿越功放层与无源音箱（有源音箱本就排在最外）。 */
-    function isActiveFeed(c) {
+    function isMixerActiveFeed(c) {
       var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
-      return !!(s && t && (s.type === 'mixer' || s.type === 'dsp') &&
+      return !!(s && t && s.type === 'mixer' &&
         t.type === 'speaker' && Store.speakerPowered(t));
-    }
-    var outerLane = 0;
-    if (st.connections.some(isActiveFeed)) {
-      if (horiz) { totalH += 76; outerLane = totalH - 46; }
-      else { totalW += 76; outerLane = totalW - 46; }
     }
 
     /* 端口坐标：竖版在上/下边缘按宽度分布；横版在左/右边缘、文字区以下按高度分布。
@@ -507,18 +500,20 @@
         b.x + ' ' + (b.y - dy) + ' ' + b.x + ' ' + b.y;
     }
 
-    /* 有源音箱专用外侧走线：出口 → 外侧通道 → 目标 */
-    function outerEdgePath(a, b) {
+    /* 调音台直出有源时，调音台仍在中间，只在两端附近做局部绕线。 */
+    function mixerActivePath(a, b) {
       if (horiz) {
-        var midX = (a.x + b.x) / 2;
+        var bendX = a.x + Math.max(34, Math.min(90, Math.abs(b.x - a.x) * 0.28));
+        var sideY = (b.y < a.y ? Math.min(a.y, b.y) : Math.max(a.y, b.y)) + (b.y < a.y ? -34 : 34);
         return 'M' + a.x + ' ' + a.y +
-          ' C' + (a.x + 46) + ' ' + a.y + ' ' + midX + ' ' + outerLane + ' ' + midX + ' ' + outerLane +
-          ' C' + midX + ' ' + outerLane + ' ' + (b.x - 46) + ' ' + b.y + ' ' + b.x + ' ' + b.y;
+          ' C' + bendX + ' ' + a.y + ' ' + bendX + ' ' + sideY + ' ' + bendX + ' ' + sideY +
+          ' C' + bendX + ' ' + sideY + ' ' + (b.x - 34) + ' ' + b.y + ' ' + b.x + ' ' + b.y;
       }
-      var midY = (a.y + b.y) / 2;
+      var bendY = a.y + Math.max(34, Math.min(90, Math.abs(b.y - a.y) * 0.28));
+      var sideX = (b.x < a.x ? Math.min(a.x, b.x) : Math.max(a.x, b.x)) + (b.x < a.x ? -34 : 34);
       return 'M' + a.x + ' ' + a.y +
-        ' C' + a.x + ' ' + (a.y + 46) + ' ' + outerLane + ' ' + midY + ' ' + outerLane + ' ' + midY +
-        ' C' + outerLane + ' ' + midY + ' ' + b.x + ' ' + (b.y - 46) + ' ' + b.x + ' ' + b.y;
+        ' C' + a.x + ' ' + bendY + ' ' + sideX + ' ' + bendY + ' ' + sideX + ' ' + bendY +
+        ' C' + sideX + ' ' + bendY + ' ' + b.x + ' ' + (b.y - 34) + ' ' + b.x + ' ' + b.y;
     }
 
     var theme = diagramTheme();
@@ -572,7 +567,7 @@
         svg.push(plugRect(a, true));
         svg.push(plugRect(b, false));
       } else {
-        var d2 = (outerLane && isActiveFeed(c)) ? outerEdgePath(a, b) : edgePath(a, b);
+        var d2 = isMixerActiveFeed(c) ? mixerActivePath(a, b) : edgePath(a, b);
         svg.push('<path class="edge' + (warn ? ' warn' : '') + '" stroke="' + color +
           '" stroke-width="1.4" marker-end="url(#arrow-signal)" d="' + d2 + '">' + title + '</path>');
         svg.push('<circle class="edge-dot" fill="' + color + '" cx="' + a.x + '" cy="' + a.y + '" r="2.4"/>');

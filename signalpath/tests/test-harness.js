@@ -22,6 +22,10 @@ function fakeEl() {
     setAttribute: function(){}, getAttribute: function(){ return null; }
   };
 }
+function svgWidth(html) {
+  var m = /<svg[^>]* width="([^"]+)"/.exec(html || '');
+  return m ? +m[1] : 0;
+}
 var document = {
   documentElement: { getAttribute: function(){ return 'dark'; }, setAttribute: function(){} },
   getElementById: function(){ return null; },
@@ -476,13 +480,61 @@ T('有源音箱不接功放（无功放存在）',
   Store.state.devices.filter(function(d){ return d.type==='amp'; }).length === 0);
 var avSrc = Store.getDevice(Store.sourceFor(avSpks[0].id,0).sid);
 T('有源音箱上游是 DSP', avSrc && avSrc.type === 'dsp');
-/* 5：反推创建的有源音箱走外侧专用通道（DSP→有源的边为双段贝塞尔，且画布已加宽） */
+/* 5：DSP→有源取消外侧专用通道，回到正常单段曲线 */
 var diaAv = fakeEl();
 var avErr = null;
 try { SP.renderWiringDiagram(diaAv); } catch (e) { avErr = e; }
 T('含有源反推系统渲染不抛异常', !avErr, avErr && String(avErr));
-T('有源信号线走外侧通道（双段路径特征）',
-  /class="edge[^"]*"[^>]*d="M[^"]*C[^"]*C[^"]*"/.test(diaAv.innerHTML));
+T('DSP→有源不再走外侧双段路径',
+  !/class="edge[^"]*"[^>]*d="M[^"]*C[^"]*C[^"]*"/.test(diaAv.innerHTML));
+T('DSP→有源不再为外侧通道额外加宽画布', svgWidth(diaAv.innerHTML) < 940);
+
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var mixOnlyAdded = Store.reverseLayout({
+  mixerTpl: avMixer, mixerCount: 1,
+  dspTpl: null, dspCount: 0,
+  speakerRows: [],
+  activeRows: [{ tpl: avActive, count: 2 }]
+});
+var diaMixActive = fakeEl();
+var mixActiveErr = null;
+try { SP.renderWiringDiagram(diaMixActive); } catch (e) { mixActiveErr = e; }
+T('调音台直推有源渲染不抛异常', !mixActiveErr && mixOnlyAdded.length === 3,
+  mixActiveErr && String(mixActiveErr));
+T('调音台→有源保留局部绕线',
+  /class="edge[^"]*"[^>]*d="M[^"]*C[^"]*C[^"]*"/.test(diaMixActive.innerHTML));
+T('调音台→有源不再为外侧通道额外加宽画布', svgWidth(diaMixActive.innerHTML) < 650);
+
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var avAmp = { type:'amp', name:'有源混排功放', ins:2, outs:2 };
+var avPassive = { type:'speaker', name:'无源全频箱', ins:1, outs:1, speakerRole:'fullrange',
+  specs:{ powered:'passive', power:'500', ohms:'8' } };
+Store.reverseLayout({
+  mixerTpl: avMixer, mixerCount: 1,
+  dspTpl: avDsp, dspCount: 1,
+  speakerRows: [{ tpl: avPassive, count: 2, parallel: 1, a2: 1, amp2Tpl: avAmp }],
+  activeRows: [{ tpl: avActive, count: 2 }]
+});
+var diaMixedActive = fakeEl();
+SP.renderWiringDiagram(diaMixedActive);
+var mixedDsp = Store.state.devices.filter(function(d){ return d.type === 'dsp'; })[0];
+function layoutCrossCenter(id) {
+  var p = SP._layout.pos[id];
+  return SP._layout.horiz ? p.y + p.h / 2 : p.x + p.w / 2;
+}
+var dspTargets = [];
+Store.state.connections.forEach(function(c) {
+  if (c.sid === mixedDsp.id) dspTargets.push(c.tid);
+});
+var targetAvg = dspTargets.reduce(function(a, id){ return a + layoutCrossCenter(id); }, 0) / dspTargets.length;
+var hasActiveTarget = dspTargets.some(function(id) {
+  var d = Store.getDevice(id);
+  return d && d.type === 'speaker' && Store.speakerPowered(d);
+});
+T('DSP 下级对齐同时统计功放和有源音箱',
+  hasActiveTarget && Math.abs(layoutCrossCenter(mixedDsp.id) - targetAvg) < 1);
 
 print('== 14. 有源占用 DSP 通道（reverseCalc activeCount）==');
 /* 2 台 4 通道功放 = 8 输入 + 3 只有源 = 11 路 → DSP(8出) = 2 台 */
