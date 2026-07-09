@@ -967,23 +967,6 @@ SP.Store = (function () {
     return source.type !== 'amp' && source.type !== 'speaker';
   }
 
-  function speakerHasFeed(dev) {
-    if (!dev || dev.type !== 'speaker') return false;
-    return dev.inputs.some(function (p, i) { return !!sourceFor(dev.id, i); });
-  }
-
-  function smartInputPorts(dev) {
-    if (dev.type !== 'speaker') {
-      var all = [];
-      dev.inputs.forEach(function (p, i) {
-        if (!sourceFor(dev.id, i)) all.push(i);
-      });
-      return all;
-    }
-    if (speakerHasFeed(dev)) return [];
-    return dev.inputs.length ? [0] : [];
-  }
-
   function autoFreeOuts(dev) {
     var pref = autoSourceTypes(dev), outs = [];
     /* 反推行绑定：带 reverseParallel.row 的音响，只从同行功放取口（若该行功放仍在），
@@ -1011,7 +994,10 @@ SP.Store = (function () {
     var dev = getDevice(id);
     if (!dev) return { lines: [], msg: '' };
 
-    var freeInputs = smartInputPorts(dev);
+    var freeInputs = [];
+    dev.inputs.forEach(function (p, i) {
+      if (!sourceFor(dev.id, i)) freeInputs.push(i);
+    });
     if (!freeInputs.length) {
       return { lines: [], msg: '「' + dev.name + '」的所有输入口都已连接。' };
     }
@@ -1083,10 +1069,6 @@ SP.Store = (function () {
     var speakerLeft = 0;
     state.devices.forEach(function (d) {
       if (d.type === 'mixer') return;
-      if (d.type === 'speaker') {
-        if (!speakerHasFeed(d)) { remaining++; speakerLeft++; }
-        return;
-      }
       var unfed = false;
       d.inputs.forEach(function (pt, i) {
         if (!sourceFor(d.id, i)) { remaining++; unfed = true; }
@@ -1109,7 +1091,10 @@ SP.Store = (function () {
   function smartAssignPreview(id) {
     var dev = getDevice(id);
     if (!dev) return { count: 0, msg: '' };
-    var freeInputs = smartInputPorts(dev);
+    var freeInputs = [];
+    dev.inputs.forEach(function (p, i) {
+      if (!sourceFor(dev.id, i)) freeInputs.push(i);
+    });
     if (!freeInputs.length) return { count: 0, msg: '所有输入口都已连接。' };
     var freeOuts = autoFreeOuts(dev);
     return { count: Math.min(freeInputs.length, freeOuts.length), inputs: freeInputs.length, outputs: freeOuts.length };
@@ -1402,8 +1387,7 @@ SP.Store = (function () {
   /* ---------- 音响反推（纯函数，可测）----------
      rows: [{ name, power(W), ohms(Ω), count, parallel(每通道并联只数,默认1) }]
      opt:  { ratio, ampMode:'2'|'4'|'mix', amp2W, amp4W, minOhms(4|2), dspOuts, mixerN }
-     规则：不同型号音响不混用同一台功放；并联串接行占≤2路用2通道，占>2路用4通道；
-     非并联搭配模式 4 通道优先，
+     规则：不同型号音响不混用同一台功放；搭配模式 4 通道优先，
      余 ≤2 路补 1 台 2 通道，余 3 路补 1 台 4 通道；全部向上取整保富余。 */
   function reverseCalc(rows, opt) {
     opt = opt || {};
@@ -1449,10 +1433,7 @@ SP.Store = (function () {
         }
         var fit4 = ampFits(opt.amp4W, opt.amp4W4);
         var fit2 = ampFits(opt.amp2W, opt.amp2W4);
-        if (par > 1) {
-          if (ch <= 2) a2 = Math.ceil(ch / 2);
-          else a4 = Math.ceil(ch / 4);
-        } else if (fit4 || !fit2) a4 = Math.ceil(ch / 4);
+        if (fit4 || !fit2) a4 = Math.ceil(ch / 4);
         else a2 = Math.ceil(ch / 2);
       }
       function ohmNote() {
@@ -1956,21 +1937,11 @@ SP.Store = (function () {
 
   /* ---------- 统计：线材汇总 / 机柜 U 数 / 供电功率 ---------- */
 
-  function isSpeakerLinkConn(c) {
-    var s = getDevice(c.sid), t = getDevice(c.tid);
-    return !!(s && t && s.type === 'speaker' && t.type === 'speaker');
-  }
-
-  function isCableCountedConn(c) {
-    return !isSpeakerLinkConn(c);
-  }
-
   function cableSummary() {
     var groups = {};
     var order = [];
     state.connections.forEach(function (c) {
       if (!getDevice(c.sid) || !getDevice(c.tid)) return;
-      if (!isCableCountedConn(c)) return;
       var k = cableOf(c);
       if (!groups[k]) {
         groups[k] = { type: k, count: 0, meters: 0, missing: 0, lengths: {} };
@@ -2081,7 +2052,7 @@ SP.Store = (function () {
   /* 是否喇叭级线路（框图中加粗显示） */
   function isSpeakerRun(c) {
     var s = getDevice(c.sid);
-    return !!s && signalOf(s, 'out') === 'speaker' && !isSpeakerLinkConn(c);
+    return !!s && signalOf(s, 'out') === 'speaker';
   }
 
   /* ---------- 接线教学：乐器/话筒 ↔ 调音台输入 ---------- */
@@ -2439,8 +2410,6 @@ SP.Store = (function () {
     pickAmpTemplate: pickAmpTemplate,
     cableOf: cableOf,
     colorOf: colorOf,
-    isSpeakerLinkConn: isSpeakerLinkConn,
-    isCableCountedConn: isCableCountedConn,
     isSpeakerRun: isSpeakerRun,
     gearById: gearById,
     setGearPatch: setGearPatch,

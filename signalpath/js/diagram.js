@@ -560,17 +560,12 @@
       var warn = Store.connWarning(c);
       var color = warn ? theme.red : Store.colorOf(c);
       var speakerRun = Store.isSpeakerRun(c);
-      var speakerLink = Store.isSpeakerLinkConn && Store.isSpeakerLinkConn(c);
-      var parallelChain = !!c.reverseParallel || speakerLink;
+      var parallelChain = !!c.reverseParallel;
       var title = '<title>' + esc(Store.cableOf(c)) + (c.lenM ? ' · ' + esc(c.lenM) + 'm' : '') +
         (c.note ? ' · ' + esc(c.note) : '') +
-        (speakerLink ? ' · link串接（暂不计线材）' : (parallelChain ? ' · 反推受控并联串接' : '')) +
+        (parallelChain ? ' · 反推受控并联串接' : '') +
         (warn ? ' ⚠ ' + warn : '') + '</title>';
-      if (speakerLink) {
-        svg.push('<path class="edge' + (warn ? ' warn' : '') + ' parallel-chain' +
-          '" stroke="' + color +
-          '" stroke-width="1.2" d="' + edgePath(a, b) + '">' + title + '</path>');
-      } else if (speakerRun) {
+      if (speakerRun) {
         svg.push('<path class="edge' + (warn ? ' warn' : '') + (parallelChain ? ' parallel-chain' : '') +
           '" stroke="' + color +
           '" stroke-width="2.2" d="' + edgePath(a, b) + '">' + title + '</path>');
