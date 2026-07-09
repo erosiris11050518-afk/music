@@ -311,6 +311,18 @@ var rc3b = Store.reverseCalc(
   [{ name:'C2', power:500, ohms:8, count:10, parallel:1 }],
   { ratio:1.5, ampMode:'mix', amp2W:900, amp4W:500, minOhms:4, dspOuts:8 });
 T('搭配模式：4通道功率不够而2通道够时回退2通道', rc3b.amp4N === 0 && rc3b.amp2N === 5);
+var rcPar2 = Store.reverseCalc(
+  [{ name:'P2', power:500, ohms:8, count:4, parallel:2 }],
+  { ratio:1.5, ampMode:'mix', amp2W:1200, amp4W:1200, minOhms:4, dspOuts:8 });
+T('并联串接 mix：只占2路时单独配1台2通道功放',
+  rcPar2.rows[0].ch === 2 && rcPar2.amp2N === 1 && rcPar2.amp4N === 0);
+var rcPar4 = Store.reverseCalc(
+  [{ name:'P4', power:280, ohms:12, count:12, parallel:3 }],
+  { ratio:1.5, ampMode:'mix', amp2W:2000, amp4W:500, minOhms:4, dspOuts:8 });
+T('并联串接 mix：占4路时保持1台4通道功放，不拆成2台2通道',
+  rcPar4.rows[0].ch === 4 && rcPar4.amp4N === 1 && rcPar4.amp2N === 0);
+T('并联串接 mix：占4路即使用4通道不足也只报警不拆分',
+  rcPar4.warns.some(function(w){ return w.indexOf('4通道功放功率不足') >= 0; }));
 var rc4 = Store.reverseCalc(
   [{ name:'D', power:500, count:11, parallel:1 }],
   { ratio:1.5, ampMode:'mix', amp2W:800, amp4W:800 });
@@ -365,6 +377,10 @@ var rvChain = Store.state.connections.filter(function(c){
   return s && t && s.type === 'speaker' && t.type === 'speaker';
 });
 T('产生 2 条音箱串接线（2组×并联2）', rvChain.length === 2);
+var rvCableSummary = Store.cableSummary();
+var rvSpeakerCable = rvCableSummary.filter(function(g){ return g.type === '音箱线'; })[0];
+T('并联 link 暂不计入音箱线购买数量（只算功放到组首 2 根）',
+  !!rvSpeakerCable && rvSpeakerCable.count === 2);
 T('串接无硬错误', Store.state.connections.every(function(c){ return !Store.connectionError(c); }));
 Store.undo();
 T('反推创建一步撤销', Store.state.devices.length === 0);
@@ -453,6 +469,23 @@ var dia2 = fakeEl();
 SP.renderWiringDiagram(dia2);
 T('框图显示反推并联状态标识', dia2.innerHTML.indexOf('parallel-badge') >= 0 &&
   dia2.innerHTML.indexOf('parallel-chain') >= 0);
+
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var spk2ioAmp = Store.addDevice({ type:'amp', name:'2口测试功放', ins:2, outs:2, specs:{ power:'1000' } });
+var spk2io = Store.addDevice({ type:'speaker', name:'2进2出音箱', ins:2, outs:2,
+  speakerRole:'fullrange', specs:{ powered:'passive', power:'500', ohms:'8' } });
+var spk2ioSmart = Store.smartAssign(spk2io.id);
+T('2进2出音箱智能连接只占 1 根主音响线',
+  spk2ioSmart.lines.length === 1 &&
+  Store.sourceFor(spk2io.id, 0) &&
+  !Store.sourceFor(spk2io.id, 1) &&
+  Store.consumersOf(spk2ioAmp.id, 0).length === 1 &&
+  Store.consumersOf(spk2ioAmp.id, 1).length === 0);
+var spk2ioPreview = Store.smartAssignPreview(spk2io.id);
+T('2进2出音箱已有主信号后不再提示第二输入口待智连', spk2ioPreview.count === 0);
+var spk2ioAll = Store.smartAssignAll();
+T('2进2出音箱已有一根主音响线后不计未接音箱', spk2ioAll.speakerLeft === 0);
 
 print('== 13. 反推有源音箱（不参与反推，直接创建并接线路输出）==');
 Store.replaceState(Store.defaultState());

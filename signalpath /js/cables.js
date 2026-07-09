@@ -67,7 +67,9 @@
 
     /* --- 明细表：按线材类型分组（组头色条 + 小计 + 组内批量长度），
        解决整表颜色杂乱难分辨；行首复选框支持勾选后统一填长度。 --- */
-    var conns = Store.state.connections.slice();
+    var conns = Store.state.connections.filter(function (c) {
+      return !Store.isCableCountedConn || Store.isCableCountedConn(c);
+    });
     if (SP.connHierSort) SP.connHierSort(conns);
 
     var GROUP_COLORS = { '卡农信号线': '#6ba3c4', '6.5信号线': '#6ba3c4',
