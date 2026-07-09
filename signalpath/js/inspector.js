@@ -26,6 +26,7 @@
   function closeModal() {
     el('modal-overlay').hidden = true;
     el('modal-box').classList.remove('modal-wide');
+    el('modal-box').classList.remove('modal-quick');
     el('modal-box').innerHTML = '';
   }
   SP.openModal = openModal;
@@ -702,52 +703,209 @@
 
   /* CSV 批量导入（模块级，添加设备弹窗与模板面板共用）。
      表头自动识别：通道数→功放；分支/阻抗→音响；类型(→调音台/DSP */
-  SP.importCsvTemplates = function (text, refreshFn) {
-    var rows = SP.csvParse(text);
-    if (rows.length < 2) { SP.toast('CSV 内容为空或缺少数据行', true); return; }
-    var head = rows[0].join('');
-    var kind = head.indexOf('通道数') >= 0 ? 'amp'
+  /* 纯解析：文本 → { templates:[], skipped:n } ；表头无法识别返回 null（不做任何提示/写库）*/
+  SP.parseTemplatesFromText = function (text) {
+    text = String(text || '');
+    var rows = /<Workbook[\s>]/i.test(text) && /<Worksheet\b/i.test(text)
+      ? SP.templateWorkbookRowsFromXml(text)
+      : SP.csvParse(text);
+    if (rows.length < 2) return { templates: [], skipped: 0 };
+    var header = rows[0].map(function (h) { return String(h || '').trim(); });
+    var head = header.join('');
+    function col(names, fallback) {
+      names = Array.isArray(names) ? names : [names];
+      for (var n = 0; n < names.length; n++) {
+        for (var i = 0; i < header.length; i++) {
+          if (header[i].indexOf(names[n]) >= 0) return i;
+        }
+      }
+      return fallback;
+    }
+    function val(r, names, fallback) {
+      var i = col(names, fallback);
+      return i >= 0 ? String(r[i] || '').trim() : '';
+    }
+    function totalRowTemplate(r) {
+      var cat = val(r, ['类别', '类型'], 0);
+      var name = val(r, '型号名称', 1);
+      if (!name) return null;
+      var ins = Math.max(1, parseInt(val(r, '输入路数', 2), 10) || 1);
+      var outs = Math.max(0, parseInt(val(r, '输出路数', 3), 10) || 0);
+      var rackU = val(r, ['机柜U数', '机柜 U 数', 'U数'], 4);
+      var power = val(r, '功率W', 5);
+      var ohms = val(r, ['阻抗Ω', '阻抗'], 6);
+      var size = val(r, ['尺寸（寸）', '尺寸'], 7);
+      var t;
+      if (/功放/.test(cat)) {
+        t = { type: 'amp', name: name, ins: ins || outs || 2, outs: outs || ins || 2, specs: {} };
+        if (power) t.specs.power = power;
+        if (rackU) t.specs.rackU = rackU;
+      } else if (/DSP|dsp/.test(cat)) {
+        t = { type: 'dsp', name: name, ins: ins || 4, outs: outs || 8, specs: {} };
+        if (rackU) t.specs.rackU = rackU;
+      } else if (/调音台/.test(cat)) {
+        t = { type: 'mixer', name: name, ins: ins || 16, outs: outs || 8, specs: {} };
+        if (rackU) t.specs.rackU = rackU;
+      } else {
+        var active = /有源/.test(cat);
+        var role = /超低|低音/.test(cat) ? 'sub' : 'fullrange';
+        t = { type: 'speaker', name: name, ins: ins || 1, outs: outs || 1,
+          speakerRole: role, specs: { powered: active ? 'active' : 'passive' } };
+        if (power) t.specs.power = power;
+        if (!active && ohms) t.specs.ohms = ohms;
+        if (size) t.specs.size = size;
+      }
+      return t;
+    }
+    var kind = head.indexOf('类别') >= 0 && head.indexOf('型号名称') >= 0 ? 'all'
+      : head.indexOf('通道数') >= 0 ? 'amp'
       : (head.indexOf('分支') >= 0 || head.indexOf('阻抗') >= 0) ? 'speaker'
       : head.indexOf('类型(') >= 0 ? 'md' : null;
-    if (!kind) { SP.toast('无法识别表头：请使用下载的填写模板', true); return; }
-    var added = 0, updated = 0, skipped = 0;
-    Store.batch(function () {
-      rows.slice(1).forEach(function (r) {
-        var t;
-        if (kind === 'md') {
-          var name0 = String(r[1] || '').trim();
-          if (!name0) { skipped++; return; }
-          var type0 = /DSP|dsp/.test(String(r[0] || '')) ? 'dsp' : 'mixer';
-          t = { type: type0, name: name0,
-            ins: Math.max(1, parseInt(r[2], 10) || 4),
-            outs: Math.max(1, parseInt(r[3], 10) || 8), specs: {} };
-          if (String(r[4] || '').trim()) t.specs.rackU = String(r[4]).trim();
+    if (!kind) return null;
+    var out = [], skipped = 0;
+    rows.slice(1).forEach(function (r) {
+      var t;
+      if (kind === 'all') {
+        t = totalRowTemplate(r);
+        if (!t) { skipped++; return; }
+      } else if (kind === 'md') {
+        var name0 = val(r, '型号名称', 1);
+        if (!name0) { skipped++; return; }
+        var type0 = /DSP|dsp/.test(val(r, '类型', 0)) ? 'dsp' : 'mixer';
+        t = { type: type0, name: name0,
+          ins: Math.max(1, parseInt(val(r, '输入路数', 2), 10) || 4),
+          outs: Math.max(1, parseInt(val(r, '输出路数', 3), 10) || 8), specs: {} };
+        var mdU = val(r, ['机柜U数', '机柜 U 数', 'U数'], 4);
+        if (mdU) t.specs.rackU = mdU;
+      } else {
+        var name = val(r, '型号名称', 0);
+        if (!name) { skipped++; return; }
+        if (kind === 'amp') {
+          var ch = parseInt(val(r, '通道数', 1), 10);
+          var hasAmpIn = col('输入路数', -1) >= 0;
+          var hasAmpOut = col('输出路数', -1) >= 0;
+          var ain = Math.max(1, hasAmpIn ? (parseInt(val(r, '输入路数', -1), 10) || ch || 2) : (ch || 2));
+          var aout = Math.max(1, hasAmpOut ? (parseInt(val(r, '输出路数', -1), 10) || ch || ain) : (ch || ain));
+          t = { type: 'amp', name: name, ins: ain, outs: aout, specs: {} };
+          var ap = val(r, '功率W', -1);
+          var au = val(r, ['机柜U数', '机柜 U 数', 'U数'], -1);
+          if (ap) t.specs.power = ap;
+          if (au) t.specs.rackU = au;
         } else {
-          var name = String(r[0] || '').trim();
-          if (!name) { skipped++; return; }
-          if (kind === 'amp') {
-            var ch = parseInt(r[1], 10) === 4 ? 4 : 2;
-            t = { type: 'amp', name: name, ins: ch, outs: ch, specs: {} };
-            if (String(r[2] || '').trim()) t.specs.power = String(r[2]).trim();
-            if (String(r[3] || '').trim()) t.specs.rackU = String(r[3]).trim();
-          } else {
-            var roleTx = String(r[1] || '');
-            var role = /线阵/.test(roleTx) ? 'linearray' : /超低|低音/.test(roleTx) ? 'sub' : 'fullrange';
-            t = { type: 'speaker', name: name, ins: 1, outs: 1, speakerRole: role, specs: {} };
-            t.specs.powered = /有源/.test(String(r[2] || '')) ? 'active' : 'passive';
-            if (String(r[3] || '').trim()) t.specs.power = String(r[3]).trim();
-            if (String(r[4] || '').trim()) t.specs.ohms = String(r[4]).trim();
-            if (String(r[5] || '').trim()) t.specs.size = String(r[5]).trim();
-          }
+          var roleTx = val(r, '分支', 1);
+          var role = /线阵/.test(roleTx) ? 'linearray' : /超低|低音/.test(roleTx) ? 'sub' : 'fullrange';
+          var sin = Math.max(1, col('输入路数', -1) >= 0 ? (parseInt(val(r, '输入路数', -1), 10) || 1) : 1);
+          var sout = Math.max(0, col('输出路数', -1) >= 0 ? (parseInt(val(r, '输出路数', -1), 10) || 1) : 1);
+          t = { type: 'speaker', name: name, ins: sin, outs: sout, speakerRole: role, specs: {} };
+          t.specs.powered = /有源/.test(val(r, '有源无源', 2)) ? 'active' : 'passive';
+          var sp = val(r, '功率W', -1);
+          var so = val(r, ['阻抗Ω', '阻抗'], -1);
+          var ss = val(r, ['尺寸（寸）', '尺寸'], -1);
+          if (sp) t.specs.power = sp;
+          if (so) t.specs.ohms = so;
+          if (ss) t.specs.size = ss;
         }
+      }
+      out.push(t);
+    });
+    return { templates: out, skipped: skipped };
+  };
+
+  /* 单文件 CSV/工作簿导入（添加设备弹窗的批量导入沿用此入口） */
+  SP.importCsvTemplates = function (text, refreshFn) {
+    var parsed = SP.parseTemplatesFromText(text);
+    if (parsed === null) { SP.toast('无法识别表头：请使用下载的填写模板', true); return; }
+    if (!parsed.templates.length) { SP.toast('内容为空或缺少数据行', true); return; }
+    if (SP.beforeTemplatePanelMutation) SP.beforeTemplatePanelMutation();
+    var added = 0, updated = 0;
+    Store.batch(function () {
+      parsed.templates.forEach(function (t) {
         var res = Store.mergeTemplate(t);
-        if (res === 'added') added++; else if (res === 'updated') updated++; else skipped++;
+        if (res === 'added') added++; else if (res === 'updated') updated++;
       });
     });
+    if (SP.afterTemplatePanelMutation) SP.afterTemplatePanelMutation();
     SP.toast('批量导入完成：新增 ' + added + ' · 更新 ' + updated +
-      (skipped ? ' · 跳过 ' + skipped + ' 行（缺型号名）' : '') + '（⌘Z 可撤销）');
+      (parsed.skipped ? ' · 跳过 ' + parsed.skipped + ' 行（缺型号名）' : '') + '（⌘Z 可撤销）');
     if (refreshFn) refreshFn();
   };
+
+  /* 文件夹批量导入：读取文件夹内全部 CSV/工作簿，符合填写标准的批量查重合并入库 */
+  SP.importCsvFolder = function (fileList, refreshFn) {
+    var files = Array.prototype.slice.call(fileList || []).filter(function (f) {
+      return /\.(csv|xml|xls)$/i.test(f.name);
+    });
+    if (!files.length) { SP.toast('文件夹里没有可识别的 CSV 文件', true); return; }
+    var texts = [], done = 0;
+    files.forEach(function (f, idx) {
+      var reader = new FileReader();
+      reader.onload = function () { texts[idx] = reader.result; finish(); };
+      reader.onerror = function () { texts[idx] = ''; finish(); };
+      reader.readAsText(f, 'utf-8');
+    });
+    function finish() {
+      if (++done < files.length) return;
+      var all = [], skipped = 0, okFiles = 0, badFiles = 0;
+      texts.forEach(function (txt) {
+        var parsed = SP.parseTemplatesFromText(txt);
+        if (parsed === null) { badFiles++; return; }
+        okFiles++;
+        all = all.concat(parsed.templates);
+        skipped += parsed.skipped;
+      });
+      if (!all.length) {
+        SP.toast('识别了 ' + files.length + ' 个文件，但没有提取到符合标准的模板', true);
+        return;
+      }
+      if (SP.beforeTemplatePanelMutation) SP.beforeTemplatePanelMutation();
+      var added = 0, updated = 0;
+      Store.batch(function () {
+        all.forEach(function (t) {
+          var res = Store.mergeTemplate(t);
+          if (res === 'added') added++; else if (res === 'updated') updated++;
+        });
+      });
+      if (SP.afterTemplatePanelMutation) SP.afterTemplatePanelMutation();
+      SP.renderAll();
+      SP.toast('文件夹批量导入：' + okFiles + ' 个表 → 新增 ' + added + ' · 更新 ' + updated +
+        (badFiles ? ' · ' + badFiles + ' 个文件表头不符跳过' : '') +
+        (skipped ? ' · 跳过 ' + skipped + ' 行' : '') + '（⌘Z 可撤销）');
+      if (refreshFn) refreshFn();
+    }
+  };
+
+  /* 模板库 JSON 导入：询问「覆盖」或「合并」后写入 */
+  SP.promptTemplateLibImport = function (data, refreshFn) {
+    function doImport(replace) {
+      if (SP.beforeTemplatePanelMutation) SP.beforeTemplatePanelMutation();
+      var r = Store.importTemplateLib(data, { replace: replace });
+      if (SP.afterTemplatePanelMutation) SP.afterTemplatePanelMutation();
+      SP.renderAll();
+      SP.toast((replace ? '已覆盖当前模板库：' : '已合并入模板库：') +
+        '型号模板 ' + r.dev + ' · 快速预设 ' + r.presets +
+        ' · 反推模板 ' + (r.reversePresets || 0) + ' · 台面 ' + r.mixerTpls + '（⌘Z 可撤销）');
+      if (refreshFn) refreshFn();
+    }
+    var n = (data.deviceTemplates || []).length;
+    openModal(
+      '<div class="modal-head"><h3>导入模板库</h3>' +
+      '<button class="btn icon" data-close-modal>✕</button></div>' +
+      '<div class="modal-body">' +
+      '<p class="cfg-note" style="margin-top:0">文件含 ' + n + ' 个型号模板。请选择导入方式：</p>' +
+      '<div class="cfg-note">· <b>合并</b>：按名称查重，同名更新、新名追加，保留你现有的其它模板。<br>' +
+      '· <b>覆盖</b>：清空当前模板库后完全替换为该文件内容（可 ⌘Z 撤销）。</div>' +
+      '</div>' +
+      '<div class="modal-foot">' +
+      '<button class="btn ghost" data-close-modal>取消</button>' +
+      '<button class="btn danger" id="tpllib-replace">覆盖当前模板库</button>' +
+      '<button class="btn primary" id="tpllib-merge">合并入当前模板库</button></div>'
+    );
+    var mg = el('tpllib-merge');
+    if (mg) mg.onclick = function () { closeModal(); doImport(false); };
+    var rp = el('tpllib-replace');
+    if (rp) rp.onclick = function () { closeModal(); doImport(true); };
+  };
+
 
   SP.pickCsvImport = function (refreshFn) {
     var fi = el('csv-import-file');
@@ -763,170 +921,653 @@
     fi.click();
   };
 
+  /* 选择文件夹批量导入（webkitdirectory：整个文件夹的 CSV 一次识别） */
+  SP.pickCsvFolder = function (refreshFn) {
+    var fi = el('csv-folder-file');
+    if (!fi) { SP.pickCsvImport(refreshFn); return; }
+    fi.onchange = function () {
+      var files = this.files;
+      this.value = '';
+      SP.importCsvFolder(files, refreshFn);
+    };
+    fi.click();
+  };
+
+  SP.templateWorkbookSheets = function () {
+    return [
+      { name: '全频',
+        columns: ['型号名称', '输入路数', '输出路数', '功率W', '阻抗Ω', '尺寸（寸）'],
+        rows: [['DD115H', '1', '1', '500', '8', '15']] },
+      { name: '超低',
+        columns: ['型号名称', '输入路数', '输出路数', '功率W', '阻抗Ω', '尺寸（寸）'],
+        rows: [['SUB218', '1', '1', '1000', '4', '18']] },
+      { name: '全频有源',
+        columns: ['型号名称', '输入路数', '输出路数', '功率W', '尺寸（寸）'],
+        rows: [['有源双6寸', '1', '1', '350', '双6寸']] },
+      { name: '超低有源',
+        columns: ['型号名称', '输入路数', '输出路数', '功率W', '尺寸（寸）'],
+        rows: [['有源超低18', '1', '1', '1200', '18']] },
+      { name: '功放',
+        columns: ['型号名称', '输入路数', '输出路数', '机柜U数', '功率W'],
+        rows: [['四通道功放', '4', '4', '2', '900']] },
+      { name: 'DSP',
+        columns: ['型号名称', '输入路数', '输出路数', '机柜U数'],
+        rows: [['Unit48', '4', '8', '1']] },
+      { name: '调音台',
+        columns: ['型号名称', '输入路数', '输出路数', '机柜U数'],
+        rows: [['WING RACK', '16', '8', '3']] }
+    ];
+  };
+
+  SP.templateWorkbookRowsFromXml = function (text) {
+    function u(s) {
+      return String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+        .replace(/<[^>]+>/g, '').replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'").replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
+    }
+    function cells(rowXml) {
+      var out = [], m;
+      var re = /<Cell\b[^>]*>([\s\S]*?)<\/Cell>/g;
+      while ((m = re.exec(rowXml))) out.push(u(m[1]));
+      return out;
+    }
+    function totalRow(sheet, r) {
+      if (!r.join('').trim()) return null;
+      if (sheet === '全频' || sheet === '超低') {
+        return [sheet, r[0] || '', r[1] || '1', r[2] || '1', '', r[3] || '', r[4] || '', r[5] || ''];
+      }
+      if (sheet === '全频有源' || sheet === '超低有源') {
+        return [sheet, r[0] || '', r[1] || '1', r[2] || '1', '', r[3] || '', '', r[4] || ''];
+      }
+      if (sheet === '功放') {
+        return [sheet, r[0] || '', r[1] || '2', r[2] || '2', r[3] || '', r[4] || '', '', ''];
+      }
+      if (sheet === 'DSP' || sheet === '调音台') {
+        return [sheet, r[0] || '', r[1] || '', r[2] || '', r[3] || '', '', '', ''];
+      }
+      return null;
+    }
+    var rows = [['类别', '型号名称', '输入路数', '输出路数', '机柜U数', '功率W', '阻抗Ω', '尺寸（寸）']];
+    var sh, sheetRe = /<Worksheet\b[^>]*(?:ss:)?Name="([^"]+)"[^>]*>([\s\S]*?)<\/Worksheet>/g;
+    while ((sh = sheetRe.exec(String(text || '')))) {
+      var sheetName = u(sh[1]);
+      var first = true, rm;
+      var rowRe = /<Row\b[^>]*>([\s\S]*?)<\/Row>/g;
+      while ((rm = rowRe.exec(sh[2]))) {
+        var r = cells(rm[1]);
+        if (first) { first = false; continue; }
+        var tr = totalRow(sheetName, r);
+        if (tr) rows.push(tr);
+      }
+    }
+    return rows;
+  };
+
+  SP.buildTemplateWorkbookXml = function () {
+    function x(s) {
+      return String(s === undefined || s === null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function row(vals) {
+      return '<Row>' + vals.map(function (v) {
+        return '<Cell><Data ss:Type="String">' + x(v) + '</Data></Cell>';
+      }).join('') + '</Row>';
+    }
+    var sheets = SP.templateWorkbookSheets().map(function (s) {
+      return '<Worksheet ss:Name="' + x(s.name) + '"><Table>' +
+        row(s.columns) + s.rows.map(row).join('') +
+        '</Table></Worksheet>';
+    }).join('');
+    return '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<?mso-application progid="Excel.Sheet"?>' +
+      '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" ' +
+      'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">' +
+      sheets + '</Workbook>';
+  };
+
+  SP.downloadTemplateWorkbook = function () {
+    var blob = new Blob([SP.buildTemplateWorkbookXml()], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = SP.exportFilename('模板总表', 'xls');
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  };
+
   /* ================= 模板管理面板（顶栏「模板」按钮）=================
      批量导入 / 模板库存档 / 六类横排自定义新建（字段按类差异化） */
 
   SP.openTemplatePanel = function () {
-    var TCATS = [
+    var LIB_CATS = [
+      { key: 'fullrange', title: '全频', type: 'speaker', role: 'fullrange', active: false },
+      { key: 'sub', title: '超低', type: 'speaker', role: 'sub', active: false },
+      { key: 'afullrange', title: '全频有源', type: 'speaker', role: 'fullrange', active: true },
+      { key: 'asub', title: '超低有源', type: 'speaker', role: 'sub', active: true },
+      { key: 'amp', title: '功放', type: 'amp' },
+      { key: 'dsp', title: 'DSP', type: 'dsp' },
+      { key: 'mixer', title: '调音台', type: 'mixer' }
+    ];
+    var CREATE_CATS = [
       { key: 'mixer', title: '调音台', type: 'mixer' },
       { key: 'dsp', title: 'DSP', type: 'dsp' },
       { key: 'amp', title: '功放', type: 'amp' },
-      { key: 'fullrange', title: '全频', type: 'speaker', role: 'fullrange' },
-      { key: 'sub', title: '超低', type: 'speaker', role: 'sub' },
+      { key: 'fullrange', title: '全频', type: 'speaker', role: 'fullrange', active: false },
+      { key: 'sub', title: '超低', type: 'speaker', role: 'sub', active: false },
       { key: 'active', title: '有源 ▸', expander: true }
     ];
-    var ACTIVE_CATS = [
+    var ACTIVE_CREATE = [
       { key: 'afullrange', title: '有源全频', type: 'speaker', role: 'fullrange', active: true },
       { key: 'asub', title: '有源超低', type: 'speaker', role: 'sub', active: true }
     ];
+    var SECTIONS = [
+      { key: 'preview', title: '模板库预览' },
+      { key: 'download', title: '下载填写模版表' },
+      { key: 'import', title: '导出导入' },
+      { key: 'capture', title: '提取当前案例中的模板' },
+      { key: 'custom', title: '自定义新建' }
+    ];
+    var mode = 'preview';
+    var previewKey = 'fullrange';
+    var createKey = '';
     var showActive = false;
-    var curCat = null;
+    var editIdx = -1;
+    var tplUndo = [], tplRedo = [];
+    var box;
 
+    function cloneTemplates() {
+      return JSON.stringify(Store.state.deviceTemplates || []);
+    }
+    function remember() {
+      if (!document.getElementById('tpl-panel')) return;
+      tplUndo.push(cloneTemplates());
+      if (tplUndo.length > 40) tplUndo.shift();
+      tplRedo = [];
+    }
+    function restoreTemplates(raw) {
+      Store.state.deviceTemplates = JSON.parse(raw || '[]');
+      Store.save();
+      SP.renderAll();
+      render();
+    }
+    function undoTpl() {
+      if (!tplUndo.length) { SP.toast('模板库没有可撤销步骤', true); return; }
+      tplRedo.push(cloneTemplates());
+      restoreTemplates(tplUndo.pop());
+      SP.toast('已撤销模板库操作');
+    }
+    function redoTpl() {
+      if (!tplRedo.length) { SP.toast('模板库没有可重做步骤', true); return; }
+      tplUndo.push(cloneTemplates());
+      restoreTemplates(tplRedo.pop());
+      SP.toast('已重做模板库操作');
+    }
+    SP.beforeTemplatePanelMutation = remember;
+    SP.afterTemplatePanelMutation = function () {
+      if (document.getElementById('tpl-panel')) render();
+    };
+
+    function catByKey(key) {
+      return LIB_CATS.concat(CREATE_CATS, ACTIVE_CREATE).filter(function (c) { return c.key === key; })[0];
+    }
+    function catForTemplate(t) {
+      if (!t) return catByKey('fullrange');
+      if (t.type === 'speaker') {
+        var role = t.speakerRole || SP.inferSpeakerRole(t.name);
+        var active = t.specs && t.specs.powered === 'active';
+        if (role === 'sub') return catByKey(active ? 'asub' : 'sub');
+        return catByKey(active ? 'afullrange' : 'fullrange');
+      }
+      return catByKey(t.type) || catByKey('fullrange');
+    }
+    function catForDevice(d) {
+      if (d.type === 'speaker') {
+        var active = d.specs && d.specs.powered === 'active';
+        var role = d.speakerRole || SP.inferSpeakerRole(d.name);
+        return catByKey(role === 'sub' ? (active ? 'asub' : 'sub') : (active ? 'afullrange' : 'fullrange'));
+      }
+      return catByKey(d.type) || catByKey('fullrange');
+    }
+    function matchCat(t, c) {
+      if (!t || !c || t.type !== c.type) return false;
+      if (t.type !== 'speaker') return true;
+      var role = t.speakerRole || SP.inferSpeakerRole(t.name);
+      var active = t.specs && t.specs.powered === 'active';
+      return role === c.role && active === !!c.active;
+    }
     function countOf(c) {
-      return Store.state.deviceTemplates.filter(function (t) {
-        if (t.type !== c.type) return false;
-        if (c.type !== 'speaker') return true;
-        if ((t.speakerRole || SP.inferSpeakerRole(t.name)) !== c.role) return false;
-        var act = t.specs && t.specs.powered === 'active';
-        return c.active ? act : !act;
-      }).length;
+      return Store.state.deviceTemplates.filter(function (t) { return matchCat(t, c); }).length;
     }
-
-    function catsHtml() {
-      var list = TCATS.slice(0, 5).concat(showActive ? ACTIVE_CATS : [TCATS[5]]);
-      return list.map(function (c) {
-        var on = curCat && curCat.key === c.key;
-        return '<button class="tplp-cat' + (on ? ' on' : '') + '" data-tcat="' + c.key + '">' +
-          esc(c.title) + (c.expander ? '' : '<span class="mp-io">' + countOf(c) + '</span>') +
-          '</button>';
+    function outsOfTpl(t) {
+      return Array.isArray(t.outs) ? t.outs.length : (+t.outs || 0);
+    }
+    function tplMeta(t) {
+      var s = t.specs || {};
+      var a = [t.ins + '进' + outsOfTpl(t) + '出'];
+      if (s.rackU) a.push(s.rackU + 'U');
+      if (s.power) a.push(s.power + 'W');
+      if (s.ohms) a.push(s.ohms + 'Ω');
+      if (s.size) a.push('尺寸 ' + s.size);
+      if (t.type === 'speaker') a.push(s.powered === 'active' ? '有源' : '无源');
+      return a.join(' · ');
+    }
+    function tplToTotalRow(t) {
+      var c = catForTemplate(t);
+      var s = t.specs || {};
+      return [c.title, t.name, t.ins || '', outsOfTpl(t) || '', s.rackU || '',
+        s.power || '', s.powered === 'active' ? '' : (s.ohms || ''), s.size || ''];
+    }
+    function makeTemplate(c, name, ins, outs, rackU, power, ohms, size) {
+      var t;
+      ins = Math.max(1, parseInt(ins, 10) || (c.type === 'dsp' ? 4 : c.type === 'mixer' ? 16 : 1));
+      outs = Math.max(0, parseInt(outs, 10) || (c.type === 'dsp' ? 8 : c.type === 'mixer' ? 8 : c.type === 'amp' ? ins : 1));
+      if (c.type === 'mixer' || c.type === 'dsp') {
+        t = { type: c.type, name: name, ins: ins, outs: Math.max(1, outs), specs: {} };
+        if (rackU) t.specs.rackU = rackU;
+      } else if (c.type === 'amp') {
+        outs = outs === 4 ? 4 : 2;
+        ins = ins === 4 || outs === 4 ? 4 : 2;
+        t = { type: 'amp', name: name, ins: ins, outs: outs, specs: {} };
+        if (rackU) t.specs.rackU = rackU;
+        if (power) t.specs.power = power;
+      } else {
+        t = { type: 'speaker', name: name, ins: ins, outs: outs,
+          speakerRole: c.role, specs: { powered: c.active ? 'active' : 'passive' } };
+        if (power) t.specs.power = power;
+        if (!c.active && ohms) t.specs.ohms = ohms;
+        if (size) t.specs.size = size;
+      }
+      return t;
+    }
+    function templateFromCaptureRow(row) {
+      var cat = catByKey(row.dataset.cat);
+      var name = (row.querySelector('[data-cap-name]').value || '').trim();
+      var ins = (row.querySelector('[data-cap-ins]').value || '').trim();
+      var outs = (row.querySelector('[data-cap-outs]').value || '').trim();
+      var rackU = (row.querySelector('[data-cap-u]').value || '').trim();
+      var power = (row.querySelector('[data-cap-power]').value || '').trim();
+      var ohms = (row.querySelector('[data-cap-ohms]').value || '').trim();
+      var size = (row.querySelector('[data-cap-size]').value || '').trim();
+      if (![name, ins, outs, rackU, power, ohms, size].join('').trim()) return null;
+      if (!name || !cat) return null;
+      return makeTemplate(cat, name, ins, outs, rackU, power, ohms, size);
+    }
+    function totalHeader() {
+      return ['类别', '型号名称', '输入路数', '输出路数', '机柜U数', '功率W', '阻抗Ω', '尺寸（寸）'];
+    }
+    function sampleRows() {
+      return [
+        ['全频', 'DD115H', '1', '1', '', '500', '8', '15'],
+        ['超低', 'SUB218', '1', '1', '', '1000', '4', '18'],
+        ['全频有源', '有源双6寸', '1', '1', '', '350', '', '双6寸'],
+        ['超低有源', '有源超低18', '1', '1', '', '1200', '', '18'],
+        ['功放', '四通道功放', '4', '4', '2', '900', '', ''],
+        ['DSP', 'Unit48', '4', '8', '1', '', '', ''],
+        ['调音台', 'WING RACK', '16', '8', '3', '', '', '']
+      ];
+    }
+    function navHtml() {
+      return '<div class="tplp-nav">' + SECTIONS.map(function (s) {
+        return '<button class="' + (mode === s.key ? 'on' : '') + '" data-tpl-mode="' + s.key + '">' +
+          esc(s.title) + '</button>';
+      }).join('') + '</div>';
+    }
+    function catTabsHtml(activeKey, attr) {
+      return '<div class="tplp-cats">' + LIB_CATS.map(function (c) {
+        return '<button class="tplp-cat' + (activeKey === c.key ? ' on' : '') + '" data-' + attr + '="' + c.key + '">' +
+          esc(c.title) + '<span class="mp-io">' + countOf(c) + '</span></button>';
+      }).join('') + '</div>';
+    }
+    function previewHtml() {
+      var c = catByKey(previewKey);
+      var rows = [];
+      Store.state.deviceTemplates.forEach(function (t, i) {
+        if (!matchCat(t, c)) return;
+        rows.push('<div class="tpl-lib-row" data-tpl-row="' + i + '">' +
+          '<label><input type="checkbox" data-tpl-check="' + i + '"> <b>' + esc(t.name) + '</b></label>' +
+          '<span class="tpl-lib-meta">' + esc(tplMeta(t)) + '</span>' +
+          '<button class="btn ghost sm" data-tpl-edit="' + i + '">编辑</button>' +
+          '<button class="btn ghost sm danger" data-tpl-del="' + i + '">删除</button></div>');
+      });
+      return '<section class="tplp-section"><h4>模板库预览</h4>' +
+        catTabsHtml(previewKey, 'preview-cat') +
+        '<div class="tplp-actions">' +
+        '<button class="btn ghost sm" id="tplp-preview-all">批量选中</button>' +
+        '<button class="btn ghost sm danger" id="tplp-preview-del">删除选中</button>' +
+        '</div>' +
+        '<div class="tpl-lib-list">' + (rows.join('') || '<p class="cfg-note">这一页还没有模板。</p>') + '</div></section>';
+    }
+    function downloadHtml() {
+      return '<section class="tplp-section"><h4>下载填写模版表</h4>' +
+        '<div class="tplp-actions">' +
+        '<button class="btn primary sm" id="tplp-dl-all">下载模板总表</button>' +
+        '</div></section>';
+    }
+    function importHtml() {
+      return '<section class="tplp-section"><h4>导出导入</h4>' +
+        '<p class="cfg-note">「模板库导出」把当前整体模板库存为一个 JSON 文件；「模板库导入」可选择覆盖或合并；' +
+        '「批量导入CSV」可选择一个文件夹，自动识别其中所有符合填写标准的 CSV 并查重合并入库。</p>' +
+        '<div class="tplp-actions">' +
+        '<button class="btn primary sm" id="tplp-lib-out">模板库导出</button>' +
+        '<button class="btn ghost sm" id="tplp-lib-in">模板库导入</button>' +
+        '<button class="btn ghost sm" id="tplp-csv-folder">批量导入CSV（选文件夹）</button>' +
+        '</div></section>';
+    }
+    /* 某行必填字段是否补全（未补全者需补全后才能入库） */
+    function captureRowComplete(row) {
+      var c = catByKey(row.dataset.cat);
+      function q(a) { var e = row.querySelector('[' + a + ']'); return e ? String(e.value || '').trim() : ''; }
+      if (!q('data-cap-name')) return false;
+      if (!c) return false;
+      if (c.type === 'mixer' || c.type === 'dsp') return !!q('data-cap-ins') && !!q('data-cap-outs');
+      if (c.type === 'amp') return !!q('data-cap-power');
+      if (!q('data-cap-power')) return false;              /* 音响需功率 */
+      if (!c.active && !q('data-cap-ohms')) return false;  /* 无源音响需阻抗 */
+      return true;
+    }
+    function captureHtml() {
+      var rows = Store.state.devices.map(function (d, i) {
+        var c = catForDevice(d);
+        var s = d.specs || {};
+        var t = { specs: s, ins: d.inputs.length, outs: d.outputs.length, type: c.type, speakerRole: d.speakerRole };
+        /* 用统一判定初值：完整则默认勾选 */
+        var complete = (function () {
+          if (!(Store.baseNameOf(d.name) || d.name)) return false;
+          if (c.type === 'mixer' || c.type === 'dsp') return !!d.inputs.length && !!d.outputs.length;
+          if (c.type === 'amp') return !!s.power;
+          if (!s.power) return false;
+          if (!c.active && !s.ohms) return false;
+          return true;
+        })();
+        return '<tr data-capture-row="' + i + '" data-cat="' + c.key + '" class="' + (complete ? '' : 'cap-incomplete') + '">' +
+          '<td class="cap-pick"><input type="checkbox" data-cap-check' + (complete ? ' checked' : '') + '></td>' +
+          '<td>' + esc(c.title) + '</td>' +
+          '<td><input data-cap-name value="' + esc(Store.baseNameOf(d.name) || d.name) + '"></td>' +
+          '<td><input data-cap-ins type="number" value="' + d.inputs.length + '"></td>' +
+          '<td><input data-cap-outs type="number" value="' + d.outputs.length + '"></td>' +
+          '<td><input data-cap-u value="' + esc(s.rackU || '') + '"></td>' +
+          '<td><input data-cap-power value="' + esc(s.power || '') + '"></td>' +
+          '<td><input data-cap-ohms value="' + esc(c.active ? '' : (s.ohms || '')) + '"' + (c.active ? ' disabled' : '') + '></td>' +
+          '<td><input data-cap-size value="' + esc(s.size || '') + '"></td>' +
+          '<td class="cap-status">' + (complete ? '<span class="tag ok">完整</span>' : '<span class="tag warn">待补全</span>') + '</td></tr>';
       }).join('');
+      return '<section class="tplp-section"><h4>提取当前案例中的模板</h4>' +
+        '<p class="cfg-note">已填写的设备会列出等待确认；<b>标「待补全」的行需补齐必填项</b>（音响缺功率/无源缺阻抗、调音台/DSP 缺路数）后方可入库。' +
+        '勾选要加入的行，或点「一键全选」，再「确认加入模板库」。</p>' +
+        '<div class="tplp-actions" style="margin-bottom:8px">' +
+        '<button class="btn ghost sm" id="tplp-cap-all">一键全选</button>' +
+        '<button class="btn ghost sm" id="tplp-cap-none">全不选</button>' +
+        '<span class="head-note" id="tplp-cap-count"></span>' +
+        '</div>' +
+        '<div class="tpl-capture-wrap"><table class="mini-table tpl-capture-table"><thead><tr>' +
+        '<th></th>' + totalHeader().map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '<th>状态</th>' +
+        '</tr></thead><tbody>' + (rows || '<tr><td colspan="10" class="cfg-note">当前画布没有设备。</td></tr>') +
+        '</tbody></table></div><div class="tplp-actions">' +
+        '<button class="btn primary sm" id="tplp-capture-merge">确认加入模板库</button></div></section>';
     }
-
-    function formHtml(c) {
-      if (!c) return '<p class="cfg-note">点上方类别新建模板；同名保存会更新原模板并可同步到在用设备。</p>';
-      var f = '<div class="cfg-field"><label>型号名称</label><input type="text" id="tf-name" placeholder="如 WING RACK / FA900 / DD115H"></div>';
+    function createCatsHtml() {
+      var list = CREATE_CATS.slice(0, 5).concat(showActive ? ACTIVE_CREATE : [CREATE_CATS[5]]);
+      return '<div class="tplp-cats">' + list.map(function (c) {
+        var on = createKey === c.key;
+        return '<button class="tplp-cat' + (on ? ' on' : '') + '" data-tcat="' + c.key + '">' +
+          esc(c.title) + (c.expander ? '' : '<span class="mp-io">' + countOf(c) + '</span>') + '</button>';
+      }).join('') + '</div>';
+    }
+    function formHtml() {
+      var c = catByKey(createKey);
+      var t = editIdx >= 0 ? Store.state.deviceTemplates[editIdx] : null;
+      if (!c) return '<p class="cfg-note">点上方类别新建模板；同名保存会更新原模板。</p>';
+      var s = (t && t.specs) || {};
+      var title = editIdx >= 0 ? '编辑「' + esc(t.name) + '」' : '自定义新建';
+      var f = '<div class="tpl-form-card"><h4>' + title + '</h4>' +
+        '<div class="cfg-field"><label>型号名称</label><input type="text" id="tf-name" value="' +
+        esc(t ? t.name : '') + '" placeholder="如 WING RACK / FA900 / DD115H"></div>';
       if (c.type === 'mixer' || c.type === 'dsp') {
         f += '<div class="cfg-inline">' +
-          '<div class="cfg-field"><label>输入路数</label><input type="number" id="tf-ins" min="1" max="128" value="' + (c.type === 'dsp' ? 4 : 16) + '"></div>' +
-          '<div class="cfg-field"><label>输出路数</label><input type="number" id="tf-outs" min="1" max="128" value="8"></div>' +
-          '<div class="cfg-field"><label>机柜U数</label><input type="number" id="tf-u" min="0" step="0.5" placeholder="选填"></div></div>';
+          '<div class="cfg-field"><label>输入路数</label><input type="number" id="tf-ins" min="1" max="128" value="' + esc(t ? t.ins : (c.type === 'dsp' ? 4 : 16)) + '"></div>' +
+          '<div class="cfg-field"><label>输出路数</label><input type="number" id="tf-outs" min="1" max="128" value="' + esc(t ? outsOfTpl(t) : 8) + '"></div>' +
+          '<div class="cfg-field"><label>机柜U数</label><input type="number" id="tf-u" min="0" step="0.5" value="' + esc(s.rackU || '') + '" placeholder="选填"></div></div>';
       } else if (c.type === 'amp') {
         f += '<div class="cfg-inline">' +
-          '<div class="cfg-field"><label>通道数</label><select id="tf-ch"><option value="2">2 通道（2进2出）</option><option value="4">4 通道（4进4出）</option></select></div>' +
-          '<div class="cfg-field"><label>功率 W</label><input type="number" id="tf-w" min="0" placeholder="如 900"></div>' +
-          '<div class="cfg-field"><label>机柜U数</label><input type="number" id="tf-u" min="0" step="0.5" placeholder="选填"></div></div>';
-      } else if (c.active) {
-        f += '<div class="cfg-inline">' +
-          '<div class="cfg-field"><label>输入路数</label><input type="number" id="tf-ins" min="1" max="8" value="1"></div>' +
-          '<div class="cfg-field"><label>输出路数</label><input type="number" id="tf-outs" min="0" max="8" value="1"></div>' +
-          '<div class="cfg-field"><label>功率 W</label><input type="number" id="tf-w" min="0" placeholder="如 500"></div>' +
-          '<div class="cfg-field"><label>尺寸（寸）</label><input type="text" id="tf-size" placeholder="如 15 / 双6寸"></div></div>';
+          '<div class="cfg-field"><label>输入路数</label><input type="number" id="tf-ins" min="1" max="4" value="' + esc(t ? t.ins : 2) + '"></div>' +
+          '<div class="cfg-field"><label>输出路数（2或4）</label><select id="tf-outs"><option value="2"' + (!t || outsOfTpl(t) !== 4 ? ' selected' : '') + '>2</option><option value="4"' + (t && outsOfTpl(t) === 4 ? ' selected' : '') + '>4</option></select></div>' +
+          '<div class="cfg-field"><label>机柜U数</label><input type="number" id="tf-u" min="0" step="0.5" value="' + esc(s.rackU || '') + '" placeholder="选填"></div>' +
+          '<div class="cfg-field"><label>功率 W</label><input type="number" id="tf-w" min="0" value="' + esc(s.power || '') + '" placeholder="如 900"></div></div>';
       } else {
         f += '<div class="cfg-inline">' +
-          '<div class="cfg-field"><label>输入路数</label><input type="number" id="tf-ins" min="1" max="8" value="1"></div>' +
-          '<div class="cfg-field"><label>输出路数</label><input type="number" id="tf-outs" min="0" max="8" value="1"></div>' +
-          '<div class="cfg-field"><label>功率 W</label><input type="number" id="tf-w" min="0" placeholder="如 500"></div>' +
-          '<div class="cfg-field"><label>阻抗 Ω</label><input type="number" id="tf-ohm" min="0" placeholder="如 8"></div>' +
-          '<div class="cfg-field"><label>尺寸（寸）</label><input type="text" id="tf-size" placeholder="如 15 / 双6寸"></div></div>';
+          '<div class="cfg-field"><label>输入路数</label><input type="number" id="tf-ins" min="1" max="8" value="' + esc(t ? t.ins : 1) + '"></div>' +
+          '<div class="cfg-field"><label>输出路数</label><input type="number" id="tf-outs" min="0" max="8" value="' + esc(t ? outsOfTpl(t) : 1) + '"></div>' +
+          '<div class="cfg-field"><label>功率 W</label><input type="number" id="tf-w" min="0" value="' + esc(s.power || '') + '" placeholder="如 500"></div>' +
+          (c.active ? '' : '<div class="cfg-field"><label>阻抗 Ω</label><input type="number" id="tf-ohm" min="0" value="' + esc(s.ohms || '') + '" placeholder="如 8"></div>') +
+          '<div class="cfg-field"><label>尺寸（寸）</label><input type="text" id="tf-size" value="' + esc(s.size || '') + '" placeholder="如 15 / 双6寸"></div></div>';
       }
-      f += '<button class="btn primary sm" id="tf-save">保存「' + esc(c.title) + '」模板</button>';
+      f += '<div class="tplp-actions"><button class="btn primary sm" id="tf-save">' +
+        (editIdx >= 0 ? '保存修改' : '保存「' + esc(c.title) + '」模板') + '</button>' +
+        (editIdx >= 0 ? '<button class="btn ghost sm" id="tf-cancel-edit">取消编辑</button>' : '') +
+        '</div></div>';
       return f;
     }
-
-    SP.openModal(
-      '<div class="modal-head"><h3>模板</h3>' +
-      '<span class="head-note">批量导入 · 存档 · 自定义新建</span>' +
-      '<button class="btn icon" data-close-modal>✕</button></div>' +
-      '<div class="modal-body">' +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">' +
-      '<button class="btn ghost sm" id="tplp-dl-spk">下载填写音响模板</button>' +
-      '<button class="btn ghost sm" id="tplp-dl-amp">下载填写功放模板</button>' +
-      '<button class="btn ghost sm" id="tplp-csv">批量导入CSV…</button>' +
-      '<button class="btn ghost sm" id="tplp-all-tpl" title="把当前画布所有设备按名称系列存入模板库">一键模板</button>' +
-      '<button class="btn ghost sm" id="tplp-lib-out" title="导出完整模板库 JSON">导出模板库JSON</button>' +
-      '<button class="btn ghost sm" id="tplp-lib-in">导入模板库</button>' +
-      '</div>' +
-      '<div class="tplp-cats" id="tplp-cats">' + catsHtml() + '</div>' +
-      '<div id="tplp-form" style="margin-top:12px">' + formHtml(null) + '</div>' +
-      '</div>' +
-      '<div class="modal-foot"><button class="btn primary" data-close-modal>完成</button></div>'
-    );
-    el('modal-box').classList.add('modal-wide');
-    var box = el('modal-box');
-
-    function refreshCats() {
-      el('tplp-cats').innerHTML = catsHtml();
-      bindCats();
+    function customHtml() {
+      return '<section class="tplp-section"><h4>自定义新建</h4>' +
+        createCatsHtml() + '<div id="tplp-form" style="margin-top:12px">' + formHtml() + '</div></section>';
     }
-    function bindCats() {
+    function bodyHtml() {
+      if (mode === 'download') return downloadHtml();
+      if (mode === 'import') return importHtml();
+      if (mode === 'capture') return captureHtml();
+      if (mode === 'custom') return customHtml();
+      return previewHtml();
+    }
+    function render() {
+      if (!box) return;
+      var body = el('tplp-body');
+      if (!body) return;
+      body.innerHTML =
+        '<div class="tplp-topline">' +
+        '<span class="head-note">模板库内部操作：</span>' +
+        '<button class="btn ghost sm" id="tplp-undo"' + (!tplUndo.length ? ' disabled' : '') + '>撤销</button>' +
+        '<button class="btn ghost sm" id="tplp-redo"' + (!tplRedo.length ? ' disabled' : '') + '>重做</button>' +
+        '<span class="tplp-spacer"></span>' +
+        '<button class="btn ghost sm" id="tplp-lib-out-top">模板库导出</button>' +
+        '</div>' + navHtml() + bodyHtml();
+      bind();
+    }
+    function selectedPreviewIndices() {
+      return Array.prototype.map.call(box.querySelectorAll('[data-tpl-check]:checked'), function (x) {
+        return +x.dataset.tplCheck;
+      }).filter(function (i) { return i >= 0; });
+    }
+    function captureTemplates() {
+      return Array.prototype.map.call(box.querySelectorAll('[data-capture-row]'), templateFromCaptureRow)
+        .filter(function (t) { return !!t; });
+    }
+    function saveForm() {
+      var c = catByKey(createKey);
+      if (!c) return;
+      function v(id) { var x = el(id); return x ? String(x.value || '').trim() : ''; }
+      var name = v('tf-name');
+      if (!name) { SP.toast('请填写型号名称', true); return; }
+      var t = makeTemplate(c, name, v('tf-ins'), v('tf-outs'), v('tf-u'), v('tf-w'), v('tf-ohm'), v('tf-size'));
+      remember();
+      if (editIdx >= 0 && Store.state.deviceTemplates[editIdx]) {
+        Store.updateDeviceTemplate(editIdx, t);
+        Store.syncTemplateInstances(editIdx);
+        SP.toast('已保存模板「' + name + '」并同步在用设备');
+      } else {
+        var res = Store.mergeTemplate(t);
+        Store.save();
+        SP.toast((res === 'added' ? '已新增' : '已更新') + '模板「' + name + '」');
+      }
+      editIdx = -1;
+      mode = 'preview';
+      previewKey = catForTemplate(t).key;
+      SP.renderAll();
+      render();
+    }
+    function bind() {
+      box.querySelectorAll('[data-tpl-mode]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          mode = b.dataset.tplMode;
+          if (mode !== 'custom') editIdx = -1;
+          render();
+        });
+      });
+      var ub = el('tplp-undo'); if (ub) ub.onclick = undoTpl;
+      var rb = el('tplp-redo'); if (rb) rb.onclick = redoTpl;
+      var outTop = el('tplp-lib-out-top'); if (outTop) outTop.onclick = SP.exportTemplateJson;
+
+      box.querySelectorAll('[data-preview-cat]').forEach(function (b) {
+        b.addEventListener('click', function () { previewKey = b.dataset.previewCat; render(); });
+      });
+      var all = el('tplp-preview-all');
+      if (all) all.onclick = function () {
+        var checks = box.querySelectorAll('[data-tpl-check]');
+        var allOn = checks.length && Array.prototype.every.call(checks, function (x) { return x.checked; });
+        Array.prototype.forEach.call(checks, function (x) { x.checked = !allOn; });
+      };
+      var delSel = el('tplp-preview-del');
+      if (delSel) delSel.onclick = function () {
+        var idxs = selectedPreviewIndices();
+        if (!idxs.length) { SP.toast('请先勾选要删除的模板', true); return; }
+        remember();
+        Store.batch(function () {
+          idxs.sort(function (a, b) { return b - a; }).forEach(Store.removeDeviceTemplate);
+        });
+        SP.toast('已删除 ' + idxs.length + ' 个模板');
+        render();
+      };
+      box.querySelectorAll('[data-tpl-del]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var i = +b.dataset.tplDel;
+          var t = Store.state.deviceTemplates[i];
+          if (!t) return;
+          remember();
+          Store.removeDeviceTemplate(i);
+          SP.toast('已删除模板「' + t.name + '」');
+          render();
+        });
+      });
+      box.querySelectorAll('[data-tpl-edit]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          editIdx = +b.dataset.tplEdit;
+          var t = Store.state.deviceTemplates[editIdx];
+          if (!t) return;
+          createKey = catForTemplate(t).key;
+          mode = 'custom';
+          render();
+        });
+      });
+
+      var dlAll = el('tplp-dl-all');
+      if (dlAll) dlAll.onclick = function () {
+        SP.downloadTemplateWorkbook();
+      };
+
+      /* 导入导出：批量导入CSV（文件夹）/ 模板库导入（覆盖或合并）/ 模板库导出 */
+      var csvFolderBtn = el('tplp-csv-folder');
+      if (csvFolderBtn) csvFolderBtn.onclick = function () { SP.pickCsvFolder(render); };
+      var libIn = el('tplp-lib-in');
+      if (libIn) libIn.onclick = function () { el('tpl-lib-file').click(); };
+      var libOut = el('tplp-lib-out');
+      if (libOut) libOut.onclick = SP.exportTemplateJson;
+
+      /* 提取当前案例中的模板：全选 / 全不选 / 实时补全状态 / 确认入库 */
+      function capRows() { return box.querySelectorAll('[data-capture-row]'); }
+      function refreshCapCount() {
+        var cnt = el('tplp-cap-count');
+        if (!cnt) return;
+        var checked = box.querySelectorAll('[data-cap-check]:checked').length;
+        cnt.textContent = '已选 ' + checked + ' 行';
+      }
+      function updateRowStatus(row) {
+        var ok = captureRowComplete(row);
+        row.classList.toggle('cap-incomplete', !ok);
+        var st = row.querySelector('.cap-status');
+        if (st) st.innerHTML = ok ? '<span class="tag ok">完整</span>' : '<span class="tag warn">待补全</span>';
+      }
+      Array.prototype.forEach.call(capRows(), function (row) {
+        row.querySelectorAll('input:not([data-cap-check])').forEach(function (inp) {
+          inp.addEventListener('input', function () { updateRowStatus(row); });
+        });
+      });
+      box.querySelectorAll('[data-cap-check]').forEach(function (cb) {
+        cb.addEventListener('change', refreshCapCount);
+      });
+      refreshCapCount();
+      var capAll = el('tplp-cap-all');
+      if (capAll) capAll.onclick = function () {
+        box.querySelectorAll('[data-cap-check]').forEach(function (cb) { cb.checked = true; });
+        refreshCapCount();
+      };
+      var capNone = el('tplp-cap-none');
+      if (capNone) capNone.onclick = function () {
+        box.querySelectorAll('[data-cap-check]').forEach(function (cb) { cb.checked = false; });
+        refreshCapCount();
+      };
+      var capMerge = el('tplp-capture-merge');
+      if (capMerge) capMerge.onclick = function () {
+        var checkedRows = Array.prototype.filter.call(capRows(), function (row) {
+          var cb = row.querySelector('[data-cap-check]');
+          return cb && cb.checked;
+        });
+        if (!checkedRows.length) { SP.toast('请先勾选要加入的模板行', true); return; }
+        var incomplete = checkedRows.filter(function (row) { return !captureRowComplete(row); });
+        if (incomplete.length) {
+          incomplete.forEach(updateRowStatus);
+          var names = incomplete.map(function (row) {
+            var e = row.querySelector('[data-cap-name]');
+            return (e && e.value.trim()) || '未命名';
+          });
+          SP.toast('有 ' + incomplete.length + ' 行未填完整需补全：' +
+            names.slice(0, 4).join('、') + (names.length > 4 ? ' 等' : ''), true);
+          return;
+        }
+        var list = checkedRows.map(templateFromCaptureRow).filter(function (t) { return !!t; });
+        if (!list.length) { SP.toast('没有可加入模板库的行', true); return; }
+        remember();
+        var added = 0, updated = 0;
+        Store.batch(function () {
+          list.forEach(function (t) {
+            var res = Store.mergeTemplate(t);
+            if (res === 'added') added++; else if (res === 'updated') updated++;
+          });
+        });
+        SP.toast('已加入模板库：新增 ' + added + ' · 更新 ' + updated);
+        mode = 'preview';
+        render();
+      };
+
       box.querySelectorAll('[data-tcat]').forEach(function (b) {
         b.addEventListener('click', function () {
           var key = b.dataset.tcat;
-          if (key === 'active') { showActive = true; refreshCats(); return; }
-          curCat = TCATS.concat(ACTIVE_CATS).filter(function (c) { return c.key === key; })[0];
-          refreshCats();
-          el('tplp-form').innerHTML = formHtml(curCat);
-          bindForm();
+          if (key === 'active') { showActive = true; createKey = ''; render(); return; }
+          createKey = key;
+          editIdx = -1;
+          render();
         });
       });
+      var save = el('tf-save'); if (save) save.onclick = saveForm;
+      var cancel = el('tf-cancel-edit');
+      if (cancel) cancel.onclick = function () { editIdx = -1; createKey = ''; render(); };
+      var ampOut = el('tf-outs');
+      if (ampOut && catByKey(createKey) && catByKey(createKey).type === 'amp') {
+        ampOut.addEventListener('change', function () {
+          var i = el('tf-ins');
+          if (i) i.value = this.value;
+        });
+      }
     }
-    function bindForm() {
-      var save = el('tf-save');
-      if (!save) return;
-      save.addEventListener('click', function () {
-        var name = (el('tf-name').value || '').trim();
-        if (!name) { SP.toast('请填写型号名称', true); return; }
-        var c = curCat;
-        var t;
-        function v(id) { var x = el(id); return x && x.value !== '' ? String(x.value).trim() : ''; }
-        if (c.type === 'mixer' || c.type === 'dsp') {
-          t = { type: c.type, name: name,
-            ins: Math.max(1, +v('tf-ins') || 1), outs: Math.max(1, +v('tf-outs') || 1), specs: {} };
-          if (v('tf-u')) t.specs.rackU = v('tf-u');
-        } else if (c.type === 'amp') {
-          var ch = +v('tf-ch') === 4 ? 4 : 2;
-          t = { type: 'amp', name: name, ins: ch, outs: ch, specs: {} };
-          if (v('tf-w')) t.specs.power = v('tf-w');
-          if (v('tf-u')) t.specs.rackU = v('tf-u');
-        } else {
-          t = { type: 'speaker', name: name,
-            ins: Math.max(1, +v('tf-ins') || 1), outs: Math.max(0, +v('tf-outs') || 0),
-            speakerRole: c.role,
-            specs: { powered: c.active ? 'active' : 'passive' } };
-          if (v('tf-w')) t.specs.power = v('tf-w');
-          if (!c.active && v('tf-ohm')) t.specs.ohms = v('tf-ohm');
-          if (v('tf-size')) t.specs.size = v('tf-size');
-        }
-        var res = Store.mergeTemplate(t);
-        Store.save();
-        refreshCats();
-        SP.toast((res === 'added' ? '已新增' : '已更新') + '模板「' + name + '」');
-      });
-    }
-    bindCats();
 
-    el('tplp-dl-spk').addEventListener('click', function () {
-      SP.csvDownload('signalpath-音响填写模板.csv', [
-        ['型号名称', '分支(全频/超低/线阵列)', '有源无源(有源/无源)', '功率W', '阻抗Ω', '尺寸（寸）'],
-        ['DD115H', '全频', '无源', '500', '8', '15'],
-        ['双6寸全频', '全频', '无源', '350', '8', '双6寸']
-      ]);
-    });
-    el('tplp-dl-amp').addEventListener('click', function () {
-      SP.csvDownload('signalpath-功放填写模板.csv', [
-        ['型号名称', '通道数(2或4)', '功率W', 'U数'],
-        ['FA900', '4', '900', '2']
-      ]);
-    });
-    el('tplp-csv').addEventListener('click', function () { SP.pickCsvImport(refreshCats); });
-    el('tplp-all-tpl').addEventListener('click', function () {
-      if (!Store.state.devices.length) { SP.toast('画布上还没有设备', true); return; }
-      var r = Store.saveAllTemplates();
-      refreshCats();
-      SP.toast('一键模板完成：新增 ' + r.added + ' · 更新 ' + r.updated + '（⌘Z 可撤销）');
-    });
-    el('tplp-lib-out').addEventListener('click', function () { SP.exportTemplateJson(); });
-    el('tplp-lib-in').addEventListener('click', function () { el('tpl-lib-file').click(); });
+    SP.openModal(
+      '<div class="modal-head"><h3>模板库</h3>' +
+      '<button class="btn icon" data-close-modal>✕</button></div>' +
+      '<div class="modal-body" id="tpl-panel"><div id="tplp-body"></div></div>' +
+      '<div class="modal-foot"><button class="btn primary" data-close-modal>完成</button></div>'
+    );
+    el('modal-box').classList.add('modal-wide');
+    box = el('modal-box');
+    render();
   };
 
   SP.openAddDevice = function () {

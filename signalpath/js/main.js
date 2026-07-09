@@ -170,9 +170,7 @@
     var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    var d = new Date();
-    a.download = 'signalpath-' + d.getFullYear() +
-      ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '.json';
+    a.download = SP.exportFilename('配置', 'json');
     a.click();
     URL.revokeObjectURL(a.href);
     SP.toast('配置已导出（含图片）');
@@ -183,9 +181,7 @@
     var blob = new Blob([JSON.stringify(lib, null, 2)], { type: 'application/json' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    var d = new Date();
-    a.download = 'signalpath-模板库-' + d.getFullYear() +
-      ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '.json';
+    a.download = SP.exportFilename('模板库', 'json');
     a.click();
     URL.revokeObjectURL(a.href);
     SP.toast('模板库 JSON 已导出（型号模板 ' + lib.deviceTemplates.length +
@@ -202,23 +198,24 @@
     var blob = new Blob([JSON.stringify(lib, null, 2)], { type: 'application/json' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'signalpath-模板库总文件-' + stamp + '.json';
+    a.download = SP.exportFilename('模板库总文件', 'json');
     a.click();
     URL.revokeObjectURL(a.href);
     var tpls = Store.state.deviceTemplates;
     var roleName = { linearray: '线阵列', fullrange: '全频', sub: '超低' };
-    var spkRows = [['型号名称', '分支(全频/超低/线阵列)', '有源无源(有源/无源)', '功率W', '阻抗Ω', '尺寸（寸）']];
-    var ampRows = [['型号名称', '通道数(2或4)', '功率W', 'U数']];
-    var mixerRows = [['类型(调音台/DSP)', '型号名称', '输入路数', '输出路数', 'U数']];
-    var dspRows = [['类型(调音台/DSP)', '型号名称', '输入路数', '输出路数', 'U数']];
+    var spkRows = [['型号名称', '分支(全频/超低/线阵列)', '有源无源(有源/无源)', '输入路数', '输出路数', '功率W', '阻抗Ω', '尺寸（寸）']];
+    var ampRows = [['型号名称', '通道数(2或4)', '输入路数', '输出路数', '机柜U数', '功率W']];
+    var mixerRows = [['类型(调音台/DSP)', '型号名称', '输入路数', '输出路数', '机柜U数']];
+    var dspRows = [['类型(调音台/DSP)', '型号名称', '输入路数', '输出路数', '机柜U数']];
     tpls.forEach(function (t) {
       var s = t.specs || {};
       var outs = Array.isArray(t.outs) ? t.outs.length : t.outs;
       if (t.type === 'speaker') {
         spkRows.push([t.name, roleName[t.speakerRole || 'fullrange'] || '全频',
-          s.powered === 'active' ? '有源' : '无源', s.power || '', s.ohms || '', s.size || '']);
+          s.powered === 'active' ? '有源' : '无源', t.ins || 1, outs || 1,
+          s.power || '', s.powered === 'active' ? '' : (s.ohms || ''), s.size || '']);
       } else if (t.type === 'amp') {
-        ampRows.push([t.name, t.ins === 4 ? 4 : 2, s.power || '', s.rackU || '']);
+        ampRows.push([t.name, outs === 4 ? 4 : 2, t.ins || outs || 2, outs || t.ins || 2, s.rackU || '', s.power || '']);
       } else if (t.type === 'mixer') {
         mixerRows.push(['调音台', t.name, t.ins, outs, s.rackU || '']);
       } else if (t.type === 'dsp') {
@@ -228,10 +225,10 @@
     var files = 1;
     /* 连续触发下载间隔一点，避免浏览器拦截 */
     var queue = [];
-    if (spkRows.length > 1) queue.push(['signalpath-模板-音响-' + stamp + '.csv', spkRows]);
-    if (ampRows.length > 1) queue.push(['signalpath-模板-功放-' + stamp + '.csv', ampRows]);
-    if (mixerRows.length > 1) queue.push(['signalpath-模板-调音台-' + stamp + '.csv', mixerRows]);
-    if (dspRows.length > 1) queue.push(['signalpath-模板-DSP-' + stamp + '.csv', dspRows]);
+    if (spkRows.length > 1) queue.push([SP.exportFilename('模板-音响', 'csv'), spkRows]);
+    if (ampRows.length > 1) queue.push([SP.exportFilename('模板-功放', 'csv'), ampRows]);
+    if (mixerRows.length > 1) queue.push([SP.exportFilename('模板-调音台', 'csv'), mixerRows]);
+    if (dspRows.length > 1) queue.push([SP.exportFilename('模板-DSP', 'csv'), dspRows]);
     queue.forEach(function (q, i) {
       setTimeout(function () { SP.csvDownload(q[0], q[1]); }, 250 * (i + 1));
       files++;
@@ -431,7 +428,7 @@
       if (!blob) { alert('导出失败，请重试。'); return; }
       var a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = filename;
+      a.download = SP.exportFilename ? SP.exportFilename(filename) : filename;
       a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
     }, 'image/png');
@@ -498,7 +495,8 @@
     var savedTheme = 'dark';
     try { savedTheme = localStorage.getItem('signalpath-theme') || 'dark'; } catch (e) {}
     applyTheme(savedTheme);
-    el('btn-theme').addEventListener('click', function () {
+    var themeBtn = el('btn-theme');
+    if (themeBtn) themeBtn.addEventListener('click', function () {
       var cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
       applyTheme(cur);
       SP.renderAll();   /* 框图内嵌 SVG 样式需按新主题重新生成 */
@@ -517,7 +515,7 @@
       SP.toast(this.value === 'all' ? '已切回整体视图' : '分台视图：只显示该调音台及其下游设备');
     });
 
-    /* ---------- 相对对齐 / 清空设备 ---------- */
+    /* ---------- 相对对齐算法入口（按钮已收起，算法保留） ---------- */
     var relUp = el('btn-rel-align-up');
     if (relUp) relUp.addEventListener('click', function () {
       SP.relAlignLayout('up', el('wiring-diagram'));
@@ -528,16 +526,6 @@
       SP.relAlignLayout('down', el('wiring-diagram'));
       SP.toast('已按相对位置对齐下级（可撤销）');
     });
-    var clearDev = el('btn-clear-devices');
-    if (clearDev) clearDev.addEventListener('click', function () {
-      var n = Store.clearAllDevices();
-      if (!n) { SP.toast('当前没有设备', true); return; }
-      SP.selectedDeviceId = '';
-      SP.multiSelected = [];
-      SP.renderAll();
-      SP.toast('已清空 ' + n + ' 台设备（⌘Z 可撤销）');
-    });
-
     /* ---------- 框图缩放（滑杆 = 视口中心锚点） ---------- */
     function syncZoomUI() {
       var z = Math.round((SP.diagramZoom || 1) * 100);
@@ -547,9 +535,11 @@
       if (val) val.textContent = z + '%';
     }
     SP.syncZoomUI = syncZoomUI;
-    el('zoom-range').addEventListener('input', function () {
+    var zoomRange = el('zoom-range');
+    if (zoomRange) zoomRange.addEventListener('input', function () {
       SP.zoomAt(el('wiring-diagram'), this.value / 100);
-      el('zoom-val').textContent = this.value + '%';
+      var zv = el('zoom-val');
+      if (zv) zv.textContent = this.value + '%';
       if (SP.syncFitBtn) SP.syncFitBtn();
     });
     /* 一键视角切换：全局（整图放得下）↔ 局部（定位到高亮设备） */
@@ -565,7 +555,8 @@
         : '点击缩放到能一眼看清全部设备的全局视角';
     }
     SP.syncFitBtn = syncFitBtn;
-    el('btn-zoom-fit').addEventListener('click', function () {
+    var zoomFitBtn = el('btn-zoom-fit');
+    if (zoomFitBtn) zoomFitBtn.addEventListener('click', function () {
       var box = el('wiring-diagram');
       var fit = SP.fitDiagramZoom(box);
       var atFit = Math.abs((SP.diagramZoom || 1) - fit) < 0.02;
@@ -581,16 +572,20 @@
     syncZoomUI();
 
     /* ---------- 框图工具条 ---------- */
-    el('btn-wdiagram-undo').addEventListener('click', function () {
+    var wUndo = el('btn-wdiagram-undo');
+    if (wUndo) wUndo.addEventListener('click', function () {
       if (Store.undoArea('diagram')) SP.renderAll();
     });
-    el('btn-wdiagram-redo').addEventListener('click', function () {
+    var wRedo = el('btn-wdiagram-redo');
+    if (wRedo) wRedo.addEventListener('click', function () {
       if (Store.redoArea('diagram')) SP.renderAll();
     });
-    el('btn-diagram-reset').addEventListener('click', function () {
+    var resetTop = el('btn-diagram-reset');
+    if (resetTop) resetTop.addEventListener('click', function () {
       SP.resetDiagramLayout(el('wiring-diagram'), 'topdown');
     });
-    el('btn-diagram-reset-bottom').addEventListener('click', function () {
+    var resetBottom = el('btn-diagram-reset-bottom');
+    if (resetBottom) resetBottom.addEventListener('click', function () {
       SP.resetDiagramLayout(el('wiring-diagram'), 'bottomup');
     });
     SP.syncOrientBtn = function () {
@@ -602,7 +597,8 @@
         ? '当前为横版（信号从左到右）。点击切回竖版（信号从上到下）'
         : '当前为竖版（信号从上到下）。点击切换为横版（信号从左到右）';
     };
-    el('btn-diagram-orient').addEventListener('click', function () {
+    var orientBtn = el('btn-diagram-orient');
+    if (orientBtn) orientBtn.addEventListener('click', function () {
       var box = el('wiring-diagram');
       var h = Store.state.diagramOrient === 'h';
       SP.setDiagramOrient(h ? 'v' : 'h', box);
@@ -629,7 +625,7 @@
         b.addEventListener('click', function () {
           exportPop.hidden = true;
           SP.exportPNGWidth(el('wiring-diagram'),
-            'signalpath-系统框图-' + b.textContent.trim() + '.png', +b.dataset.exportW);
+            SP.exportFilename('系统框图-' + b.textContent.trim(), 'png'), +b.dataset.exportW);
         });
       });
       var pdfBtn = exportPop.querySelector('[data-export-pdf]');
@@ -641,7 +637,7 @@
 
     /* ---------- 台内路由页按钮 ---------- */
     el('btn-mixdiag-png').addEventListener('click', function () {
-      SP.exportPNG(el('mixer-diagram'), 'signalpath-台内路由.png', 3);
+      SP.exportPNG(el('mixer-diagram'), SP.exportFilename('台内路由', 'png'), 3);
     });
     el('btn-mixdiag-undo').addEventListener('click', function () {
       if (Store.undoArea('mixerDiagram')) SP.renderMixerView();
@@ -662,7 +658,7 @@
       }
     });
     el('btn-inpatch-png').addEventListener('click', function () {
-      SP.exportGridPNG('in', 'signalpath-输入路由矩阵.png');
+      SP.exportGridPNG('in', SP.exportFilename('输入路由矩阵', 'png'));
     });
     el('btn-route-undo').addEventListener('click', function () {
       if (Store.undoArea('routeGrid')) {
@@ -679,7 +675,7 @@
       }
     });
     el('btn-route-png').addEventListener('click', function () {
-      SP.exportGridPNG('route', 'signalpath-发送路由矩阵.png');
+      SP.exportGridPNG('route', SP.exportFilename('发送路由矩阵', 'png'));
     });
     el('btn-outpatch-undo').addEventListener('click', function () {
       if (Store.undoArea('outPatch')) {
@@ -694,7 +690,7 @@
       }
     });
     el('btn-outpatch-png').addEventListener('click', function () {
-      SP.exportGridPNG('out', 'signalpath-输出路由矩阵.png');
+      SP.exportGridPNG('out', SP.exportFilename('输出路由矩阵', 'png'));
     });
 
     /* ---------- 顶栏 ---------- */
@@ -708,7 +704,8 @@
     var tplBtn = el('btn-templates');
     if (tplBtn) tplBtn.addEventListener('click', function () { SP.openTemplatePanel(); });
     el('btn-report').addEventListener('click', SP.openReportOptions);
-    el('btn-keys').addEventListener('click', function () { SP.openKeysPanel(); });
+    var keysBtn = el('btn-keys');
+    if (keysBtn) keysBtn.addEventListener('click', function () { SP.openKeysPanel(); });
     el('btn-config').addEventListener('click', openConfigPanel);
 
     /* ---------- 导入配置（还原图片到 IndexedDB），入口在「配置」面板 ---------- */
@@ -726,22 +723,26 @@
       }
       return data;
     }
-    /* ---------- 模板库导入（按名称合并去重） ---------- */
+    /* ---------- 模板库导入：询问覆盖或合并 ---------- */
     el('tpl-lib-file').addEventListener('change', function () {
       var f = this.files[0];
       this.value = '';
       if (!f) return;
       var reader = new FileReader();
       reader.onload = function () {
+        var data;
         try {
-          var data = JSON.parse(reader.result);
+          data = JSON.parse(reader.result);
           if (!data || !data.__signalpathTplLib) throw new Error('bad');
-          var r = Store.importTemplateLib(data);
-          SP.renderAll();
-          SP.toast('模板库已导入：型号模板 ' + r.dev + ' · 快速预设 ' + r.presets +
-            ' · 反推模板 ' + (r.reversePresets || 0) + ' · 台面 ' + r.mixerTpls + '（⌘Z 可撤销）');
         } catch (e) {
           SP.toast('导入失败：不是有效的 SignalPath 模板库文件', true);
+          return;
+        }
+        if (SP.promptTemplateLibImport) {
+          SP.promptTemplateLibImport(data, SP.afterTemplatePanelMutation);
+        } else {
+          Store.importTemplateLib(data);
+          SP.renderAll();
         }
       };
       reader.readAsText(f);
@@ -790,10 +791,6 @@
       SP.renderAll();
       SP.updateHistoryButtons();
       syncFitBtn();
-      /* 首次使用（无任何数据）：直接打开快速布局引导 */
-      if (Store.firstRun && !Store.state.devices.length) {
-        setTimeout(function () { SP.openQuickLayout(); }, 250);
-      }
     });
   });
 })();

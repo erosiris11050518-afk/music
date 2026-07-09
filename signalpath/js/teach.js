@@ -532,7 +532,7 @@
       png.addEventListener('click', function () {
         var dev = teachDevice();
         if (!dev) { alert('还没有设备。'); return; }
-        SP.exportPNG(el('teach-diagram'), 'signalpath-' + dev.name + '-接线示意图.png', 3);
+        SP.exportPNG(el('teach-diagram'), SP.exportFilename(dev.name + '-接线示意图', 'png'), 3);
       });
     }
   });

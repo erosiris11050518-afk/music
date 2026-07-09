@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#14171b">
+<meta name="theme-color" content="#050607">
 <title>SignalPath · 音响系统连线图管理</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -11,23 +11,30 @@
 
 <header class="topbar">
   <div class="brand">
-    <span class="led led-on"></span>
-    <span class="brand-name">SIGNALPATH</span>
+    <img class="brand-logo" src="assets/brand/logo-title.png"
+      onerror="this.onerror=null;this.src='assets/brand/logo-title.svg';"
+      alt="ErosIris Link">
+    <button class="btn ghost sm theme-btn" id="btn-theme" title="切换黑 / 白主题">☀︎</button>
   </div>
   <div class="topbar-actions">
-    <button class="btn primary sm" id="btn-quick" title="快速布局：输入数字直接建系统（⌃1 / ⌘K）">⚡ 快速布局</button>
-    <button class="btn ghost sm" id="btn-templates" title="模板：批量导入 / 自定义新建 / 整库存档">模板</button>
-    <button class="btn ghost sm" id="btn-undo" title="撤销（⌘Z）">撤销</button>
-    <button class="btn ghost sm" id="btn-redo" title="重做（⇧⌘Z）">重做</button>
-    <span class="save-indicator" id="save-indicator">·</span>
-    <button class="btn ghost sm" id="btn-report" title="生成可打印/存 PDF 的多页报告">报告</button>
-    <button class="btn ghost sm" id="btn-config" title="配置：导入 / 导出 / 切换 / 临时移除">配置</button>
-    <button class="btn ghost sm" id="btn-keys" title="快捷键介绍与自定义改键">快捷键</button>
-    <button class="btn ghost sm danger" id="btn-clear" title="清空全部数据（可撤销）">清空</button>
-    <button class="btn ghost sm theme-btn" id="btn-theme" title="切换黑 / 白主题">☀︎</button>
+    <span class="topbar-left"></span>
+    <span class="topbar-center">
+      <button class="btn ghost sm" id="btn-report" title="生成可打印/存 PDF 的多页报告">报告</button>
+      <button class="btn primary sm quick-main" id="btn-quick" title="快速布局：输入数字直接建系统（⌃1 / ⌘K）">⚡ 快速布局</button>
+      <button class="btn ghost sm" id="btn-templates" title="模板库：批量导入 / 自定义新建 / 整库存档">模板库</button>
+      <button class="btn ghost sm" id="btn-config" title="配置：导入 / 导出 / 切换 / 临时移除">配置</button>
+      <button class="btn ghost sm danger" id="btn-clear" title="清空全部数据（可撤销）">清空</button>
+      <button class="btn ghost sm" id="btn-keys" title="快捷键介绍与自定义改键">快捷键</button>
+    </span>
+    <span class="topbar-right">
+      <button class="btn ghost sm" id="btn-undo" title="撤销（⌘Z）">撤销</button>
+      <span class="save-indicator" id="save-indicator">·</span>
+      <button class="btn ghost sm" id="btn-redo" title="重做（⌘X）">重做</button>
+    </span>
     <input type="file" id="import-file" accept=".json,application/json" multiple hidden>
     <input type="file" id="tpl-lib-file" accept=".json,application/json" hidden>
-    <input type="file" id="csv-import-file" accept=".csv,text/csv" hidden>
+    <input type="file" id="csv-import-file" accept=".csv,.xls,.xml,text/csv,application/vnd.ms-excel,text/xml,application/xml" hidden>
+    <input type="file" id="csv-folder-file" webkitdirectory directory multiple hidden>
   </div>
 </header>
 <nav class="tabbar">
@@ -46,26 +53,24 @@
       <div class="diagram-toolbar">
         <span class="tb-group">
           <button class="btn ghost sm" id="btn-smart-all-diagram" title="所有未连接线路一键智能连接：调音台→DSP→功放→音箱">⚡ 一键智能连接</button>
-          <button class="btn ghost sm" id="btn-power-alarm" title="按模式检查功放功率余量、并联总功率与阻抗">功率报警</button>
           <button class="btn ghost sm danger" id="btn-clear-all-wires-diagram" title="清空系统内全部连线（可撤销）">全部清线</button>
-          <button class="btn ghost sm danger" id="btn-clear-devices" title="清空全部设备与连线（可撤销）">清空设备</button>
+          <button class="btn ghost sm" id="btn-power-alarm" title="按模式检查功放功率余量、并联总功率与阻抗">功率报警</button>
         </span>
         <span class="tb-group">
-          <select class="config-switch" id="diagram-scope" title="整体视图 / 一调音台一页面"></select>
           <button class="btn ghost sm" id="btn-diagram-orient" title="横版 / 竖版切换">切换横版</button>
-          <button class="btn ghost sm" id="btn-diagram-reset" title="清除手动拖动，按上级设备居中对齐排版">对齐上级</button>
           <button class="btn ghost sm" id="btn-diagram-reset-bottom" title="清除手动拖动，尽量对准各自下级设备">对齐下级</button>
-          <button class="btn ghost sm" id="btn-rel-align-up" title="保留当前相对排布，整层平移对齐到上级">相对上级</button>
-          <button class="btn ghost sm" id="btn-rel-align-down" title="保留当前相对排布，整层平移对齐到下级">相对下级</button>
         </span>
         <span class="tb-group grow">
+          <select class="config-switch" id="diagram-scope" title="整体视图 / 一调音台一页面"></select>
           <button class="btn ghost sm" id="btn-zoom-fit" title="全局视角 / 定位当前 双态切换">全局视角</button>
+          <span class="shortcut-hint" title="定位当前 / 全局视角快捷键">0</span>
+          <span class="shortcut-hint" title="缩小快捷键">-</span>
           <input type="range" id="zoom-range" class="zoom-range" min="25" max="200" step="5" value="100" title="缩放比例（以视口中心为锚点），也可 ⌘+滚轮缩放">
+          <span class="shortcut-hint" title="放大快捷键">+</span>
           <span class="zoom-val" id="zoom-val">100%</span>
         </span>
-        <span class="tb-group">
+        <span class="tb-group toolbar-right">
           <button class="btn ghost sm" id="btn-wdiagram-undo" title="撤销框图排版动作">撤销</button>
-          <button class="btn ghost sm" id="btn-wdiagram-redo" title="重做框图排版动作">重做</button>
           <span class="menu-wrap">
             <button class="btn ghost sm" id="btn-diagram-export" title="导出框图">导出 ▾</button>
             <div class="menu-pop" id="export-pop" hidden>
@@ -75,6 +80,7 @@
               <button data-export-pdf>PDF</button>
             </div>
           </span>
+          <button class="btn ghost sm" id="btn-wdiagram-redo" title="重做框图排版动作">重做</button>
         </span>
       </div>
       <div class="diagram-scroll" id="wiring-diagram"></div>

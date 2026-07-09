@@ -6,6 +6,31 @@
 
 var SP = window.SP = window.SP || {};
 
+SP.exportDateStamp = function (d) {
+  d = d || new Date();
+  return d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2);
+};
+
+SP.exportBaseName = function (d) {
+  return 'ErosIris-Link+' + SP.exportDateStamp(d);
+};
+
+SP.exportFilename = function (name, ext) {
+  var base = SP.exportBaseName();
+  if (ext) return base + (name ? '-' + name : '') + '.' + ext.replace(/^\./, '');
+  name = String(name || '').trim();
+  if (!name) return base;
+  if (name.indexOf('ErosIris-Link+') === 0) return name;
+  var suffix = '', dot = name.match(/(\.[^.\/]+)$/);
+  if (dot) {
+    suffix = dot[1];
+    name = name.slice(0, -suffix.length);
+  }
+  name = name.replace(/^signalpath-?/i, '').replace(/-\d{8}$/i, '');
+  if (/^\d{8}$/.test(name)) name = '';
+  return base + (name ? '-' + name : '') + suffix;
+};
+
 SP.Images = (function () {
   var DB_NAME = 'signalpath-img';
   var STORE = 'images';

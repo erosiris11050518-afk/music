@@ -42,7 +42,7 @@
       combos: ['Mod+Z'],
       run: function () { if (Store.undo()) SP.renderAll(); } },
     { id: 'redo', name: '重做', desc: '重做刚撤销的操作',
-      combos: ['Shift+Mod+Z', 'Mod+Y'],
+      combos: ['Mod+X'],
       run: function () { if (Store.redo()) SP.renderAll(); } },
     { id: 'duplicate', name: '复制选中设备', desc: '复制并自动编号（X号）',
       combos: ['Mod+D'], needSelection: true,
@@ -129,6 +129,13 @@
     if (/INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable)) return;
     if (isModifierKey(e)) return;
     var combo = eventCombo(e);
+    /* 弹窗打开时屏蔽无修饰键的全局快捷键（缩放 =/-/0、Delete 等），
+       让弹窗自己的键盘交互（数字/空格/退格/Shift）不被抢走 */
+    var overlay = document.getElementById('modal-overlay');
+    if (overlay && !overlay.hidden &&
+        combo.indexOf('Mod+') < 0 && combo.indexOf('Ctrl+') < 0 && combo.indexOf('Alt+') < 0) {
+      return;
+    }
     for (var i = 0; i < ACTIONS.length; i++) {
       var a = ACTIONS[i];
       if (combosOf(a).indexOf(combo) < 0) continue;

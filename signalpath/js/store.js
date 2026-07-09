@@ -195,7 +195,7 @@ SP.Store = (function () {
     return { devices: [], connections: [], customTypes: [], inputGear: [],
       userMixerTemplates: [], deviceTemplates: JSON.parse(JSON.stringify(SP.TEMPLATES)),
       deviceTemplatesVersion: 4, mixer: defaultMixer(), activeMixerId: '',
-      diagramLayout: 'topdown', diagramOrient: 'v', seq: 1, quickPresets: [], reversePresets: [],
+      diagramLayout: 'bottomup', diagramOrient: 'v', seq: 1, quickPresets: [], reversePresets: [],
       powerAlarmMode: 'show',
       power: { eff: 0.7, headroom: 1.3, mixerW: 150, dspW: 50, seqW: 30 } };
   }
@@ -270,7 +270,7 @@ SP.Store = (function () {
   function normalize(s) {
     s.inputGear = s.inputGear || [];
     s.userMixerTemplates = s.userMixerTemplates || [];
-    if (!s.diagramLayout) s.diagramLayout = 'topdown';
+    if (!s.diagramLayout) s.diagramLayout = 'bottomup';
     if (s.diagramOrient !== 'h') s.diagramOrient = 'v';
     upgradeData(s);
     /* v3：播种新的默认常用型号（WING RACK / MR18 / Unit48 / 两类功放 / 三类音箱），
@@ -360,7 +360,7 @@ SP.Store = (function () {
   function snapshotArea(name) {
     if (name === 'diagram') {
       return JSON.stringify({
-        diagramLayout: state.diagramLayout || 'topdown',
+        diagramLayout: state.diagramLayout || 'bottomup',
         diagramOrient: state.diagramOrient || 'v',
         connections: state.connections,
         devices: state.devices.map(function (d) {
@@ -382,7 +382,7 @@ SP.Store = (function () {
   function restoreAreaSnapshot(name, snap) {
     var data = JSON.parse(snap);
     if (name === 'diagram') {
-      state.diagramLayout = data.diagramLayout || 'topdown';
+      state.diagramLayout = data.diagramLayout || 'bottomup';
       state.diagramOrient = data.diagramOrient === 'h' ? 'h' : 'v';
       if (data.connections) state.connections = data.connections;
       var map = {};
@@ -810,9 +810,17 @@ SP.Store = (function () {
     return 'added';
   }
 
-  function importTemplateLib(data) {
-    var res = { dev: 0, presets: 0, reversePresets: 0, mixerTpls: 0 };
+  /* opt.replace = true：先清空当前模板库再导入（覆盖）；否则按名称查重合并 */
+  function importTemplateLib(data, opt) {
+    opt = opt || {};
+    var res = { dev: 0, presets: 0, reversePresets: 0, mixerTpls: 0, replaced: !!opt.replace };
     batch(function () {
+      if (opt.replace) {
+        state.deviceTemplates = [];
+        state.quickPresets = [];
+        state.reversePresets = [];
+        state.userMixerTemplates = [];
+      }
       (data.deviceTemplates || []).forEach(function (t) {
         if (mergeTemplate(JSON.parse(JSON.stringify(t)))) res.dev++;
       });
@@ -957,10 +965,17 @@ SP.Store = (function () {
 
   function autoFreeOuts(dev) {
     var pref = autoSourceTypes(dev), outs = [];
+    /* 反推行绑定：带 reverseParallel.row 的音响，只从同行功放取口（若该行功放仍在），
+       保证清线后再智连时功放-音响功率匹配不被打乱 */
+    var rowId = dev.type === 'speaker' && dev.reverseParallel ? dev.reverseParallel.row : 0;
+    var rowAmpExists = !!rowId && state.devices.some(function (s) {
+      return s.type === 'amp' && s.reverseRow === rowId;
+    });
     for (var pi = 0; pi < pref.length; pi++) {
       var tk = pref[pi];
       state.devices.forEach(function (s) {
         if (s.type !== tk || !canAutoConnect(dev, s)) return;
+        if (tk === 'amp' && rowAmpExists && s.reverseRow !== rowId) return;
         s.outputs.forEach(function (p, i) {
           if (isHiddenOut(s, i)) return;
           if (!consumersOf(s.id, i).length) outs.push({ dev: s, port: i });
@@ -1019,7 +1034,14 @@ SP.Store = (function () {
     }
     var order = state.devices
       .map(function (d, i) { return { d: d, i: i, l: layerOf(d) }; })
-      .filter(function (x) { return x.l >= 0; })
+      .filter(function (x) {
+        if (x.l < 0) return false;
+        /* 锁定并联组的从属音箱不抢功放口（由 enforceReverseParallelGroups 串回组长），
+           避免占用端口饿死其他组长 */
+        var rp = x.d.reverseParallel;
+        if (rp && rp.locked && rp.index > 1) return false;
+        return true;
+      })
       .sort(function (a, b) { return a.l - b.l || a.i - b.i; });
 
     var lines = [];
@@ -1258,6 +1280,8 @@ SP.Store = (function () {
         var amps4 = makeDevicesFromTemplate(plan.amp4Tpl, row.a4 || 0);
         var amps2 = makeDevicesFromTemplate(plan.amp2Tpl, row.a2 || 0);
         var amps = amps4.concat(amps2);
+        /* 功放绑定音响行：清线后智能连接按行回配，保证功放-音响功率匹配 */
+        amps.forEach(function (amp) { amp.reverseRow = ri + 1; });
         var speakers = makeDevicesFromTemplate(row.tpl, row.count || 0, { powered: 'passive' });
         added = added.concat(amps, speakers);
         amps.forEach(function (amp) {
@@ -1288,6 +1312,29 @@ SP.Store = (function () {
           chainLockedGroup(g);
         });
       });
+
+      /* 有源音箱：不参与功放反推，直接创建并从空闲的 DSP/调音台线路输出接入 */
+      var activeSpeakers = [];
+      (plan.activeRows || []).forEach(function (row) {
+        var spk = makeDevicesFromTemplate(row.tpl, row.count || 0, { powered: 'active' });
+        added = added.concat(spk);
+        activeSpeakers = activeSpeakers.concat(spk);
+      });
+      if (activeSpeakers.length) {
+        var lineOuts = [];
+        (dsps.length ? dsps : mixers).forEach(function (src) {
+          visibleOuts(src).forEach(function (oi) {
+            if (!consumersOf(src.id, oi).length) lineOuts.push({ dev: src, port: oi });
+          });
+        });
+        var ai = 0;
+        activeSpeakers.forEach(function (spk) {
+          if (ai < lineOuts.length) {
+            connect(spk.id, 0, lineOuts[ai].dev.id, lineOuts[ai].port);
+            ai++;
+          }
+        });
+      }
       state.diagramLayout = 'smart';
     });
     return added;
@@ -1387,7 +1434,10 @@ SP.Store = (function () {
         loadOhm: loadOhm, par: par, count: count, a2: a2, a4: a4 });
     });
     res.ampInputs = res.amp2N * 2 + res.amp4N * 4;
-    res.dspN = res.ampInputs ? Math.ceil(res.ampInputs / Math.max(1, +opt.dspOuts || 8)) : 0;
+    /* 有源音响不参与功放反推，但占用 DSP（或调音台）线路输出通道 */
+    res.activeCount = Math.max(0, +opt.activeCount || 0);
+    res.lineFeeds = res.ampInputs + res.activeCount;
+    res.dspN = res.lineFeeds ? Math.ceil(res.lineFeeds / Math.max(1, +opt.dspOuts || 8)) : 0;
     return res;
   }
 

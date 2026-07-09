@@ -455,7 +455,7 @@
     var blob = new Blob([SP.csvBuild(rows)], { type: 'text/csv;charset=utf-8' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = filename;
+    a.download = SP.exportFilename ? SP.exportFilename(filename) : filename;
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
   };

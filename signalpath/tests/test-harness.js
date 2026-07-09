@@ -275,6 +275,14 @@ T('模板库导入合并（新增1模板、同名快速/反推预设更新）',
 /* mergeTemplate 同名更新 */
 var m2 = Store.mergeTemplate({ type:'amp', name:'导入功放X', ins:4, outs:4, specs:{ power:'1500' } });
 T('mergeTemplate 同名更新', m2 === 'updated');
+/* 模板库导入：覆盖模式清空后完全替换 */
+var rres = Store.importTemplateLib({ __signalpathTplLib: 1,
+  deviceTemplates: [{ type:'mixer', name:'唯一台', ins:16, outs:8, specs:{} }],
+  quickPresets: [], reversePresets: [], userMixerTemplates: [] }, { replace: true });
+T('模板库导入覆盖：库中只剩 1 个模板',
+  Store.state.deviceTemplates.length === 1 &&
+  Store.state.deviceTemplates[0].name === '唯一台' &&
+  Store.state.quickPresets.length === 0 && rres.replaced === true);
 
 print('== 11. 音响反推 reverseCalc ==');
 var rc1 = Store.reverseCalc(
@@ -421,6 +429,113 @@ var dia2 = fakeEl();
 SP.renderWiringDiagram(dia2);
 T('框图显示反推并联状态标识', dia2.innerHTML.indexOf('parallel-badge') >= 0 &&
   dia2.innerHTML.indexOf('parallel-chain') >= 0);
+
+print('== 13. 反推有源音箱（不参与反推，直接创建并接线路输出）==');
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var avMixer = { type:'mixer', name:'有源反推台', ins:16, outs:8 };
+var avDsp = { type:'dsp', name:'有源反推DSP', ins:4, outs:8 };
+var avActive = { type:'speaker', name:'有源全频箱', ins:1, outs:1, speakerRole:'fullrange',
+  specs:{ powered:'active', power:'800' } };
+var avAdded = Store.reverseLayout({
+  mixerTpl: avMixer, mixerCount: 1,
+  dspTpl: avDsp, dspCount: 1,
+  speakerRows: [],
+  activeRows: [{ tpl: avActive, count: 3 }]
+});
+var avSpks = Store.state.devices.filter(function(d){ return d.type==='speaker'; });
+T('有源反推：创建 1台+1台+3只 = 5 台', avAdded.length === 5 && avSpks.length === 3);
+T('有源音箱均为 active', avSpks.every(function(d){ return d.specs.powered === 'active'; }));
+var avFed = avSpks.filter(function(d){ return !!Store.sourceFor(d.id,0); });
+T('有源音箱从 DSP/调音台线路输出接入（DSP 8出足够 3 只）', avFed.length === 3);
+T('有源音箱不接功放（无功放存在）',
+  Store.state.devices.filter(function(d){ return d.type==='amp'; }).length === 0);
+var avSrc = Store.getDevice(Store.sourceFor(avSpks[0].id,0).sid);
+T('有源音箱上游是 DSP', avSrc && avSrc.type === 'dsp');
+/* 5：反推创建的有源音箱走外侧专用通道（DSP→有源的边为双段贝塞尔，且画布已加宽） */
+var diaAv = fakeEl();
+var avErr = null;
+try { SP.renderWiringDiagram(diaAv); } catch (e) { avErr = e; }
+T('含有源反推系统渲染不抛异常', !avErr, avErr && String(avErr));
+T('有源信号线走外侧通道（双段路径特征）',
+  /class="edge[^"]*"[^>]*d="M[^"]*C[^"]*C[^"]*"/.test(diaAv.innerHTML));
+
+print('== 14. 有源占用 DSP 通道（reverseCalc activeCount）==');
+/* 2 台 4 通道功放 = 8 输入 + 3 只有源 = 11 路 → DSP(8出) = 2 台 */
+var rcA = Store.reverseCalc(
+  [{ name:'占用测试全频', power:500, ohms:8, count:8, parallel:1 }],
+  { ratio:1.5, ampMode:'4', amp4W:1000, minOhms:4, dspOuts:8, activeCount:3 });
+T('8功放输入+3有源 → lineFeeds=11 → DSP 2 台',
+  rcA.ampInputs === 8 && rcA.activeCount === 3 && rcA.lineFeeds === 11 && rcA.dspN === 2);
+var rcB = Store.reverseCalc([], { dspOuts: 8, activeCount: 3 });
+T('纯有源（无功放）也占 DSP：3 只 → 1 台', rcB.dspN === 1 && rcB.lineFeeds === 3);
+var rcC = Store.reverseCalc(
+  [{ name:'占用测试', power:500, ohms:8, count:10, parallel:1 }],
+  { ratio:1.5, ampMode:'mix', amp2W:800, amp4W:800, minOhms:4, dspOuts:8 });
+T('不传 activeCount 时行为不变（10输入→2台DSP）', rcC.dspN === 2 && rcC.activeCount === 0);
+
+print('== 15. 清线→智连：并联锁定组按行回配功放（功率匹配不打乱）==');
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+/* 行1=超低（先建，800W 并联2）；行2=全频（500W 不并联）——行序与角色排序相反，
+   专门验证不会按角色顺序跨行抢功放 */
+var m15mix = { type:'mixer', name:'行配台', ins:16, outs:8 };
+var m15dsp = { type:'dsp', name:'行配DSP', ins:4, outs:8 };
+var m15ampSub = { type:'amp', name:'超低行功放', ins:2, outs:2, specs:{ power:'2500' } };
+var m15sub = { type:'speaker', name:'行配超低', ins:1, outs:1, speakerRole:'sub',
+  specs:{ powered:'passive', power:'800', ohms:'8' } };
+var m15full = { type:'speaker', name:'行配全频', ins:1, outs:1, speakerRole:'fullrange',
+  specs:{ powered:'passive', power:'500', ohms:'8' } };
+Store.reverseLayout({
+  mixerTpl: m15mix, mixerCount: 1,
+  dspTpl: m15dsp, dspCount: 1,
+  amp2Tpl: m15ampSub, amp4Tpl: null,
+  speakerRows: [
+    { tpl: m15sub, count: 4, parallel: 2, a2: 1, a4: 0, ch: 2 },
+    { tpl: m15full, count: 2, parallel: 1, a2: 1, a4: 0, ch: 2 }
+  ]
+});
+var r15amps = Store.state.devices.filter(function(d){ return d.type === 'amp'; });
+T('两行各配 1 台功放且带行标', r15amps.length === 2 &&
+  r15amps.every(function(a){ return a.reverseRow === 1 || a.reverseRow === 2; }));
+function ampRowOfSpeaker(name) {
+  var out = [];
+  Store.state.devices.forEach(function(d){
+    if (d.name.indexOf(name) !== 0) return;
+    var c = Store.sourceFor(d.id, 0);
+    if (!c) return;
+    var src = Store.getDevice(c.sid);
+    while (src && src.type === 'speaker') {           /* 沿并联链上溯到功放 */
+      var cc = Store.sourceFor(src.id, 0);
+      if (!cc) return;
+      src = Store.getDevice(cc.sid);
+    }
+    if (src && src.type === 'amp') out.push(src.reverseRow);
+  });
+  return out;
+}
+var subRows0 = ampRowOfSpeaker('行配超低');
+var fullRows0 = ampRowOfSpeaker('行配全频');
+T('创建后：超低走行1功放、全频走行2功放',
+  subRows0.length === 4 && subRows0.every(function(r){ return r === 1; }) &&
+  fullRows0.length === 2 && fullRows0.every(function(r){ return r === 2; }));
+/* 全部清线 → 一键智连 → 行配对与并联链必须恢复 */
+Store.clearAllConnections();
+T('清线后无连线但锁定元数据保留',
+  Store.state.connections.length === 0 &&
+  Store.state.devices.some(function(d){ return d.reverseParallel && d.reverseParallel.locked; }));
+Store.smartAssignAll();
+var subRows1 = ampRowOfSpeaker('行配超低');
+var fullRows1 = ampRowOfSpeaker('行配全频');
+T('智连恢复：超低仍回行1功放（不被全频抢走）',
+  subRows1.length === 4 && subRows1.every(function(r){ return r === 1; }));
+T('智连恢复：全频仍回行2功放', fullRows1.length === 2 && fullRows1.every(function(r){ return r === 2; }));
+var chain15 = Store.state.connections.filter(function(c){
+  var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
+  return s && t && s.type === 'speaker' && t.type === 'speaker';
+});
+T('智连恢复：并联串接链完整（2 条）', chain15.length === 2);
+T('智连恢复：无硬错误', Store.state.connections.every(function(c){ return !Store.connectionError(c); }));
 
 print('');
 print('结果: ' + pass + ' 通过, ' + fail + ' 失败');

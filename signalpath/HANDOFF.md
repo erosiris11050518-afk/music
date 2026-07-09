@@ -81,6 +81,93 @@ Chrome MCP 扩展连不上，**浏览器可视回归一直靠用户人工验证*
 18 添加设备弹窗「批量导入」：下载音响/功放 CSV 填写模板→回传→表头自动识别→合并进模板库
 19 报告选项全选/全不选
 
+## v2.3 模板面板「导入导出 / 提取」重构（本轮）
+
+模板面板（顶栏「模板」→ SP.openTemplatePanel，在 inspector.js）的两个分区改名重构：
+- 分区「导入模板表到库」→ **「导入导出」**，三个入口：
+  · **模板库导出**（tplp-lib-out → SP.exportTemplateJson）导出整体模板库 JSON。
+  · **模板库导入**（tplp-lib-in → tpl-lib-file → SP.promptTemplateLibImport）
+    弹窗选「覆盖」或「合并」；覆盖走 Store.importTemplateLib(data,{replace:true}) 先清空再替换。
+  · **批量导入CSV（选文件夹）**（tplp-csv-folder → SP.pickCsvFolder → SP.importCsvFolder）
+    webkitdirectory 选整个文件夹，读全部 .csv/.xml，逐个 SP.parseTemplatesFromText 解析、
+    符合表头标准的查重合并入库；表头不符的文件跳过并计数。
+  · 原「一键模板」按钮已从该分区移除。
+- 分区「识别当前配置为模板表」→ **「提取当前案例中的模板」**：
+  每行加复选框 + 状态列（完整/待补全）+ 一键全选/全不选；captureRowComplete 判定必填
+  （音响缺功率/无源缺阻抗、调音台/DSP 缺路数 = 待补全）；「确认加入模板库」只处理勾选行，
+  含待补全的勾选行会被阻止并提示补全，实时输入即更新状态。
+- store.js：importTemplateLib(data, opt) 新增 opt.replace（覆盖模式，返回含 replaced）。
+- inspector.js：CSV 解析抽成纯函数 SP.parseTemplatesFromText(text)→{templates,skipped}|null，
+  单文件 importCsvTemplates / 文件夹 importCsvFolder 共用它。
+- 注：quick.js 与设备栏统计条仍保留各自的「一键模板」快捷入口（saveAllTemplates + bundle 导出），
+  与面板的「提取」流程是两条并存路径，未合并。
+- 遗留死函数 captureTemplates / tplToTotalRow（面板内闭包）现已无引用，保留未删（无害）。
+
+## v2.4 音响反推重构 + 模板面板改名（本轮）
+
+- 模板面板分区「导入导出」→ **「导出导入」**（inspector.js SECTIONS + importHtml + 测试）。
+- **音响反推面板（quick.js）整体重构为类目模型**：
+  · 顶部 **数字+空格 数量条**（`rv-count-bar`）：全频 / 超低（Shift 或点 `rv-show-active` 展开
+    有源全频 / 有源超低）；数字填格、空格下一格、退格清空/回上格、回车创建，风格同数量布局。
+  · 数据模型从 `rvRows[]`（自由多行）改为 **`rvCat`**（4 个固定类目 fullrange/sub/afullrange/asub，
+    每类一份 {count,tplIdx,name,power,ohms,parallel}）。UI 每类一份配置；
+    **注意：store 的 reverseCalc/reverseLayout 仍接受 rows[]，可多行**（测试直接调 store，不受影响）。
+  · 数量>0 的类目在下方显示详情块：选模板 或 手填功率/阻抗（无源可设并联；有源无阻抗/无并联）。
+  · **有源音箱不参与反推**（item 7）：reverseCalc 只吃无源行；有源经 `plan.activeRows` 传给
+    reverseLayout，创建后从空闲 DSP/调音台线路输出接入（store.js reverseLayout 末尾新增该段）。
+  · 移除「更新到一键模板」按钮/函数（updateReverseTemplates 已删）。
+  · 「查看当前」→ **「查看当前案例反推过程」**，与「保存为反推模板」一起移到 **modal-foot 左侧**
+    （`rv-foot-actions`，仅反推模式显示；bindRvFooter 绑定一次）。「创建系统」仍在右侧。
+  · 反推快照 rows[] 增加 `active` 标记；applyReverseSnapshot/reverseFromCurrent 按类目聚合，
+    兼容旧反推预设（无 active 视为无源，同类目多条合并计数）。
+- 快照兼容：老 `reversePresets`（rows 无 active）套用时归入无源类目，数量累加。
+
+## v2.5 快速布局事件委托 + 反推多组卡片（本轮）
+
+- **quick.js 全量重写为事件委托**：keydown/click/input/change 各一个监听器挂在 modal-box，
+  内部按 data-act / data-rv-* / data-ql-* 分发；不再有逐元素 addEventListener，
+  杜绝“一处绑定抛异常导致整个面板键盘失效”（此前 bug 的根治）。
+  打开面板与切页签用 rAF 聚焦第一个数量格；Shift 用 keydown 置 pending + keyup 确认
+  （单独按下才触发，data-rv-name 自由文本框内不误触），任意焦点下可展开/收起有源；
+  焦点不在输入控件时按数字自动跳到第一个空数量格填入。
+- **keys.js**：弹窗打开时屏蔽无修饰键全局快捷键（=/-/0/Delete 等），避免抢弹窗键盘。
+- **反推改多组卡片**（rvGroups[]，替代 v2.4 的固定 rvCat 四类目）：
+  每张卡竖排 数量→功率→阻抗→模板→并联，同类可加多组（＋全频/＋超低/＋有源…，
+  标题自动编号 全频①②）；选模板自动带出功率/阻抗并置只读（虚线边框），
+  切回「手填」恢复编辑；手填卡可“存为模板”。数量/功率/阻抗全部 text+inputmode
+  纯打字（data-num 过滤非数字），全局 CSS 隐藏 number spinner。
+- **有源占用通道**（item 4）：reverseCalc 增加 opt.activeCount，
+  dspN = ⌈(ampInputs + activeCount) ÷ dspOuts⌉，返回 activeCount/lineFeeds；
+  UI 显示“有源占用 N 路”；无 DSP 模板时校验调音台输出总数并红警。
+- **清线→智连行回配**（item 6）：reverseLayout 给每行功放打 `amp.reverseRow = 行号`；
+  smartAssignAll 跳过锁定组从属音箱（index>1，不抢口）；autoFreeOuts 对带
+  reverseParallel.row 的音箱，只要同行功放还在就只取同行功放的口——
+  清线后再智连，功放-音响按行功率匹配不被打乱（测试 §15 专门用“行序与角色排序相反”
+  的场景验证）。
+- 反推快照 rows[] 结构不变（含 active），旧反推模板兼容；reverseFromCurrent 按
+  (角色+有源+型号+参数+并联) 聚合为多组。
+- 测试：§13 增加有源外侧走线断言；§14 activeCount；§15 行回配；UI 加“严格桩”
+  用例（getElementById 只认已渲染 id，验证初始化无 null 绑定）。
+
+## v2.6 快速布局监听去重 + 反推体验优化（本轮）
+
+- **【bug 根治】输入 1 变 11 / 变 128**：modal-box 是常驻复用元素，v2.5 的委托监听
+  每开一次面板叠加一套。现在 openQuickLayout 开头先 removeEventListener 上一次的
+  4+1 个 handler（引用存在 `box._qlHandlers`），再通过 `on(type,fn)` 统一挂载。
+  测试桩的 removeEventListener 已升级为真实移除，UI 测试加“连开两次面板按 1 仍是 1”
+  的行为回归（此前桩是 noop，抓不到这类叠加）。
+- 模板下拉首项「— 手填 —」→「（选择模板）」，全界面去掉“手填”字样；
+  反推结果与创建设备的兜底命名改为与卡片一致的 类型+编号（全频①/超低②…）。
+- **功放自动匹配**（quick.js autoPickAmps）：按最大需求功率 needW，在 2/4 通道各自的
+  模板池里选“满足 ≥needW 且最接近”的一台；全不满足选最大（红警保留）；
+  **手动选过（amp2Manual/amp4Manual）或快照带功放名后不再自动改**，标「已自动匹配」。
+  confirm2 创建前兜底再跑一次。
+- 「查看当前案例反推过程」改双态：点亮前暂存面板快照（含手动标志），点灭还原。
+- **反推左右分栏**：左=卡片组+反推模板 chips；右=设置+实时结果（sticky，#rv-calc
+  max-height 42vh 内滚），填写时结果不需要拖动即可见；modal-quick 加大到
+  min(1280px, 100vw-32px)、max-height 94vh；≤900px 自动堆叠。
+- Shift 逻辑未动（用户确认正常）。
+
 ## 已知缺口 / 下一步候选
 
 - **浏览器人工回归未做**：反推页、分台视图、外侧走线、分组线材表、CSV 导入全流程，都只过了 DOM 桩测试。

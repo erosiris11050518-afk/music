@@ -1332,7 +1332,7 @@
         }
         var a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = filename;
+        a.download = SP.exportFilename ? SP.exportFilename(filename) : filename;
         a.click();
         setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
       }, 'image/png');
