@@ -141,6 +141,14 @@
         SP.renderMixerDiagram(el('mixer-diagram'));
       };
     }
+    var danteBtn = el('btn-mixer-dante');
+    if (danteBtn) {
+      danteBtn.onclick = function () {
+        var d = Store.activeMixerDev();
+        if (!d) { SP.toast('先添加一台调音台设备', true); return; }
+        SP.openDanteConfig(d.id);
+      };
+    }
 
     if (!m.physIn || !m.channels) {
       host.innerHTML = '<div class="empty-hint">当前没有可用的物理输入或 CH 通道。</div>';
@@ -148,7 +156,10 @@
       return;
     }
 
-    var head = '<tr><th class="rowhead rowhead-corner">输入 ＼ CH</th>';
+    var mxDev = Store.activeMixerDev();
+    var hasDanteIn = mxDev && Store.danteList(mxDev, 'in').length;
+    var danteLegend = hasDanteIn ? ' <span class="dante-legend"><i></i>Dante</span>' : '';
+    var head = '<tr><th class="rowhead rowhead-corner">输入 ＼ CH' + danteLegend + '</th>';
     for (var ch = 0; ch < m.channels; ch++) {
       head += '<th class="grp-in">CH ' + (ch + 1) + '</th>';
     }
@@ -156,11 +167,14 @@
 
     var body = '';
     for (var i = 0; i < m.physIn; i++) {
-      body += '<tr><th class="rowhead">IN ' + (i + 1) + '</th>';
+      var inDante = mxDev && Store.isDante(mxDev, 'in', i);
+      var dIn = inDante ? ' <span class="dante-badge" title="该路输入走 Dante（网口线）">D</span>' : '';
+      body += '<tr' + (inDante ? ' class="dante-route-row"' : '') + '><th class="rowhead' +
+        (inDante ? ' dante-route-head' : '') + '">IN ' + (i + 1) + dIn + '</th>';
       for (var c = 0; c < m.channels; c++) {
         var on = Store.hasInPatch(i, c);
         if (on) count++;
-        body += '<td><button class="rcell c-in' + (on ? ' on' : '') + '" data-in="' + i +
+        body += '<td><button class="rcell c-in' + (on ? ' on' : '') + (inDante ? ' dante-route' : '') + '" data-in="' + i +
           '" data-ch="' + c + '" title="IN ' + (i + 1) + ' → CH ' + (c + 1) + '"></button></td>';
       }
       body += '</tr>';
@@ -276,9 +290,14 @@
       return;
     }
 
-    var head = '<tr><th class="rowhead rowhead-corner">源 ＼ OUTPUT</th>';
+    var mxDev = Store.activeMixerDev();
+    var hasDanteOut = mxDev && Store.danteList(mxDev, 'out').length;
+    var danteLegend = hasDanteOut ? ' <span class="dante-legend"><i></i>Dante</span>' : '';
+    var head = '<tr><th class="rowhead rowhead-corner">源 ＼ OUTPUT' + danteLegend + '</th>';
     for (var o = 0; o < m.physOut; o++) {
-      head += '<th class="grp-out">OUT ' + (o + 1) + '</th>';
+      var outDante = mxDev && Store.isDante(mxDev, 'out', o);
+      var dOut = outDante ? ' <span class="dante-badge" title="该路输出走 Dante（网口线）">D</span>' : '';
+      head += '<th class="grp-out' + (outDante ? ' dante-route-head' : '') + '">OUT ' + (o + 1) + dOut + '</th>';
     }
     head += '</tr>';
 
@@ -286,8 +305,9 @@
       var tr = '<tr><th class="rowhead">' + esc(s.label) + '</th>';
       for (var oi = 0; oi < m.physOut; oi++) {
         var on = Store.hasOutPatch(s.id, oi);
+        var outIsDante = mxDev && Store.isDante(mxDev, 'out', oi);
         if (on) count++;
-        tr += '<td><button class="rcell c-' + s.grp + (on ? ' on' : '') + '" data-src="' + s.id +
+        tr += '<td><button class="rcell c-' + s.grp + (on ? ' on' : '') + (outIsDante ? ' dante-route' : '') + '" data-src="' + s.id +
           '" data-out="' + oi + '" title="' + esc(s.label) + ' → OUT ' + (oi + 1) + '"></button></td>';
       }
       return tr + '</tr>';
@@ -556,5 +576,64 @@
     SP.renderOutputPatchGrid();
     SP.renderMixerDiagram(el('mixer-diagram'));
     SP.renderMixerTable();
+  };
+
+  /* ================= 交换机路由页（有交换机时显示）=================
+     只汇总调音台 ↔ 交换机的网口互联状态；具体 Dante 输入/输出路由
+     回到每台调音台自己的「台内路由」里查看和批量选择。 */
+  SP.renderNetRoute = function () {
+    var host = el('netroute-body');
+    var tab = el('tab-netroute');
+    if (!host) return;
+    var switches = Store.state.devices.filter(function (d) { return d.type === 'switch'; });
+    if (tab) tab.hidden = !switches.length;
+    var note = el('netroute-note');
+    if (!switches.length) {
+      /* 交换机被删光时若正停在本页，切回设备连线 */
+      var view = el('view-netroute');
+      if (view && view.classList.contains('active') && SP.switchView) SP.switchView('wiring');
+      host.innerHTML = '<div class="empty-hint">尚无交换机。到「设备连线」页添加交换机并右键连接调音台。</div>';
+      if (note) note.textContent = '';
+      return;
+    }
+    var totalLinks = 0;
+    var html = switches.map(function (sw) {
+      var rows = '';
+      sw.inputs.forEach(function (p, i) {
+        var c = Store.sourceFor(sw.id, i);
+        var mx = c && c.net ? Store.getDevice(c.sid) : null;
+        if (mx) totalLinks++;
+        rows += '<tr' + (mx ? '' : ' class="row-dim"') + '>' +
+          '<td><span class="cell-port">' + esc(p.label) + '</span></td>' +
+          '<td>' + (mx ? '<span class="cell-dev">' + esc(mx.name) + '</span>' : '<span class="cfg-note" style="display:inline;margin:0">空闲</span>') + '</td>' +
+          '<td>' + (mx ? '<span class="net-status-linked">已互联</span>' : '—') + '</td>' +
+          '</tr>';
+      });
+      return '<div class="insp-sec-title">' +
+        '<span class="type-chip" style="background:' + esc(sw.color || SP.typeColor('switch')) + '">交换机</span> ' +
+        esc(sw.name) + ' · ' + Store.netLinksOf(sw.id).length + '/' + sw.inputs.length + ' 网口在用</div>' +
+        '<div class="table-scroll"><table class="sheet"><thead><tr>' +
+        '<th>网口</th><th>互联设备</th><th>状态</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }).join('');
+    /* 调音台 ↔ 调音台 直连网口线也一并列出 */
+    var direct = Store.state.connections.filter(function (c) {
+      if (!c.net) return false;
+      var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
+      return s && t && s.type === 'mixer' && t.type === 'mixer';
+    });
+    if (direct.length) {
+      html += '<div class="insp-sec-title">调音台直连网口线</div>' +
+        '<div class="table-scroll"><table class="sheet"><thead><tr>' +
+        '<th>调音台 A</th><th></th><th>调音台 B</th></tr></thead><tbody>' +
+        direct.map(function (c) {
+          var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
+          return '<tr><td>' + esc(s.name) + '</td><td class="cell-arrow">↔</td><td>' + esc(t.name) + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+    html += '<p class="cfg-note">交换机只显示网口互联状态；Dante 输入/输出选择请进入对应调音台的「台内路由」或右键调音台打开 Dante 分配。</p>';
+    host.innerHTML = html;
+    if (note) note.textContent = switches.length + ' 台交换机 · ' +
+      (totalLinks + direct.length) + ' 条网口线';
   };
 })();

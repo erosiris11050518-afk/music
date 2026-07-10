@@ -43,6 +43,7 @@
     <button class="tab" data-view="cables">线材清单</button>
     <button class="tab" data-view="teach">接线教学</button>
     <button class="tab" data-view="mixer">台内路由</button>
+    <button class="tab" data-view="netroute" id="tab-netroute" hidden>交换机路由</button>
   </div>
 </nav>
 
@@ -59,7 +60,8 @@
         </span>
         <span class="tb-group">
           <button class="btn ghost sm" id="btn-diagram-orient" title="横版 / 竖版切换">切换横版</button>
-          <button class="btn ghost sm" id="btn-diagram-reset-bottom" title="清除手动拖动，尽量对准各自下级设备">对齐下级</button>
+          <button class="btn ghost sm" id="btn-diagram-align-default" title="按功放分组重排：每台功放居中在它所接的音箱上方，同组音箱连续排列、消除交叉">默认对齐</button>
+          <button class="btn ghost sm" id="btn-diagram-align-relative" title="保持当前相对顺序，逐层等间距对准下级（手动调整后用它）">相对对齐</button>
         </span>
         <span class="tb-group grow">
           <select class="config-switch" id="diagram-scope" title="整体视图 / 一调音台一页面"></select>
@@ -156,6 +158,7 @@
             <button class="btn ghost sm" id="btn-inpatch-redo" title="重做输入路由矩阵动作">重做</button>
             <button class="btn ghost sm" id="btn-inpatch-reset" title="恢复物理输入到 CH 的 1:1 分配">1:1</button>
             <button class="btn ghost sm" id="btn-inpatch-double" title="Double Patch：IN1 → CH1/CH2，IN2 → CH3/CH4，依次类推">Double Patch</button>
+            <button class="btn ghost sm" id="btn-mixer-dante" title="批量标记哪些物理输入/输出走 Dante（网口线）">Dante 分配</button>
             <button class="btn ghost sm" id="btn-inpatch-png" title="导出输入路由矩阵 PNG">导出 PNG</button>
           </span>
         </header>
@@ -250,6 +253,19 @@
       </section>
     </div>
   </section>
+
+  <!-- ============ 交换机路由（有交换机时显示）============ -->
+  <section class="view" id="view-netroute">
+    <div class="workarea single">
+      <section class="panel grow">
+        <header class="panel-head">
+          <h2>交换机互联 · Dante 网口状态</h2>
+          <span class="head-note" id="netroute-note"></span>
+        </header>
+        <div class="panel-body" id="netroute-body"></div>
+      </section>
+    </div>
+  </section>
 </main>
 
 <div class="ctx-menu" id="ctx-menu" hidden></div>
@@ -262,6 +278,7 @@
 <script src="js/diagram.js"></script>
 <script src="js/inspector.js"></script>
 <script src="js/quick.js"></script>
+<script src="js/guide.js"></script>
 <script src="js/keys.js"></script>
 <script src="js/cables.js"></script>
 <script src="js/mixer.js"></script>

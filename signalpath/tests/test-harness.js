@@ -806,6 +806,258 @@ var nRes = Store.smartAssign(nSpk.id);
 T('普通音箱智能分配 → 接功放', nRes.lines.length === 1 &&
   Store.getDevice(Store.sourceFor(nSpk.id,0).sid).type === 'amp');
 
+print('== 19. 音箱单条功放线（其余口只用于 link）==');
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var sfAmp = Store.addDevice({ type:'amp', name:'单线功放', ins:2, outs:2, specs:{ power:'1000' } });
+var sfSpk2 = Store.addDevice({ type:'speaker', name:'双口无源箱', ins:2, outs:1,
+  speakerRole:'fullrange', specs:{ powered:'passive', power:'500', ohms:'8' } });
+var sfSpkB = Store.addDevice({ type:'speaker', name:'串接无源箱', ins:1, outs:1,
+  speakerRole:'fullrange', specs:{ powered:'passive', power:'500', ohms:'8' } });
+var sf1 = Store.connect(sfSpk2.id, 0, sfAmp.id, 0);
+T('第一条功放音响线 OK', sf1.ok === true);
+var sf2 = Store.connect(sfSpk2.id, 1, sfAmp.id, 1);
+T('第二条功放线被拒（单条规则）', sf2.ok === false && sf2.msg.indexOf('一条') >= 0);
+/* 同一输入口换接另一路功放输出 = 换线，不是第二条，应放行 */
+var sf3 = Store.connect(sfSpk2.id, 0, sfAmp.id, 1);
+T('同口换接功放输出仍 OK', sf3.ok === true);
+/* 另一口接音箱 link 串接 OK */
+var sf4 = Store.connect(sfSpkB.id, 0, sfSpk2.id, 0);
+T('音箱→音箱 link 串接 OK', sf4.ok === true);
+/* 有源音箱之间 link：默认允许 */
+var sfAct1 = Store.addDevice({ type:'speaker', name:'有源A', ins:2, outs:1,
+  speakerRole:'fullrange', specs:{ powered:'active', power:'800' } });
+var sfAct2 = Store.addDevice({ type:'speaker', name:'有源B', ins:1, outs:1,
+  speakerRole:'fullrange', specs:{ powered:'active', power:'800' } });
+var sfA = Store.connect(sfAct2.id, 0, sfAct1.id, 0);
+T('有源↔有源 link OK', sfA.ok === true);
+var sfA2 = Store.connect(sfAct1.id, 0, sfAmp.id, 1);
+T('有源不接功放（原规则仍在）', sfA2.ok === false);
+
+print('== 20. 拖完自动挤开 + 恢复默认布局 ==');
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var pdAmp = Store.addDevice({ type:'amp', name:'挤开功放', ins:2, outs:2, specs:{ power:'1000' } });
+var pdS1 = Store.addDevice({ type:'speaker', name:'挤开箱1', ins:1, outs:1, speakerRole:'fullrange', specs:{ powered:'passive', power:'400', ohms:'8' } });
+var pdS2 = Store.addDevice({ type:'speaker', name:'挤开箱2', ins:1, outs:1, speakerRole:'fullrange', specs:{ powered:'passive', power:'400', ohms:'8' } });
+var pdS3 = Store.addDevice({ type:'speaker', name:'挤开箱3', ins:1, outs:1, speakerRole:'fullrange', specs:{ powered:'passive', power:'400', ohms:'8' } });
+Store.connect(pdS1.id, 0, pdAmp.id, 0);
+Store.connect(pdS2.id, 0, pdAmp.id, 1);
+var pdBox = fakeEl();
+SP.renderWiringDiagram(pdBox);
+var pdL = SP._layout;
+/* 模拟拖动：把 箱1 拖到与 箱2 重叠的位置（同时故意拖离本层行） */
+var p2 = pdL.pos[pdS2.id];
+pdS1.px = Math.round(p2.x + 10);
+pdS1.py = Math.round(p2.y - 30);
+SP.renderWiringDiagram(pdBox);
+SP.settleAfterDrag(pdS1.id);
+SP.renderWiringDiagram(pdBox);
+pdL = SP._layout;
+function pdStart(id){ return pdL.pos[id].x; }
+function pdEnd(id){ return pdL.pos[id].x + pdL.pos[id].w; }
+var pdLaneIdx = -1;
+pdL.lanes.forEach(function(lane, i){ if (lane.indexOf(pdS1.id) >= 0) pdLaneIdx = i; });
+var pdLane = pdL.lanes[pdLaneIdx].slice().sort(function(a,b){ return pdStart(a)-pdStart(b); });
+var pdOverlap = false;
+for (var pk = 1; pk < pdLane.length; pk++) {
+  if (pdStart(pdLane[pk]) < pdEnd(pdLane[pk-1]) - 1) pdOverlap = true;
+}
+T('挤开后同层无重叠', !pdOverlap);
+T('挤开后主轴吸附回本层行（向下对齐）', Math.abs(pdL.pos[pdS1.id].y - pdL.lanePos[pdLaneIdx]) < 1);
+/* 相对顺序：箱1 拖到箱2 右侧一点 → 挤开后箱1 仍应在箱2 右侧 */
+T('挤开后相对顺序不乱（箱1 在箱2 右侧）', pdStart(pdS1.id) > pdStart(pdS2.id));
+/* 恢复默认布局：清 px/py，回到自动布局 */
+var pdMode = Store.state.diagramLayout;
+SP.restoreDefaultLayout(pdBox);
+T('恢复默认布局：手动位置全部清除',
+  Store.state.devices.every(function(d){ return d.px === undefined && d.py === undefined; }));
+T('恢复默认布局：不改变布局模式', Store.state.diagramLayout === pdMode);
+
+print('== 21. 交换机 + 网口线（Dante）==');
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+T('模板库有交换机', Store.state.deviceTemplates.some(function(t){ return t.type === 'switch'; }));
+var nwSw = Store.addDevice({ type:'switch', name:'主交换机', ins:4, outs:0 });
+var nwM1 = Store.addDevice({ type:'mixer', name:'FOH 台', ins:16, outs:8 });
+var nwM2 = Store.addDevice({ type:'mixer', name:'监听台', ins:16, outs:8 });
+var nwDsp = Store.addDevice({ type:'dsp', name:'NW-DSP', ins:4, outs:8 });
+T('交换机网口标签', nwSw.inputs[0].label === '网口 1');
+var nl1 = Store.addNetLink(nwM1.id, nwSw.id);
+T('调音台→交换机 网口线 OK', nl1.ok === true && nl1.conn.net === true && nl1.conn.tport === 0);
+var nl1b = Store.addNetLink(nwSw.id, nwM1.id);
+T('重复网口线被拒', nl1b.ok === false);
+var nl2 = Store.addNetLink(nwM2.id, nwSw.id);
+T('第二台占下一个网口', nl2.ok === true && nl2.conn.tport === 1);
+T('netLinksOf 汇总', Store.netLinksOf(nwSw.id).length === 2 && Store.netLinksOf(nwM1.id).length === 1);
+/* 音频线不能接交换机 */
+var nlAudio = Store.connect(nwSw.id, 2, nwM1.id, 0);
+T('音频线接交换机被拒', nlAudio.ok === false);
+/* 已接交换机的两台不允许再直连（有交换机就只走交换机） */
+var nl3 = Store.addNetLink(nwM1.id, nwM2.id);
+T('已上交换机的台不许直连', nl3.ok === false);
+/* 智能连接不碰交换机 */
+var nwRes = Store.smartAssign(nwSw.id);
+T('交换机不参与音频智连', nwRes.lines.length === 0);
+Store.smartAssignAll();
+T('一键智连后网口线保留且交换机无音频线',
+  Store.netLinksOf(nwSw.id).length === 2 &&
+  Store.state.connections.every(function(c){
+    var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
+    return c.net || (s.type !== 'switch' && t.type !== 'switch');
+  }));
+/* cleanup 不清网口线 */
+Store.cleanupConnectionErrors();
+T('cleanup 保留网口线', Store.netLinksOf(nwSw.id).length === 2);
+/* 断开 */
+Store.removeNetLink(nwM1.id, nwSw.id);
+T('断开网口线', Store.netLinksOf(nwSw.id).length === 1 && !Store.netLinkBetween(nwM1.id, nwSw.id));
+/* 线材汇总把网口线归为 网线(Dante) */
+var nwSum = Store.cableSummary().filter(function(g){ return g.type === '网线(Dante)'; })[0];
+var netN = Store.state.connections.filter(function(c){ return c.net; }).length;
+T('线材汇总含网线(Dante)', !!nwSum && nwSum.count === netN && netN >= 1);
+  /* 框图渲染：交换机独占顶层 + Dante 短网线示意 + Dante 小节点 */
+  var nwBox = fakeEl();
+  SP.renderWiringDiagram(nwBox);
+  T('框图不再画跨设备 Dante 网口线', nwBox.innerHTML.indexOf('net-edge') < 0);
+  T('框图含 Dante 短网线淡出示意', nwBox.innerHTML.indexOf('dante-stub') >= 0 &&
+    nwBox.innerHTML.indexOf('dante-stub-fade') >= 0 &&
+    nwBox.innerHTML.indexOf('data-switch-net') >= 0);
+  T('框图含 Dante 小节点（dante 标注）', nwBox.innerHTML.indexOf('data-dante-node') >= 0 &&
+    nwBox.innerHTML.indexOf('dante-dot') >= 0 &&
+    nwBox.innerHTML.indexOf('>dante</text>') >= 0);
+  T('框图 Dante 标注交换机网口号',
+    nwBox.innerHTML.indexOf('dante-link-tag') >= 0 &&
+    nwBox.innerHTML.indexOf('网口 2') >= 0);
+  var nwL = SP._layout;
+  function nwMain(id){ var p = nwL.pos[id]; return nwL.horiz ? p.x : p.y; }
+  function nwCross(id){ var p = nwL.pos[id]; return nwL.horiz ? p.y + p.h / 2 : p.x + p.w / 2; }
+  T('交换机在调音台上方（独占顶层）', nwMain(nwSw.id) < nwMain(nwM1.id));
+  T('交换机默认对齐到已互联调音台', Math.abs(nwCross(nwSw.id) - nwCross(nwM2.id)) < 1);
+/* 自定义网口数量 + 缩减断开越界网口线（不影响 nwM1 的通道测试） */
+var swR = Store.setSwitchPorts(nwSw.id, 12);
+T('交换机网口数可自定义', swR.ok === true && Store.getDevice(nwSw.id).inputs.length === 12);
+Store.setSwitchPorts(nwSw.id, 1);
+T('缩减网口断开越界网口线', Store.getDevice(nwSw.id).inputs.length === 1 &&
+  Store.netLinksOf(nwSw.id).length <= 1);
+Store.setSwitchPorts(nwSw.id, 8);
+
+print('== 22. 调音台 Dante 分配 ==');
+var dnM = nwM1;   /* 复用 16 in / 8 out 调音台 */
+var dnR1 = Store.toggleDante(dnM.id, 'in', 0);
+T('标记输入走 Dante', dnR1.ok === true && dnR1.on === true && Store.isDante(dnM, 'in', 0));
+Store.toggleDante(dnM.id, 'in', 3);
+Store.toggleDante(dnM.id, 'in', 1);
+Store.toggleDante(dnM.id, 'in', 2);
+T('danteList 排序', JSON.stringify(Store.danteList(dnM, 'in')) === '[0,1,2,3]');
+var dnMore = Store.toggleDante(dnM.id, 'in', 4);
+T('可超过 4 路（支持全选）', dnMore.ok === true && Store.danteList(dnM, 'in').length === 5);
+var dnOff = Store.toggleDante(dnM.id, 'in', 1);
+T('再点取消标记', dnOff.ok === true && dnOff.on === false && !Store.isDante(dnM, 'in', 1));
+Store.toggleDante(dnM.id, 'out', 5);
+T('输出独立计数', Store.danteList(dnM, 'out').length === 1 && Store.danteList(dnM, 'in').length === 4);
+var dnAmpR = Store.toggleDante(nwDsp.id, 'in', 0);
+T('非调音台被拒', dnAmpR.ok === false);
+/* 批量：拖拽框选一段 + 整行全选 / 全不选 */
+Store.setDante(dnM.id, 'in', [6, 7, 8], true);
+T('批量设置一段 Dante', [6,7,8].every(function(i){ return Store.isDante(dnM, 'in', i); }));
+Store.setDante(dnM.id, 'in', [6, 7], false);
+T('批量取消一段', !Store.isDante(dnM, 'in', 6) && !Store.isDante(dnM, 'in', 7) && Store.isDante(dnM, 'in', 8));
+Store.setDanteAll(dnM.id, 'in', true);
+T('全选输入', Store.danteList(dnM, 'in').length === dnM.inputs.length);
+Store.setDanteAll(dnM.id, 'in', false);
+T('全不选输入', Store.danteList(dnM, 'in').length === 0);
+/* normalize：越界端口清理 + 去重（不再截断到 4） */
+dnM.danteIn = [0, 2, 99, -1, 1, 3, 5, 2, 3];
+Store.replaceState(JSON.parse(JSON.stringify(Store.state)));
+var dnM2 = Store.getDevice(dnM.id);
+T('normalize 清越界+去重',
+  JSON.stringify(dnM2.danteIn) === '[0,1,2,3,5]');
+
+print('== 23. 接交换机自动清直连 ==');
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var acM1 = Store.addDevice({ type:'mixer', name:'AC台1', ins:8, outs:8 });
+var acM2 = Store.addDevice({ type:'mixer', name:'AC台2', ins:8, outs:8 });
+var acSw = Store.addDevice({ type:'switch', name:'AC交换机', ins:4, outs:0 });
+var ac1 = Store.addNetLink(acM1.id, acM2.id);
+T('无交换机时可直连', ac1.ok === true && !!Store.netLinkBetween(acM1.id, acM2.id));
+var acBox = fakeEl();
+SP.renderWiringDiagram(acBox);
+T('调音台直连 Dante 标注互联对象',
+  acBox.innerHTML.indexOf('dante-link-tag-peer') >= 0 &&
+  acBox.innerHTML.indexOf('AC台1') >= 0 &&
+  acBox.innerHTML.indexOf('AC台2') >= 0);
+var ac2 = Store.addNetLink(acM1.id, acSw.id);
+T('接交换机成功', ac2.ok === true);
+T('接交换机后自动清掉该台直连',
+  !Store.netLinkBetween(acM1.id, acM2.id) && !!Store.netLinkBetween(acM1.id, acSw.id));
+
+print('== 24. 默认对齐（按功放分组 + 功放居中于音箱）==');
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var tMix = Store.addDevice({ type:'mixer', name:'T台', ins:8, outs:8 });
+var tA = Store.addDevice({ type:'amp', name:'T功放A', ins:2, outs:2, specs:{ power:'1000' } });
+var tB = Store.addDevice({ type:'amp', name:'T功放B', ins:2, outs:2, specs:{ power:'1000' } });
+function tSpk(n){ return Store.addDevice({ type:'speaker', name:n, ins:1, outs:1, speakerRole:'fullrange', specs:{ powered:'passive', power:'400', ohms:'8' } }); }
+var s1=tSpk('S1'), s2=tSpk('S2'), s3=tSpk('S3'), s4=tSpk('S4');
+Store.connect(tA.id, 0, tMix.id, 0);   /* 功放A ← 台 OUT1 */
+Store.connect(tB.id, 0, tMix.id, 1);   /* 功放B ← 台 OUT2 */
+Store.connect(s1.id, 0, tA.id, 0);     /* S1 ← A OUT1 */
+Store.connect(s2.id, 0, tA.id, 1);     /* S2 ← A OUT2 */
+Store.connect(s3.id, 0, tB.id, 0);     /* S3 ← B OUT1 */
+Store.connect(s4.id, 0, tB.id, 1);     /* S4 ← B OUT2 */
+Store.state.diagramLayout = 'bottomup';
+var tBox = fakeEl();
+SP.renderWiringDiagram(tBox);
+var tL = SP._layout;
+function tc(id){ var p = tL.pos[id]; return tL.horiz ? p.y + p.h/2 : p.x + p.w/2; }
+/* 叶层（音箱）顺序：按功放分组 S1,S2 | S3,S4 */
+var leafLane = tL.lanes[tL.lanes.length - 1];
+T('音箱层按功放分组连续排列',
+  leafLane.indexOf(s1.id) >= 0 &&
+  Math.abs(leafLane.indexOf(s1.id) - leafLane.indexOf(s2.id)) === 1 &&
+  Math.abs(leafLane.indexOf(s3.id) - leafLane.indexOf(s4.id)) === 1 &&
+  leafLane.indexOf(s2.id) < leafLane.indexOf(s3.id));
+/* 功放居中在它的两只音箱中点 */
+T('功放A 居中于 S1,S2', Math.abs(tc(tA.id) - (tc(s1.id) + tc(s2.id)) / 2) < 1);
+T('功放B 居中于 S3,S4', Math.abs(tc(tB.id) - (tc(s3.id) + tc(s4.id)) / 2) < 1);
+/* 功放A 组整体在 功放B 组左侧（不交叉、不插入） */
+T('两组不交叉', tc(s2.id) < tc(s3.id) && tc(tA.id) < tc(tB.id));
+
+print('== 25. 相对对齐逐设备保持上下级关系 ==');
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+var raMix = Store.addDevice({ type:'mixer', name:'RA台', ins:8, outs:8 });
+var raD1 = Store.addDevice({ type:'dsp', name:'RA-DSP有下级', ins:2, outs:2 });
+var raD2 = Store.addDevice({ type:'dsp', name:'RA-DSP无下级', ins:2, outs:2 });
+var raAmp = Store.addDevice({ type:'amp', name:'RA功放', ins:2, outs:2, specs:{ power:'1000' } });
+var raSpk = Store.addDevice({ type:'speaker', name:'RA音箱', ins:1, outs:1,
+  speakerRole:'fullrange', specs:{ powered:'passive', power:'400', ohms:'8' } });
+Store.connect(raD1.id, 0, raMix.id, 0);
+Store.connect(raD2.id, 0, raMix.id, 1);
+Store.connect(raAmp.id, 0, raD1.id, 0);
+Store.connect(raSpk.id, 0, raAmp.id, 0);
+Store.state.diagramLayout = 'bottomup';
+var raBox = fakeEl();
+SP.renderWiringDiagram(raBox);
+function raCross(id){ var p = SP._layout.pos[id]; return SP._layout.horiz ? p.y + p.h / 2 : p.x + p.w / 2; }
+var raD2Before = raCross(raD2.id);
+SP.relAlignLayout('down', raBox);
+T('相对对齐：无下级 DSP 保持当前位置', Math.abs(raCross(raD2.id) - raD2Before) < 1);
+T('相对对齐：有下级 DSP 对齐自己的下级', Math.abs(raCross(raD1.id) - raCross(raAmp.id)) < 1);
+
+print('== 26. 一键智能连接自动接 Dante 网口 ==');
+Store.replaceState(Store.defaultState());
+Store.resetHistory();
+Store.addDevice({ type:'mixer', name:'SC台1', ins:8, outs:8 });
+Store.addDevice({ type:'mixer', name:'SC台2', ins:8, outs:8 });
+var scSw = Store.addDevice({ type:'switch', name:'SC交换机', ins:8, outs:0 });
+Store.smartAssignAll();
+T('智连把调音台接到交换机 1、2 口', Store.netLinksOf(scSw.id).length === 2 &&
+  Store.state.connections.some(function(c){ return c.net && c.tid === scSw.id && c.tport === 0; }) &&
+  Store.state.connections.some(function(c){ return c.net && c.tid === scSw.id && c.tport === 1; }));
+
 print('');
 print('结果: ' + pass + ' 通过, ' + fail + ' 失败');
 if (fail) throw new Error(fail + ' tests failed');

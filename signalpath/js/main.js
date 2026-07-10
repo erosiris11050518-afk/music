@@ -458,6 +458,7 @@
     SP.renderWiringTable();
     SP.renderWiringDiagram(el('wiring-diagram'));
     SP.renderMixerView();
+    if (SP.renderNetRoute) SP.renderNetRoute();
     if (SP.renderTeach) SP.renderTeach();
     if (SP.renderCables) SP.renderCables();
     if (SP.syncOrientBtn) SP.syncOrientBtn();
@@ -477,6 +478,7 @@
         v.classList.toggle('active', v.id === 'view-' + name);
       });
       if (name === 'mixer' && SP.renderMixerView) SP.renderMixerView();
+      if (name === 'netroute' && SP.renderNetRoute) SP.renderNetRoute();
       if (name === 'cables' && SP.renderCables) SP.renderCables();
       if (name === 'teach' && SP.renderTeach) SP.renderTeach();
     };
@@ -586,9 +588,17 @@
     if (resetTop) resetTop.addEventListener('click', function () {
       SP.resetDiagramLayout(el('wiring-diagram'), 'topdown');
     });
-    var resetBottom = el('btn-diagram-reset-bottom');
-    if (resetBottom) resetBottom.addEventListener('click', function () {
-      SP.resetDiagramLayout(el('wiring-diagram'), 'bottomup');
+    /* 默认对齐：按功放分组重排（清手动位 → 整齐树布局） */
+    var alignDefault = el('btn-diagram-align-default');
+    if (alignDefault) alignDefault.addEventListener('click', function () {
+      SP.defaultAlignLayout(el('wiring-diagram'));
+      SP.toast('已按功放分组默认对齐（可撤销）');
+    });
+    /* 相对对齐：保持当前相对顺序，逐层等间距对准下级 */
+    var alignRelative = el('btn-diagram-align-relative');
+    if (alignRelative) alignRelative.addEventListener('click', function () {
+      SP.relAlignLayout('down', el('wiring-diagram'));
+      SP.toast('已按当前相对位置对齐下级（可撤销）');
     });
     SP.syncOrientBtn = function () {
       var b = el('btn-diagram-orient');
@@ -709,6 +719,7 @@
     var keysBtn = el('btn-keys');
     if (keysBtn) keysBtn.addEventListener('click', function () { SP.openKeysPanel(); });
     el('btn-config').addEventListener('click', openConfigPanel);
+    if (SP.initGuide) SP.initGuide();
 
     /* ---------- 导入配置（还原图片到 IndexedDB），入口在「配置」面板 ---------- */
     function importState(data) {

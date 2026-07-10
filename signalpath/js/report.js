@@ -37,7 +37,8 @@
       var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
       if (!s || !t) return '';
       var sp = s.outputs[c.sport], tp = t.inputs[c.tport];
-      if (!sp || !tp) return '';
+      if (!c.net && (!sp || !tp)) return '';
+      var tpLabel = tp ? tp.label : '网口';
       var amp = '—';
       if (s.type === 'amp') {
         var mode = Store.ampPairMode(s, Math.floor(c.sport / 2));
@@ -51,7 +52,7 @@
       var lenTx = (c.lenM ? c.lenM + 'm' : '') + (c.note ? (c.lenM ? ' · ' : '') + c.note : '');
       return '<tr><td>' + esc(s.name) + ' / ' + esc(Store.outLabelOf(s, c.sport)) + '</td>' +
         '<td class="arr">→</td>' +
-        '<td>' + esc(t.name) + ' / ' + esc(tp.label) + '</td>' +
+        '<td>' + esc(t.name) + ' / ' + esc(tpLabel) + '</td>' +
         '<td>' + esc(Store.cableOf(c)) + (lenTx ? '<br><span class="dimtx">' + esc(lenTx) + '</span>' : '') + '</td>' +
         '<td>' + esc(amp) + '</td>' +
         '<td>' + (warn ? '<span class="w">⚠ ' + esc(warn) + '</span>' : '✓') + '</td></tr>';
@@ -324,6 +325,42 @@
         '<th>线材 / 长度</th><th>功放参数</th><th>校验</th></tr></thead>' +
         '<tbody>' + (connRows || '<tr><td colspan="6">—</td></tr>') + '</tbody></table>' +
         '</div>');
+
+      /* 网络层（Dante）：网口线 + 调音台 Dante 通道分配（有内容才出页） */
+      var netConns = st.connections.filter(function (c) { return c.net; });
+      var danteMixers = st.devices.filter(function (d) {
+        return d.type === 'mixer' &&
+          (Store.danteList(d, 'in').length || Store.danteList(d, 'out').length);
+      });
+      if (netConns.length || danteMixers.length) {
+        var np = '<h2>网络层（Dante）</h2>';
+        if (netConns.length) {
+          np += '<table><thead><tr><th>设备 A</th><th></th><th>设备 B（端口）</th><th>长度</th></tr></thead><tbody>' +
+            netConns.map(function (c) {
+              var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
+              if (!s || !t) return '';
+              var tp = c.tport >= 0 && t.inputs[c.tport] ? t.inputs[c.tport].label : '网口';
+              return '<tr><td>' + esc(s.name) + '</td><td class="arr">↔</td>' +
+                '<td>' + esc(t.name) + ' / ' + esc(tp) + '</td>' +
+                '<td>' + (c.lenM ? esc(c.lenM) + 'm' : '—') + '</td></tr>';
+            }).join('') + '</tbody></table>';
+        }
+        if (danteMixers.length) {
+          function danteLabels(d, side) {
+            var ports = side === 'in' ? d.inputs : d.outputs;
+            return Store.danteList(d, side).map(function (i) {
+              return ports[i] ? ports[i].label : '#' + (i + 1);
+            }).join('、') || '—';
+          }
+          np += '<table><thead><tr><th>调音台</th><th>Dante 输入</th><th>Dante 输出</th></tr></thead><tbody>' +
+            danteMixers.map(function (d) {
+              return '<tr><td>' + esc(d.name) + '</td><td>' + esc(danteLabels(d, 'in')) +
+                '</td><td>' + esc(danteLabels(d, 'out')) + '</td></tr>';
+            }).join('') + '</tbody></table>' +
+            '<p class="note">标记为 Dante 的通道经网口线（交换机）传输，其余通道照常走信号线。</p>';
+        }
+        pages.push('<div class="pg">' + np + '</div>');
+      }
     }
 
     /* 采购与工程建议页：线材 + 机柜 + 供电 */
@@ -519,7 +556,8 @@
         var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
         if (!s || !t) return;
         rows2.push([s.name, Store.outLabelOf(s, c.sport), t.name,
-          (t.inputs[c.tport] || {}).label || '', Store.cableOf(c), c.lenM || '', c.note || '']);
+          (t.inputs[c.tport] || {}).label || (c.net ? '网口' : ''),
+          Store.cableOf(c), c.lenM || '', c.note || '']);
       });
       SP.csvDownload('signalpath-连接清单.csv', rows2);
       files++;

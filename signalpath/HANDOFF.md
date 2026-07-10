@@ -198,9 +198,216 @@ Chrome MCP 扩展连不上，**浏览器可视回归一直靠用户人工验证*
 - 测试：§17 mixerFeeds（有/无 DSP）；§18 并联从属被打乱后智能分配串回组长、组长智能分配
   接功放+串从属、"不影响整体"（其它组不变）、普通音箱仍接功放。
 
+## v3.0 音箱单线规则 + 排版整理 + 交换机/Dante 体系（本轮）
+
+用户确认的设计（审核通过后按 5 批实施，每批回归全绿）：
+
+- **批次1 · 音箱单条功放线**：`connectionError` 新规则——无源音箱最多从功放接入
+  一条音响线（同口换接不算），其余输入口只用于音箱↔音箱 link 串接；有源不接功放（原规则），
+  有源↔有源 link 默认允许。`cleanupConnectionErrors` 改为逐条渐进保留
+  （互相冲突的多条功放线只清多余的，不再整对误删）。
+- **批次2 · 排版**：
+  · 拖完自动挤开：`SP.settleAfterDrag(devId)`（diagram.js）——拖动松手后被拖节点主轴
+    吸附回本层行（保持向下对齐），层内按当前顺序保序去重叠（只挤开重叠者，不等间距重排，
+    只有真被挤动的节点写 px/py）。onUp 里先同步渲染刷新 `SP._layout` 再 settle。
+  · 「对齐下级」按钮改名「对齐」= `SP.relAlignLayout('down')`（保持当前相对顺序，
+    逐层等间距排整齐并对准下级）——用户明确要等间距重排，不要轻量去重叠。
+  · 新增「恢复默认布局」按钮（btn-diagram-restore → SP.restoreDefaultLayout）：
+    清全部 px/py 回到最初自动布局，不改 diagramLayout 模式。
+- **批次3 · 交换机 + 网口线**：新 `switch` 设备类型（青绿 #3fbfb0 = SP.NET_COLOR，
+  端口标签「网口 n」，模板库种子 8 网口，deviceTemplatesVersion 4→5）。
+  网口线复用 connections 存储、`c.net=true`：源端 sport=-1 不占音频口；
+  交换机端占真实网口 tport；调音台↔调音台直连用唯一负数 tport（(tid,tport) 键全局唯一）。
+  Store API：addNetLink / removeNetLink / netLinkBetween / netLinksOf / freeNetPort / isNetConn。
+  网口线不参与信号分层/智连/功率（diagram 分层与 relAlign 都过滤 c.net；
+  autoSourceTypes / canAutoConnect / smartAssign / smartAssignAll 全部跳过 switch；
+  音频线接交换机被 connectionError 拒绝）。框图：交换机独占最顶层（typeLayer -1），
+  网口线青绿点划线（.net-edge）+ 两端 RJ45 方口，无箭头。右键调音台/交换机可
+  连/断网口线，交换机可「一键连接所有调音台」（Store.batch 单撤销步）。
+  线材表/连接总表/报告 CSV 的端口守卫放行 net 连线（源口显示「网口」）。
+- **批次4 · Dante 分配**：调音台 `danteIn[]/danteOut[]`（各最多 4 路 = 主备双网口余量，
+  normalize 清越界+截断）。Store：DANTE_MAX / danteList / isDante / toggleDante。
+  三入口共用 `SP.openDanteConfig(devId)` 弹窗（inspector.js）：设备详情页按钮 /
+  右键菜单「Dante 分配」/ 台内路由页 btn-mixer-dante；台内路由输入矩阵行头、
+  输出矩阵列头同步显示 D 角标（.dante-badge，弹窗内即时联动刷新）。
+- **批次5 · 交换机路由页 + 报告**：新顶部页签「交换机路由」（#tab-netroute，
+  有交换机才显示；删光自动隐藏并切回设备连线页）。`SP.renderNetRoute`（mixer.js）：
+  每台交换机一张表（网口 ↔ 调音台 ↔ 该台 Dante 输出/输入通道），
+  调音台直连网口线单独列表。报告在连接清单后追加「网络层（Dante）」页
+  （网口线 + 每台调音台 Dante 通道分配，有内容才出页）；网线(Dante) 归入线材汇总。
+- 测试：harness §19 单线规则 / §20 挤开+恢复默认 / §21 交换机网口线 / §22 Dante 分配，
+  共 175；test-ui 新增交换机路由页、Dante 弹窗、报告网络层、net-edge 渲染、
+  页签隐藏等，共 88。全部通过。
+
+## v3.1 Dante 视觉重做（聚合亮节点）+ 右键菜单重排 + 批量选择（本轮）
+
+用户确认（AskUserQuestion）：Dante 用**聚合节点**（每台一个，不按对端拆）；有交换机时**只连交换机**
+（接交换机自动清该台直连）；右键第 2 行**保留复制**。
+
+- **右键菜单 3 行重排**（仅调音台，inspector.js showDeviceMenu）：
+  行1 台内接线（data-ctx-patch→openPatchTeach 本台）· 台内路由（data-ctx-mixroute→setActiveMixer+switchView('mixer')）· Dante 分配；
+  行2 智能分配·清IN·清OUT·复制·删除；行3 网口线（Dante，各对端连/断，可多行）。
+  非调音台菜单不变。
+- **Dante 分配弹窗升级批量选择**（openDanteConfig）：拖拽框选一段（pointerdown/move 只做 DOM 预览，
+  pointerup 一次性 Store.setDante 提交＝单撤销步）、全选 / 全不选按钮。**取消了 4 路上限**
+  （全选需要）——store 新增 `setDante(devId,side,ports,on)` / `setDanteAll(devId,side,on)`，
+  toggleDante 去掉 cap，normalize 改为清越界+去重（不再截断到 4）。DANTE_MAX 已删除。
+- **新 Dante 框图视觉**（diagram.js，取消旧的跨屏点划线 + RJ45）：
+  · 每台有 Dante 活动（danteIn/Out 或有网口线）的调音台，在 **input 侧**（竖版=上方/横版=左侧）
+    挂一个**聚合亮节点**（青绿 `dante-node-box`，两行文字「⇅ Dante」+ 对端摘要），
+    `data-dante-node` 点击→openDanteConfig。
+  · 交换机在调音台上一级（typeLayer switch=-1）；网口线从聚合节点锚点连到交换机朝向边
+    （`danteBadge`/`switchAnchor`/`netPath` 均方向自适应），无交换机时两台聚合节点直连。
+  · 连线画在设备节点之下、聚合节点画在设备节点之上（醒目）。
+- **接交换机自动清直连**（store.addNetLink）：调音台接入 switch 时，删掉该台所有
+  mixer↔mixer 直连；且"已在交换机上的台"不允许再直连（`onSwitch` 校验）。
+- 测试：harness §21 改为断言聚合节点 + 直连被拒 + 线材数=net连线数、§23 接交换机自动清直连、
+  §22 改为批量/全选/去重断言（共 183）；test-ui 88 全过。
+
+## v3.2 对齐重做 + Dante 端口化 + 交换机自定义（本轮）
+
+- **默认对齐（整齐树）**：`placeTidyDown`（diagram.js）取代原 bottomup 布局，成为**初始/默认布局**。
+  两趟：排序趟（自上而下，按「父节点顺序 + 父输出口序」分组，让同一功放的音箱连续、不被插入）；
+  定位趟（自下而上，父居中于子、同层重叠保序推开）。快速布局后 diagramLayout 从 'smart' 改 'bottomup'。
+  按钮：`btn-diagram-align-default`「默认对齐」(SP.defaultAlignLayout：清 px/py + tidy)、
+  `btn-diagram-align-relative`「相对对齐」(relAlignLayout('down') 保持相对)。移除了「恢复默认布局」按钮
+  （被默认对齐取代；restoreDefaultLayout 函数仍在，供测试）。
+- **Dante 端口化 + 小节点**（取代 v3.1 的大方框）：调音台参与 Dante 时，input 末尾多一个虚拟
+  Dante 网口（`inCountOf`/`danteActive`，节点相应加长；portLocalCross/portPoint 输入口计数用 inCountOf）。
+  网口线从 `dantePortPoint`（调音台 Dante 口）连到交换机对应网口。框图上画一个**小圆点 + 「dante」标注**
+  （`.dante-dot`/`.dante-dot-label`），点击打开 Dante 分配。
+- **交换机网口朝调音台**：`portsOnOutSide(d,isInput)` —— 交换机的输入网口画在朝下（竖版底/横版右）一侧，
+  正对下方调音台。网口线锚到具体网口 `inPoint(sw, tport)`。
+- **交换机网口数自定义**：`Store.setSwitchPorts(devId,n)`（1~64，缩减时断开越界网口线）；
+  设备详情页「网口数量」输入框。
+- **一键智能连接自动接 Dante**：smartAssignAll 末尾，有交换机时把未上网的调音台按顺序接到交换机
+  网口 1、2、3…（复用 addNetLink/freeNetPort）。
+- **右键网口线按钮两列网格**：`.ctx-net-actions` 两列、长名截断、「连接所有调音台」占整行。
+- 测试：harness §24 默认对齐（分组 + 功放居中）、§25 智连接 Dante、§21 改小节点/自定义网口断言，
+  共 190；test-ui 88，全过。
+
+## v3.3 Dante 主框图简化 + 相对对齐修正（本轮）
+
+- **交换机参与默认/相对对齐**：网口线仍不参与音频分层，但在 diagram.js 内转成
+  `switch -> mixer` 的虚拟布局关系；交换机会居中到已互联调音台，不再只靠类型层随意站位。
+- **相对对齐改为逐设备目标**：`SP.relAlignLayout('down')` 不再把整层统一拖到一个平均中心；
+  每台设备优先对齐自己的下级，没有下级则保持当前位置（上级模式同理），再做同层避让。
+- **主框图取消跨设备 Dante 网口线**：不再画 `.net-edge`；调音台/交换机只伸出一段
+  `.dante-stub`，后半段 `.dante-stub-fade` 虚线淡出。点击调音台 Dante 小节点/短线打开
+  Dante 分配；点击交换机短线选中交换机看互联状态。
+- **交换机页只显示互联状态**：交换机路由页和交换机详情只列网口 ↔ 调音台，不显示/控制内部路由；
+  具体 Dante 输入/输出在对应调音台的「台内路由 / Dante 分配」里处理。
+- **台内路由 Dante 视觉**：Dante 输入行、输出列加 `dante-route` / `dante-route-head` 和图例，
+  选中的路由方块使用 Dante 青绿色。
+- 测试：harness §21 更新短线示意与交换机对齐断言，新增 §25 相对对齐逐设备断言；
+  test-ui 更新交换机互联页、Dante 色块、短线示意。当前 harness 194、test-ui 90，全过。
+
+## v3.4 AI 语音可用性修复（方案 A+B，本轮）
+
+**背景诊断**：语音"点开没用"的根因不在解析逻辑（parse 测试全过），在"听"这一环——
+Web Speech API 在 Chrome 里是云服务（音频送 Google 服务器识别），国内网络不可达 →
+每轮 `onerror('network')`，旧代码只弹小灰字并 1.2s 无限重启；声波条又是恒定假动画，
+看起来在听、实际服务从没通过。次要因素：file:// / http://IP 打开时麦克风被拒
+（not-allowed）；Firefox 无此 API；AI 图标兼拖拽把手，移动 >3px 就吞点击。
+
+- **方案 A（诚实报错 + 引导）**（quick.js 全局 AI 语音）：
+  · 新增 `.rv-ai-banner` 醒目状态条（bad红/warn琥珀/正常青绿），`setGlobalAiBanner`；
+    点击先 `globalAiEnvCheck()` 自检：无 API / 非安全上下文 / 权限已拒 / 离线，
+    结论直接亮在面板上并进 `globalAiManualMode()`（聚焦+高亮输入框，is-manual 类）。
+  · `network` 错误连续 ≥2 次（globalAiNetErrors）→ 停止无限重试，横幅明确引导：
+    Chrome → "建议用 Edge 打开（微软语音国内可用）或直接打字"；Edge → 查网络。
+    onresult 收到内容即清零计数。
+  · 声波诚实化：待机 0.16 低电平，真收到 onresult 才 `bumpGlobalAiWave()` 跳到 0.85
+    再回落（700ms 定时器）。
+  · not-allowed 结合 `navigator.permissions.query('microphone')` 预检缓存
+    （globalAiMicPermission），"已拒绝"给浏览器设置恢复路径，"未询问"提示点允许。
+  · 拖拽改 pointer 事件（鼠标+触屏统一），阈值 3→6px，真拖动过才吞 click；
+    orb 加 `touch-action:none`。
+- **方案 B（Chrome 端侧识别，防御性）**：`probeGlobalAiLocal()` 在 init 时探测
+  `SpeechRecognition.available({langs:['zh-CN'],processLocally:true})`；'available' 直接
+  开本地模式；'downloadable' 在用户点击手势里 `kickGlobalAiLocalInstall()` 触发
+  `install()`（横幅提示下载进度/完成）。本地模式下每轮识别设 `processLocally=true`
+  （识别在本机完成，离线可用，env 自检的"离线拦截"也放行）。老浏览器无这些静态方法
+  → 全部安静跳过，回落云端 + 方案 A 提示。
+- 测试：test-ui 新增"语音不可用环境→状态条提示+手动输入"断言（jsc 无语音 API 正好走此路径）。
+  当前 harness 196、test-ui 115，全过。
+- **用户实测结论（2026-07-11）**：Safari ✅ 可用；Chrome ❌（Google 云不可达）；
+  Edge ❌ "能激活但不出字"（onstart 触发、onresult 永不来，Edge 实现的已知问题）。
+  用户决定：暂缓本地 WASM 方案 C；主用 Chrome，等 Chrome 139+ 端侧识别。
+
+### v3.4b 补充（同轮）：录音波形 + Safari 优先 + 看门狗 + 端侧状态可视化
+
+- **波形 = 录音指示灯**：正在听时 `.is-listening` 触发 CSS 持续起伏动画（transform scaleY，
+  不与 JS 内联高度冲突），基线电平 .34；真收到识别结果仍 bump 到 .85。语义：动 = 麦克风在录。
+- **看门狗**：会话开始 10 秒无任何识别结果（Edge 典型症状）→ 琥珀横幅提示换 Safari / 打字，
+  不强行停止（armGlobalAiWatchdog / globalAiGotResult）。
+- **引导文案首推 Safari**（用户已实测可用），Chrome 文案加"升级 139+ 后看面板底部端侧状态"。
+- **端侧探测状态可视化**：面板底部 `#global-ai-local`（.rv-ai-local）常显端侧识别状态——
+  检测中 / ✅本地包就绪 / 可下载（点图标自动下载）/ 当前浏览器无中文端侧包 /
+  此版本不支持（升级 Chrome 139+）。probe/install 全流程同步刷新（setGlobalAiLocalStatus）。
+- 人工验证：Chrome 升级到 139+ 后打开面板看端侧状态行；若显示"可下载/已就绪"，
+  Chrome 本地识别即解锁（离线可用）。
+
+### v3.4c 补充：第二次启动失败修复 + 提示精简 + 提速（用户 Chrome 端侧实测成功后）
+
+- **用户实测**：Chrome 139+ 端侧中文包安装成功、第一句精准识别 ✅；但第二次点蝴蝶失败。
+- **第二次启动失败三重修复**：
+  · stopGlobalSpeakerVoice 改用 `rec.abort()`（stop 会等结果回吐，端侧引擎独占时拖住下一轮）；
+  · startGlobalRecognitionCycle 开头先 abort 残留实例（globalAiRecognition 兜底清理）；
+  · rec.start() 抛错时 350ms 自动重试一次（isRetry 参数），再失败才进手动模式。
+- **file:// 一次性授权陷阱**：文件方式打开时若麦克风弹窗选了「仅本次允许」，第二次会
+  not-allowed——报错文案检测 `location.protocol==='file:'` 时专门提示选
+  「Allow while visiting the site」。
+- **提示精简**（用户要求）：Safari 建议只在两处出现——10 秒看门狗（"一直识别不到？建议
+  改用 Safari 或直接打字"）和 network×2 失败（"语音服务连不上。可改用 Safari 或直接打字"）；
+  开场/正常流程不再提浏览器建议。错误兜底文案带原始错误码（括号）便于定位。
+  phrases 偏置词表只在端侧模式启用（云端不支持，会报 phrases-not-supported）。
+- **提速**：停顿判定窗口 GLOBAL_AI_PHRASE_MS 1500→800ms。注意：final 片段**必须**合并成
+  完整句再执行（test-ui 有两条断言标定此语义——"我要8只"+"全频"要合成一句），
+  不能 final 一到就提交，否则残句会被当成 incomplete 指令。
+- 回归：harness 196 + test-ui 115 全绿。
+
+## v3.5 移除网页语音 → 小蝶点击式智能引导（本轮）
+
+**背景**：Chrome 端侧识别第二次启动仍不稳定，用户决定放弃网页语音，把蝴蝶入口改造成
+纯点击的智能引导。架构决策：**删"耳朵"留"大脑"** —— SpeechRecognition 引擎全删，
+指令解析/执行层（parseSpeakerVoiceCommand / applySpeakerVoiceCommand）保留，
+成为引导的后端（test-ui 的大量解析测试全部保留有效）。
+
+- **删除**：quick.js 原 356–1091 行语音引擎块（globalAi* 全套：识别循环、麦克风权限、
+  波形、看门狗、横幅、端侧探测），main.js 改调 SP.initGuide()；语音专属 CSS
+  （rv-ai-banner/rv-ai-local/wave 动画）删除。反推面板内的浮动小部件改名
+  「快捷指令」（打字回车执行，非语音）。
+- **新增 js/guide.js —— 小蝶引导 🦋**（index.html 第 12 个模块，quick.js 之后）：
+  · **状态感知主菜单**：空画布→「配一套系统/导入型号/接线教学」；有设备没连线→
+    「一键智能连接」置顶；已连线→「排整齐/功率检查/报告/线材」。
+  · **数量步骤**（STEPS.counts）：全频/超低数量输入 + 型号下拉（默认"智能推荐=库存最多"），
+    点「帮我配好」→ 合成指令交给 applySpeakerVoiceCommand（打开反推、建组、自动算功放
+    DSP 调音台），未指定型号的组自动补发「选库存最多的」。
+  · **步骤流**：counts → afterCounts（全部确认）→ create（「直接帮我创建」programmatic
+    点 #ql-confirm / 「点亮按钮我自己点」spotlight）→ afterCreate（推荐功率检查/线材/报告）。
+  · **高亮带路引擎** SP.Guide.spotlight(id)：目标按钮琥珀脉冲光圈（.guide-spot，
+    guide-spot-pulse 动画）+ scrollIntoView + 8 秒自动熄灭。注意实现顺序：先挂定时器
+    再加类（jsc 桩的 setTimeout 同步执行）。
+  · **常见问题**（faq 步骤）：并联串接（可直接生成×2预览+确认）、Dante/交换机、
+    线材计算、报告导出、撤销、接线教学——每个都是"解释 + 直达动作"。
+  · 蝴蝶浮球复用原 .global-ai-float/.rv-ai-orb 视觉（图标 assets/brand/ai-voice-icon.*），
+    pointer 拖拽（>6px 才算拖不吞点击），位置存 signalpath.guideFloatPos。
+  · API：SP.initGuide / SP.Guide.{go,act,spotlight,close}。
+- **测试**：test-ui 删除全部 Fake SpeechRecognition 引擎测试与 speechResult 桩，
+  新增小蝶引导 7 条（入口就绪/主菜单/数量步骤/填数落反推+自动选型/确认流/spotlight/FAQ）；
+  解析层测试原样保留。当前 harness 196 + test-ui 108，全绿。
+- **人工验证**：浏览器里点蝴蝶 → 主菜单 → 配一套系统流程走一遍；spotlight 光圈观感；
+  「快捷指令」小部件回车执行。
+
 ## 已知缺口 / 下一步候选
 
+- **本轮 Dante/对齐视觉是主观项，需浏览器人工看**：默认/相对对齐观感、Dante 小圆点与短线淡出、
+  台内路由 Dante 色块、右键两列按钮。DOM 桩测不了观感。
+- **待确认再做**：交换机主订阅矩阵（点开交换机→行=各台 Dante 输出、列=各台 Dante 输入、
+  勾格=订阅、每接收口最多一个来源）——即真正的"交换机控制调音台"。任务 R4 挂起。
 - **浏览器人工回归未做**：反推页、分台视图、外侧走线、分组线材表、CSV 导入全流程，都只过了 DOM 桩测试。
+- 台内信号流向图（renderMixerDiagram）尚未画 D 角标；交换机级联暂不支持。
 - 报告的系统框图跟随当前分台视图渲染；没有「每台调音台一页框图」的专门报告选项。
 - 相对对齐依赖最近一次渲染的快照 `SP._layout`（先渲染后对齐，正常流程没问题）。
 - 线阵列只有占位（数据模型早已支持 linearray，扩展时打开 quick.js 的 soon 标记即可）。

@@ -185,7 +185,7 @@
 
   /* --- 数量统计行：1调音台 1DSP 5功放 8全频 2超低 2有源全频 2有源超低 --- */
   function deviceStats() {
-    var n = { mixer: 0, dsp: 0, amp: 0, other: 0 };
+    var n = { mixer: 0, switch: 0, dsp: 0, amp: 0, other: 0 };
     var spk = {};   /* role + powered → count */
     Store.state.devices.forEach(function (d) {
       if (d.type === 'speaker') {
@@ -196,6 +196,7 @@
     });
     var parts = [];
     if (n.mixer) parts.push(n.mixer + ' 调音台');
+    if (n.switch) parts.push(n.switch + ' 交换机');
     if (n.dsp) parts.push(n.dsp + ' DSP');
     if (n.amp) parts.push(n.amp + ' 功放');
     SP.SPEAKER_ROLES.forEach(function (r) {
@@ -338,6 +339,19 @@
         '<div class="insp-grid2">' +
         '<div class="cfg-field"><label>机柜 U 数</label><input type="number" data-spec="rackU" min="0" max="20" step="0.5" value="' + esc(s.rackU || '') + '" placeholder="如 1"></div>' +
         '</div>';
+      if (dev.type === 'mixer') {
+        var dN = Store.danteList(dev, 'in').length + Store.danteList(dev, 'out').length;
+        specHtml += '<button class="btn ghost sm" id="insp-dante" style="margin-top:6px">' +
+          'Dante 分配' + (dN ? '（已标 ' + dN + ' 路）' : '') + '</button>';
+      }
+    } else if (dev.type === 'switch') {
+      specHtml =
+        '<div class="insp-grid2">' +
+        '<div class="cfg-field"><label>网口数量 <em class="cfg-hint">1~64</em></label>' +
+        '<input type="number" id="insp-switch-ports" min="1" max="64" step="1" value="' +
+        dev.inputs.length + '"></div>' +
+        '<div class="cfg-field"><label>机柜 U 数</label><input type="number" data-spec="rackU" min="0" max="20" step="0.5" value="' + esc(s.rackU || '') + '" placeholder="如 1"></div>' +
+        '</div>';
     }
 
     /* 功放输出对：整机接地 + P/S/B 档 + 每口档位/增益 */
@@ -375,9 +389,21 @@
         rows;
     }
 
-    /* 路由：每个输入口选择来源 */
+    /* 路由：每个输入口选择来源（交换机例外：网口只显示 Dante 连接状态） */
     var routeHtml = '';
-    if (dev.inputs.length) {
+    if (dev.type === 'switch') {
+      routeHtml = '<div class="insp-sec-title">网口 · Dante 互联状态</div>' +
+        dev.inputs.map(function (p, i) {
+          var c = Store.sourceFor(dev.id, i);
+          var src = c && c.net ? Store.getDevice(c.sid) : null;
+          return '<div class="patch-row">' +
+            '<span class="led ' + (src ? 'led-green' : 'led-off') + '"></span>' +
+            '<span class="patch-port" title="' + esc(p.label) + '">' + esc(p.label) + '</span>' +
+            '<span class="cfg-note" style="margin:0">' + (src ? esc(src.name) : '空闲') + '</span>' +
+            '</div>';
+        }).join('') +
+        '<p class="cfg-note">交换机只显示互联状态；具体 Dante 输入/输出路由请进入对应调音台的台内路由查看。</p>';
+    } else if (dev.inputs.length) {
       routeHtml = '<div class="insp-sec-title">路由 · 输入来源</div>' +
         dev.inputs.map(function (p, i) {
           var c = Store.sourceFor(dev.id, i);
@@ -524,6 +550,17 @@
       Store.save();
       SP.renderAll();
     });
+    var danteOpen = el('insp-dante');
+    if (danteOpen) danteOpen.addEventListener('click', function () {
+      SP.openDanteConfig(dev.id);
+    });
+    var swPorts = el('insp-switch-ports');
+    if (swPorts) swPorts.addEventListener('change', function () {
+      var r = Store.setSwitchPorts(dev.id, this.value);
+      if (!r.ok) { SP.toast(r.msg, true); return; }
+      SP.renderAll();
+      SP.toast('交换机网口数已设为 ' + Store.getDevice(dev.id).inputs.length + '（可撤销）');
+    });
 
     /* 功放输出对 */
     host.querySelectorAll('[data-pmode]').forEach(function (b) {
@@ -657,6 +694,124 @@
     if (menu) menu.hidden = true;
   }
 
+  /* ================= Dante 分配（调音台）：三入口共用同一弹窗 =================
+     设备详情页 / 右键菜单 / 台内路由页都打开这里；数据存在设备上
+     （danteIn / danteOut），台内路由的 D 角标与报告同步读取。 */
+  SP.openDanteConfig = function (devId) {
+    var dev = Store.getDevice(devId);
+    if (!dev || dev.type !== 'mixer') { SP.toast('请选择一台调音台', true); return; }
+    function grid(side, ports) {
+      var list = Store.danteList(dev, side);
+      var allOn = ports.length && list.length === ports.length;
+      return '<div class="dante-sec">' +
+        '<div class="dante-sec-head">' +
+        '<span class="insp-sec-title" style="margin:0">' + (side === 'in' ? '物理输入' : '物理输出') +
+        ' · 已选 ' + list.length + '/' + ports.length + '</span>' +
+        '<span class="dante-row-acts">' +
+        '<button class="btn ghost xs" data-dante-all="' + side + '" data-on="1"' +
+        (allOn ? ' disabled' : '') + '>全选</button>' +
+        '<button class="btn ghost xs" data-dante-all="' + side + '" data-on="0"' +
+        (list.length ? '' : ' disabled') + '>全不选</button>' +
+        '</span></div>' +
+        '<div class="dante-grid" data-dante-side="' + side + '">' +
+        ports.map(function (p, i) {
+          var on = Store.isDante(dev, side, i);
+          return '<button class="rcell-pill' + (on ? ' on' : '') +
+            '" data-dante-side="' + side + '" data-dante-port="' + i + '" title="' +
+            esc(p.label) + '">' + esc(p.label) + (on ? ' <b>D</b>' : '') + '</button>';
+        }).join('') + '</div></div>';
+    }
+    function bodyHtml() {
+      var links = Store.netLinksOf(dev.id);
+      var netHtml = '<div class="dante-net-state"><span class="insp-sec-title" style="margin:0">网口互联</span>' +
+        (links.length
+          ? links.map(function (c) {
+              var peer = Store.getDevice(c.sid === dev.id ? c.tid : c.sid);
+              var isSwitch = peer && peer.type === 'switch';
+              var label = isSwitch && c.tid === peer.id && c.tport >= 0
+                ? ' · ' + esc((peer.inputs[c.tport] || {}).label || ('网口 ' + (c.tport + 1)))
+                : '';
+              return '<span class="dante-net-pill">' + esc(peer ? peer.name : '未知设备') + label + '</span>';
+            }).join('')
+          : '<span class="cfg-note" style="display:inline;margin:0">未连接网口线</span>') +
+        '</div>';
+      return netHtml + grid('in', dev.inputs) + grid('out', dev.outputs) +
+        '<p class="cfg-note">标记为 <b>D</b> 的通道经网口线（Dante）传输，其余照常走信号线。' +
+        '点单格切换；<b>按住拖动可框选一段</b>；用「全选 / 全不选」批量。' +
+        '台内路由与系统报告同步显示 D 角标。</p>';
+    }
+    SP.openModal(
+      '<div class="modal-head"><h3>Dante 分配 · ' + esc(dev.name) + '</h3>' +
+      '<button class="btn icon" data-close-modal>✕</button></div>' +
+      '<div class="modal-body" id="dante-cfg-body">' + bodyHtml() + '</div>' +
+      '<div class="modal-foot"><button class="btn primary" data-close-modal>完成</button></div>'
+    );
+    el('modal-box').classList.add('modal-wide');
+    var box = el('modal-box');
+    function refresh() {
+      el('dante-cfg-body').innerHTML = bodyHtml();
+      bind();
+      if (SP.renderInputPatchGrid) SP.renderInputPatchGrid();
+      if (SP.renderOutputPatchGrid) SP.renderOutputPatchGrid();
+      if (SP.renderNetRoute) SP.renderNetRoute();
+      if (SP.renderAll) SP.renderWiringDiagram(el('wiring-diagram'));
+    }
+    function bind() {
+      /* 全选 / 全不选 */
+      box.querySelectorAll('[data-dante-all]').forEach(function (b) {
+        b.onclick = function () {
+          Store.setDanteAll(dev.id, b.dataset.danteAll, b.dataset.on === '1');
+          refresh();
+        };
+      });
+      /* 按住拖动框选一段：拖动中只做 DOM 预览（不写库/不产生撤销步骤），
+         松手时一次性提交（= 单个撤销步骤）。单击 = 长度为 1 的框选。 */
+      box.querySelectorAll('.dante-grid').forEach(function (g) {
+        var side = g.dataset.danteSide;
+        var ports = side === 'in' ? dev.inputs : dev.outputs;
+        var pills = [].slice.call(g.querySelectorAll('[data-dante-port]'));
+        var dragging = false, startPort = -1, targetOn = true, lastLo = -1, lastHi = -1;
+        function portAt(ev) {
+          var t = ev.target && ev.target.closest ? ev.target.closest('[data-dante-port]') : null;
+          return t ? +t.dataset.dantePort : -1;
+        }
+        function preview(lo, hi) {
+          lastLo = lo; lastHi = hi;
+          pills.forEach(function (pl) {
+            var i = +pl.dataset.dantePort;
+            var on = (i >= lo && i <= hi) ? targetOn : Store.isDante(dev, side, i);
+            pl.classList.toggle('on', on);
+            pl.innerHTML = esc(ports[i].label) + (on ? ' <b>D</b>' : '');
+          });
+        }
+        g.addEventListener('pointerdown', function (ev) {
+          var p = portAt(ev);
+          if (p < 0) return;
+          ev.preventDefault();
+          dragging = true; startPort = p;
+          targetOn = !Store.isDante(dev, side, p);
+          preview(p, p);
+        });
+        g.addEventListener('pointermove', function (ev) {
+          if (!dragging) return;
+          var p = portAt(ev);
+          if (p >= 0) preview(Math.min(startPort, p), Math.max(startPort, p));
+        });
+        function commit() {
+          if (!dragging) return;
+          dragging = false;
+          var range = [];
+          for (var i = lastLo; i <= lastHi; i++) range.push(i);
+          Store.setDante(dev.id, side, range, targetOn);   /* 单次保存 = 单撤销步骤 */
+          refresh();
+        }
+        g.addEventListener('pointerup', commit);
+        g.addEventListener('pointerleave', commit);
+      });
+    }
+    bind();
+  };
+
   SP.showDeviceMenu = function (devId, x, y) {
     var dev = Store.getDevice(devId);
     var menu = el('ctx-menu');
@@ -672,14 +827,49 @@
       '<div class="ctx-meta">IN × ' + dev.inputs.length + ' · OUT × ' + Store.visibleOuts(dev).length + '</div>' +
       (Store.smartAssignPreview(dev.id).count
         ? '<div class="ctx-smart">可智能分配 ' + Store.smartAssignPreview(dev.id).count + ' 路</div>' : '') +
-      '<div class="ctx-actions">' +
-      '<button class="mini-act" data-ctx-smart>智能分配</button>' +
-      '<button class="mini-act" data-ctx-copy>复制 ⌘D</button>' +
-      '<button class="mini-act" data-ctx-clear-in>清 IN ⌘I</button>' +
-      '<button class="mini-act" data-ctx-clear-out>清 OUT ⌘O</button>' +
-      (dev.type === 'mixer' ? '<button class="mini-act" data-ctx-teach>接线教学</button>' : '') +
-      '<button class="mini-act danger" data-ctx-del>删除</button>' +
-      '</div>';
+      (dev.type === 'mixer'
+        /* 调音台：3 行分组 —— 行1 台内相关 / 行2 设备操作 / 行3 网口线（下方单独拼） */
+        ? '<div class="ctx-actions">' +
+          '<button class="mini-act" data-ctx-patch>台内接线</button>' +
+          '<button class="mini-act" data-ctx-mixroute>台内路由</button>' +
+          '<button class="mini-act" data-ctx-dante>Dante 分配</button>' +
+          '</div>' +
+          '<div class="ctx-actions">' +
+          '<button class="mini-act" data-ctx-smart>智能分配</button>' +
+          '<button class="mini-act" data-ctx-clear-in>清 IN ⌘I</button>' +
+          '<button class="mini-act" data-ctx-clear-out>清 OUT ⌘O</button>' +
+          '<button class="mini-act" data-ctx-copy>复制 ⌘D</button>' +
+          '<button class="mini-act danger" data-ctx-del>删除</button>' +
+          '</div>'
+        : '<div class="ctx-actions">' +
+          '<button class="mini-act" data-ctx-smart>智能分配</button>' +
+          '<button class="mini-act" data-ctx-copy>复制 ⌘D</button>' +
+          '<button class="mini-act" data-ctx-clear-in>清 IN ⌘I</button>' +
+          '<button class="mini-act" data-ctx-clear-out>清 OUT ⌘O</button>' +
+          '<button class="mini-act danger" data-ctx-del>删除</button>' +
+          '</div>');
+    /* 网口线（Dante）：调音台 ↔ 交换机 / 调音台 ↔ 调音台 */
+    if (dev.type === 'mixer' || dev.type === 'switch') {
+      var netPeers = Store.state.devices.filter(function (d) {
+        if (d.id === dev.id) return false;
+        if (dev.type === 'mixer') return d.type === 'switch' || d.type === 'mixer';
+        return d.type === 'mixer';
+      });
+      if (netPeers.length) {
+        menu.innerHTML +=
+          '<div class="ctx-meta">网口线（Dante）</div>' +
+          '<div class="ctx-actions ctx-net-actions">' +
+          netPeers.map(function (p) {
+            var linked = !!Store.netLinkBetween(dev.id, p.id);
+            return '<button class="mini-act' + (linked ? ' danger' : '') +
+              '" data-ctx-net="' + p.id + '" title="' + esc(p.name) + '">' +
+              (linked ? '断开 ' : '🔌 ') + esc(p.name) + '</button>';
+          }).join('') +
+          (dev.type === 'switch' && netPeers.length > 1
+            ? '<button class="mini-act ctx-net-all" data-ctx-net-all>🔌 连接所有调音台</button>' : '') +
+          '</div>';
+      }
+    }
     menu.hidden = false;
     var pad = 10, rectW = 280, rectH = 170;
     menu.style.left = Math.max(pad, Math.min(x, window.innerWidth - rectW - pad)) + 'px';
@@ -690,10 +880,25 @@
     menu.querySelector('[data-ctx-copy]').onclick = function () { hideContextMenu(); SP.duplicateSelected(); };
     menu.querySelector('[data-ctx-clear-in]').onclick = function () { hideContextMenu(); SP.clearSelectedWires('inputs'); };
     menu.querySelector('[data-ctx-clear-out]').onclick = function () { hideContextMenu(); SP.clearSelectedWires('outputs'); };
-    var teach = menu.querySelector('[data-ctx-teach]');
-    if (teach) teach.onclick = function () {
+    /* 台内接线：跳本台接线教学页 */
+    var patchBtn = menu.querySelector('[data-ctx-patch]');
+    if (patchBtn) patchBtn.onclick = function () {
       hideContextMenu();
       if (SP.openPatchTeach) SP.openPatchTeach(dev.id);
+    };
+    /* 台内路由：跳本台台内路由页 */
+    var mixrouteBtn = menu.querySelector('[data-ctx-mixroute]');
+    if (mixrouteBtn) mixrouteBtn.onclick = function () {
+      hideContextMenu();
+      SP.routePageId = dev.id;
+      Store.setActiveMixer(dev.id);
+      if (SP.switchView) SP.switchView('mixer');
+      if (SP.renderMixerView) SP.renderMixerView();
+    };
+    var danteBtn = menu.querySelector('[data-ctx-dante]');
+    if (danteBtn) danteBtn.onclick = function () {
+      hideContextMenu();
+      SP.openDanteConfig(dev.id);
     };
     menu.querySelector('[data-ctx-del]').onclick = function () {
       hideContextMenu();
@@ -702,6 +907,41 @@
       SP.selectedDeviceId = '';
       SP.renderAll();
       SP.toast('已删除「' + nm + '」（⌘Z 可撤销）');
+    };
+    /* 网口线：单台连/断 + 交换机一键连接所有调音台 */
+    menu.querySelectorAll('[data-ctx-net]').forEach(function (b) {
+      b.onclick = function () {
+        hideContextMenu();
+        var pid = b.dataset.ctxNet;
+        var peer = Store.getDevice(pid);
+        if (Store.netLinkBetween(dev.id, pid)) {
+          Store.removeNetLink(dev.id, pid);
+          SP.renderAll();
+          SP.toast('已断开网口线：' + dev.name + ' ↔ ' + (peer ? peer.name : '') + '（⌘Z 可撤销）');
+        } else {
+          var r = Store.addNetLink(dev.id, pid);
+          SP.renderAll();
+          SP.toast(r.ok
+            ? '已连接网口线：' + dev.name + ' ↔ ' + (peer ? peer.name : '') + '（⌘Z 可撤销）'
+            : r.msg);
+        }
+      };
+    });
+    var netAll = menu.querySelector('[data-ctx-net-all]');
+    if (netAll) netAll.onclick = function () {
+      hideContextMenu();
+      var n = 0, failMsg = '';
+      Store.batch(function () {
+        Store.state.devices.forEach(function (d) {
+          if (d.type !== 'mixer' || Store.netLinkBetween(dev.id, d.id)) return;
+          var r = Store.addNetLink(dev.id, d.id);
+          if (r.ok) n++; else failMsg = r.msg;
+        });
+      });
+      SP.renderAll();
+      SP.toast(n
+        ? '已用网口线连接 ' + n + ' 台调音台到「' + dev.name + '」（⌘Z 可撤销）'
+        : (failMsg || '所有调音台都已连接。'));
     };
   };
 
@@ -2110,7 +2350,8 @@
       var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
       if (!s || !t) return '';
       var sp = s.outputs[c.sport], tp = t.inputs[c.tport];
-      if (!sp || !tp) return '';
+      if (!c.net && (!sp || !tp)) return '';
+      var tpLabel = tp ? tp.label : '网口';
       var warn = Store.connWarning(c);
       var ampInfo = '—';
       if (s.type === 'amp') {
@@ -2134,7 +2375,7 @@
         '<span class="cell-port">' + esc(Store.outLabelOf(s, c.sport)) + '</span></td>' +
         '<td class="cell-arrow">→</td>' +
         '<td><span class="cell-dev">' + esc(t.name) + '</span><br>' +
-        '<span class="cell-port">' + esc(tp.label) + '</span></td>' +
+        '<span class="cell-port">' + esc(tpLabel) + '</span></td>' +
         '<td class="cell-cable">' +
         '<select class="conn-cable" data-key="' + key + '">' + cableOpts + '</select>' +
         '<input type="color" class="color-input conn-color" data-key="' + key +

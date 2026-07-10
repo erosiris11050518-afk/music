@@ -82,6 +82,16 @@
       '.edge{fill:none;opacity:.82}' +
       '.edge.warn{stroke-dasharray:5 3}' +
       '.edge.parallel-chain{stroke-dasharray:7 3;opacity:.95}' +
+      '.dante-stub{fill:none;stroke-width:2.4;stroke-linecap:round;opacity:.9}' +
+      '.dante-stub-fade{stroke-dasharray:3 6;opacity:.42}' +
+      '.dante-dot{fill:' + (SP.NET_COLOR || '#3fbfb0') + ';stroke:#06211e;stroke-width:1}' +
+      '.dante-dot-halo{fill:' + (SP.NET_COLOR || '#3fbfb0') + ';opacity:.22}' +
+      '[data-dante-node]:hover .dante-dot-halo{opacity:.42}' +
+      '.dante-dot-label{fill:' + (SP.NET_COLOR || '#3fbfb0') + ';font:800 9px ' + SANS + ';letter-spacing:.06em}' +
+      '.dante-link-tag-bg{fill:' + (isLightTheme() ? '#e8f8f5' : '#102422') +
+      ';stroke:' + (SP.NET_COLOR || '#3fbfb0') + ';stroke-width:.8;opacity:.96}' +
+      '.dante-link-tag-tx{fill:' + (isLightTheme() ? '#11645d' : (SP.NET_COLOR || '#3fbfb0')) +
+      ';font:800 9px ' + SANS + ';letter-spacing:0}' +
       '.parallel-badge-bg{fill:rgba(79,191,139,.16);stroke:#4fbf8b;stroke-width:.8}' +
       '.parallel-badge{fill:#4fbf8b;font:700 8.5px ' + SANS + '}' +
       '.mx-node{fill:' + t.nodeFill + ';stroke:' + t.nodeStroke + '}' +
@@ -172,11 +182,28 @@
       speakerLinkConns.push(c);
       if (!speakerLinkParent[c.tid]) speakerLinkParent[c.tid] = c.sid;
     });
-    var primaryConnections = st.connections.filter(function (c) { return !isSpeakerLinkConn(c); });
+    var audioConnections = st.connections.filter(function (c) {
+      return !isSpeakerLinkConn(c) && !c.net;
+    });
+    function netLayoutConnection(c) {
+      if (!c.net) return null;
+      var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
+      if (!s || !t) return null;
+      if (s.type === 'switch' && t.type === 'mixer') {
+        return { sid: s.id, sport: c.sport >= 0 ? c.sport : c.tport, tid: t.id, tport: -1, netLayout: true };
+      }
+      if (t.type === 'switch' && s.type === 'mixer') {
+        return { sid: t.id, sport: c.tport >= 0 ? c.tport : c.sport, tid: s.id, tport: -1, netLayout: true };
+      }
+      return null;
+    }
+    /* 音频线决定信号树；交换机网口线只作为布局约束，让交换机对齐已连接的调音台。 */
+    var primaryConnections = audioConnections.concat(st.connections.map(netLayoutConnection).filter(Boolean));
 
     /* --- 分层：按类型给初始层，再依据连线关系松弛，保证信号沿主方向流动。
-       音箱之间的 link 不参与全局分层，下游音箱稍后跟随上游音箱摆放。 */
-    var typeLayer = { mixer: 0, dsp: 1, amp: 2 };
+       音箱之间的 link 不参与全局分层，下游音箱稍后跟随上游音箱摆放。
+       交换机独占最顶层（网口线垂直连各调音台）。 --- */
+    var typeLayer = { switch: -1, mixer: 0, dsp: 1, amp: 2 };
     var layer = {};
     st.devices.forEach(function (d) {
       if (d.type === 'speaker') layer[d.id] = 3;
@@ -184,7 +211,7 @@
     });
     for (var it = 0; it < st.devices.length + 2; it++) {
       var changed = false;
-      primaryConnections.forEach(function (c) {
+      audioConnections.forEach(function (c) {
         if (layer[c.sid] === undefined || layer[c.tid] === undefined) return;
         if (layer[c.tid] <= layer[c.sid]) { layer[c.tid] = layer[c.sid] + 1; changed = true; }
       });
@@ -218,6 +245,17 @@
 
     function visOuts(d) { return Store.visibleOuts(d); }
 
+    /* 调音台是否参与 Dante：有 Dante 通道或有网口线。参与则在 input 末尾多一个网口。 */
+    function danteActive(d) {
+      return d.type === 'mixer' &&
+        (Store.danteList(d, 'in').length || Store.danteList(d, 'out').length ||
+         Store.netLinksOf(d.id).length);
+    }
+    /* 渲染用的输入口数量（含末尾的 Dante 网口） */
+    function inCountOf(d) { return d.inputs.length + (danteActive(d) ? 1 : 0); }
+    /* 交换机的网口画在朝向调音台的一侧（竖版=底边 / 横版=右边） */
+    function portsOnOutSide(d, isInput) { return !isInput || d.type === 'switch'; }
+
     function headBand(d) {
       /* 横版竖框的顶部文字区：标签行 + 名称 + 规格 */
       return 48 + (SP.specString(d) ? 15 : 0);
@@ -231,18 +269,18 @@
         return Math.min(340, base);
       }
       if (d.collapsed) return d.type === 'speaker' ? 200 : 184;
-      var nPorts = Math.max(d.inputs.length, visOuts(d).length, 1);
+      var nPorts = Math.max(inCountOf(d), visOuts(d).length, 1);
       var spec2 = SP.specString(d);
       var textNeed = Math.max(SP.svgTextW(d.name, 14), SP.svgTextW(spec2, 10)) + 86;
       var minW = d.type === 'speaker' ? 236 : 190;
-      return Math.min(460, Math.max(minW, nPorts * portSp + 40, textNeed));
+      return Math.min(520, Math.max(minW, nPorts * portSp + 40, textNeed));
     }
 
     function nodeH(d) {
       if (horiz) {
         var head = headBand(d);
         if (d.collapsed) return head + 20;
-        var nPorts = Math.max(d.inputs.length, visOuts(d).length, 1);
+        var nPorts = Math.max(inCountOf(d), visOuts(d).length, 1);
         return Math.max(head + nPorts * 20 + 14, head + 34);
       }
       if (d.collapsed) return 66;
@@ -370,8 +408,74 @@
         applyManual(lane);
       }
     }
+
+    /* 默认对齐（整齐树）：上级统一对齐下级 + 按父节点分组重排，消除交叉。
+       · 排序趟（自上而下）：每层按「父节点顺序 + 父节点输出口序」分组，
+         同一功放的音箱连续排在一起、不被别人插入。
+       · 定位趟（自下而上）：叶层等间距（不同组间留额外间距）；每个上级
+         居中到它子节点的中点（功放落在其音箱正中），同层重叠则保序推开。 */
+    function placeTidyDown() {
+      var laneOf = {};
+      lanes.forEach(function (lane, li) { lane.forEach(function (d) { laneOf[d.id] = li; }); });
+      function parentInfo(d) {
+        var best = null, bestLane = -1, bestPort = 0;
+        primaryConnections.forEach(function (c) {
+          if (c.tid !== d.id) return;
+          var sl = laneOf[c.sid];
+          if (sl === undefined || sl >= laneOf[d.id]) return;
+          if (sl > bestLane) { bestLane = sl; best = c.sid; bestPort = c.sport; }
+        });
+        return best ? { pid: best, sport: bestPort } : null;
+      }
+      /* 1. 排序趟：按父分组 */
+      var orderIdx = {};
+      lanes[0].forEach(function (d, i) { orderIdx[d.id] = i; });
+      for (var li = 1; li < lanes.length; li++) {
+        lanes[li] = lanes[li].map(function (d, i) {
+          var p = parentInfo(d);
+          return { d: d, i: i,
+            po: p && orderIdx[p.pid] !== undefined ? orderIdx[p.pid] : 1e9,
+            sp: p ? p.sport : 0 };
+        }).sort(function (a, b) {
+          if (a.po !== b.po) return a.po - b.po;
+          if (a.sp !== b.sp) return a.sp - b.sp;
+          return a.i - b.i;
+        }).map(function (x) { return x.d; });
+        lanes[li].forEach(function (d, i) { orderIdx[d.id] = i; });
+      }
+      /* 2. 定位趟：自下而上，父居中于子 */
+      var groupGap = gapCross * 0.7;
+      for (var lj = lanes.length - 1; lj >= 0; lj--) {
+        var lane = lanes[lj];
+        var prevEnd = margin - gapCross, prevParent = null, isLeaf = (lj === lanes.length - 1);
+        lane.forEach(function (d) {
+          var size = crossOf(d);
+          var centers = [];
+          primaryConnections.forEach(function (c) {
+            if (c.sid === d.id && pos[c.tid]) centers.push(crossCenter(c.tid));
+          });
+          var gap = gapCross;
+          if (isLeaf) {
+            var p = parentInfo(d), pid = p ? p.pid : null;
+            if (prevParent !== null && pid !== prevParent) gap += groupGap;
+            prevParent = pid;
+          }
+          var start;
+          if (centers.length) {
+            var desired = centers.reduce(function (a, b) { return a + b; }, 0) / centers.length;
+            start = Math.max(margin, prevEnd + gap, desired - size / 2);
+          } else {
+            start = Math.max(margin, prevEnd + gap);
+          }
+          setPos(d, lanePos[lj], start);
+          prevEnd = start + size;
+        });
+        applyManual(lane);
+      }
+    }
+
     if (st.diagramLayout === 'bottomup') {
-      placeAlignDown();
+      placeTidyDown();
     } else if (st.diagramLayout === 'smart') {
       /* 12：智能模式（快速布局后默认）——上/下两种对齐都算一遍，取交叉更少的 */
       placeAlignUp();
@@ -386,7 +490,7 @@
     function portLocalCross(d, pi, isInput) {
       var count, rank;
       if (isInput) {
-        count = Math.max(1, d.inputs.length);
+        count = Math.max(1, inCountOf(d));
         rank = Math.max(0, Math.min(count - 1, pi));
       } else {
         var vis = visOuts(d);
@@ -463,7 +567,7 @@
       var p = pos[id], d = Store.getDevice(id);
       var count, rank;
       if (isInput) {
-        count = d.inputs.length;
+        count = inCountOf(d);
         rank = pi;
       } else {
         var vis = visOuts(d);
@@ -471,23 +575,29 @@
         rank = vis.indexOf(pi);
         if (rank < 0) rank = 0;
       }
+      var onOut = portsOnOutSide(d, isInput);   /* 交换机网口朝向调音台一侧 */
       if (horiz) {
         var head = d.collapsed ? 0 : headBand(d);
         var zone0 = p.y + head + 4;
         var zoneH = p.h - head - 10;
         if (d.collapsed) { zone0 = p.y; zoneH = p.h; }
         return {
-          x: isInput ? p.x : p.x + p.w,
+          x: onOut ? p.x + p.w : p.x,
           y: zone0 + zoneH * (rank + 1) / (count + 1)
         };
       }
       return {
         x: p.x + p.w * (rank + 1) / (count + 1),
-        y: isInput ? p.y : p.y + p.h
+        y: onOut ? p.y + p.h : p.y
       };
     }
     function inPoint(id, pi) { return portPoint(id, pi, true); }
     function outPoint(id, pi) { return portPoint(id, pi, false); }
+    /* 调音台末尾 Dante 网口的坐标（= 虚拟输入口 index = inputs.length） */
+    function dantePortPoint(id) {
+      var d = Store.getDevice(id);
+      return portPoint(id, d.inputs.length, true);
+    }
 
     function edgePath(a, b) {
       if (horiz) {
@@ -549,8 +659,112 @@
         '<rect x="' + (pt.x - 2.2) + '" y="' + (atStart ? pt.y + 8 : pt.y - 13) +
         '" width="4.4" height="2.4" rx="1" fill="' + pl + '" opacity=".55"/>';
     }
+    /* ===== Dante 视觉 =====
+       主框图只显示每台设备伸出的一小段网线，后半段虚线淡出；
+       具体网口互联关系放到交换机详情 / 交换机路由页 / 右键菜单里查看。 */
+    var NET = SP.NET_COLOR || '#3fbfb0';
+    function ptAdd(pt, dir, len) {
+      return { x: pt.x + dir.x * len, y: pt.y + dir.y * len };
+    }
+    function linePath(a, b) {
+      return 'M' + a.x + ' ' + a.y + ' L' + b.x + ' ' + b.y;
+    }
+    function danteStubSvg(pt, dir, title) {
+      var a = ptAdd(pt, dir, 2), b = ptAdd(pt, dir, 16), c = ptAdd(pt, dir, 34);
+      return '<path class="dante-stub" stroke="' + NET + '" d="' + linePath(a, b) + '"><title>' +
+        title + '</title></path>' +
+        '<path class="dante-stub dante-stub-fade" stroke="' + NET + '" d="' + linePath(b, c) +
+        '"><title>' + title + '</title></path>';
+    }
+    function netSwitchPort(c, swId) {
+      var p = c.tid === swId ? c.tport : c.sport;
+      return p >= 0 ? p + 1 : null;
+    }
+    function danteTagSvg(pt, dir, tag, kind) {
+      if (!tag || !tag.label) return '';
+      var maxW = kind === 'peer' ? 96 : 78;
+      var label = SP.clipSvgText(tag.label, 9, maxW);
+      var w = Math.round(SP.svgTextW(label, 9)) + 14;
+      var h = 17;
+      var cx = pt.x + dir.x * 46;
+      var cy = pt.y + dir.y * 46;
+      var x = dir.x < 0 ? cx - w : (dir.x > 0 ? cx : pt.x - w / 2);
+      var y = dir.y < 0 ? cy - h : (dir.y > 0 ? cy : pt.y - h / 2);
+      return '<g class="dante-link-tag dante-link-tag-' + kind + '" data-dante-link-label="' +
+        esc(tag.label) + '">' +
+        '<rect class="dante-link-tag-bg" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h +
+        '" rx="5"><title>' + esc(tag.title || tag.label) + '</title></rect>' +
+        '<text class="dante-link-tag-tx" x="' + (x + w / 2) + '" y="' + (y + 11.5) +
+        '" text-anchor="middle">' + esc(label) + '</text></g>';
+    }
+    function mixerDanteTag(m) {
+      var links = Store.netLinksOf(m.id);
+      if (!links.length) return null;
+      var labels = [], titles = [];
+      links.forEach(function (c) {
+        var peer = Store.getDevice(c.sid === m.id ? c.tid : c.sid);
+        if (!peer) return;
+        if (peer.type === 'switch') {
+          var n = netSwitchPort(c, peer.id);
+          var lab = n ? '网口 ' + n : '网口';
+          labels.push(lab);
+          titles.push(m.name + ' ↔ ' + peer.name + ' · ' + lab);
+        } else if (peer.type === 'mixer') {
+          labels.push('↔ ' + peer.name);
+          titles.push(m.name + ' ↔ ' + peer.name);
+        }
+      });
+      return labels.length ? { label: labels.join(' / '), title: titles.join('；') } : null;
+    }
+    function switchDanteTag(sw) {
+      var rows = Store.netLinksOf(sw.id).map(function (c) {
+        var mx = Store.getDevice(c.sid === sw.id ? c.tid : c.sid);
+        var n = netSwitchPort(c, sw.id);
+        return mx && n ? { n: n, name: mx.name } : null;
+      }).filter(Boolean).sort(function (a, b) { return a.n - b.n; });
+      if (!rows.length) return null;
+      var label = rows.length === 1 ? '网口 ' + rows[0].n
+        : '网口 ' + rows.map(function (r) { return r.n; }).join(',');
+      return {
+        label: label,
+        title: sw.name + '：' + rows.map(function (r) { return '网口 ' + r.n + ' ↔ ' + r.name; }).join('；')
+      };
+    }
+    function mixerStubDir() { return horiz ? { x: -1, y: 0 } : { x: 0, y: -1 }; }
+    function switchStubDir() { return horiz ? { x: 1, y: 0 } : { x: 0, y: 1 }; }
+    function switchDantePoint(id) {
+      var p = pos[id];
+      if (!p) return null;
+      return horiz ? { x: p.x + p.w, y: p.y + p.h / 2 } : { x: p.x + p.w / 2, y: p.y + p.h };
+    }
+    var danteMixers = st.devices.filter(function (d) {
+      return d.type === 'mixer' &&
+        (Store.danteList(d, 'in').length || Store.danteList(d, 'out').length ||
+         Store.netLinksOf(d.id).length);
+    });
+    var danteSwitches = st.devices.filter(function (d) {
+      return d.type === 'switch' && Store.netLinksOf(d.id).length;
+    });
+    danteSwitches.forEach(function (sw) {
+      if (!pos[sw.id]) return;
+      var pt = switchDantePoint(sw.id);
+      var dir = switchStubDir();
+      svg.push('<g data-switch-net="' + sw.id + '" style="cursor:pointer">' +
+        danteStubSvg(pt, dir, 'Dante 互联状态 · ' + esc(sw.name)) +
+        danteTagSvg(pt, dir, switchDanteTag(sw), 'port') + '</g>');
+    });
+    danteMixers.forEach(function (m) {
+      if (!pos[m.id]) return;
+      var pt = dantePortPoint(m.id);
+      var dir = mixerStubDir();
+      var tag = mixerDanteTag(m);
+      svg.push('<g data-dante-node="' + m.id + '" style="cursor:pointer">' +
+        danteStubSvg(pt, dir, 'Dante 分配 · ' + esc(m.name)) +
+        danteTagSvg(pt, dir, tag, tag && tag.label.indexOf('↔') >= 0 ? 'peer' : 'port') + '</g>');
+    });
+    /* 音频连线 */
     st.connections.forEach(function (c) {
-      if (!pos[c.sid] || !pos[c.tid]) return;
+      if (c.net || !pos[c.sid] || !pos[c.tid]) return;
       var a = outPoint(c.sid, c.sport), b = inPoint(c.tid, c.tport);
       var warn = Store.connWarning(c);
       var color = warn ? theme.red : Store.colorOf(c);
@@ -715,6 +929,24 @@
       svg.push('</g>');
     });
 
+    /* Dante 小节点：画在调音台 input 末尾的 Dante 网口处，点击打开 Dante 分配。
+       一个漂亮的小圆点 + 「dante」标注（竖版在口上方 / 横版在口左侧）。 */
+    danteMixers.forEach(function (m) {
+      if (!pos[m.id]) return;
+      var pt = dantePortPoint(m.id);
+      var din = Store.danteList(m, 'in').length, dout = Store.danteList(m, 'out').length;
+      var tip = 'Dante 分配 · ' + esc(m.name) +
+        '（IN ' + din + ' · OUT ' + dout + '，点击设置走 Dante 的通道）';
+      var lx, ly, anchor;
+      if (horiz) { lx = pt.x - 7; ly = pt.y - 8; anchor = 'end'; }
+      else { lx = pt.x; ly = pt.y - 9; anchor = 'middle'; }
+      svg.push('<g data-dante-node="' + m.id + '" style="cursor:pointer">' +
+        '<circle class="dante-dot-halo" cx="' + pt.x + '" cy="' + pt.y + '" r="8"/>' +
+        '<circle class="dante-dot" cx="' + pt.x + '" cy="' + pt.y + '" r="4.5"/>' +
+        '<text class="dante-dot-label" x="' + lx + '" y="' + ly + '" text-anchor="' + anchor + '">dante</text>' +
+        '<title>' + tip + '</title></g>');
+    });
+
     svg.push('</svg>');
     container.innerHTML = svg.join('');
     lastWiringContainer = container;
@@ -743,7 +975,22 @@
       var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
       return !!(s && t && s.type === 'speaker' && t.type === 'speaker');
     }
-    var primaryConnections = st.connections.filter(function (c) { return !isSpeakerLinkConn(c); });
+    var audioConnections = st.connections.filter(function (c) {
+      return !isSpeakerLinkConn(c) && !c.net;
+    });
+    function netLayoutConnection(c) {
+      if (!c.net) return null;
+      var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
+      if (!s || !t) return null;
+      if (s.type === 'switch' && t.type === 'mixer') {
+        return { sid: s.id, sport: c.sport >= 0 ? c.sport : c.tport, tid: t.id, tport: -1 };
+      }
+      if (t.type === 'switch' && s.type === 'mixer') {
+        return { sid: t.id, sport: c.tport >= 0 ? c.tport : c.sport, tid: s.id, tport: -1 };
+      }
+      return null;
+    }
+    var primaryConnections = audioConnections.concat(st.connections.map(netLayoutConnection).filter(Boolean));
     function crossCenterOf(id) {
       var p = L.pos[id];
       return L.horiz ? p.y + p.h / 2 : p.x + p.w / 2;
@@ -760,29 +1007,24 @@
       if (!ids.length) return;
       /* 按当前中心排序 = 保留相对顺序 */
       ids.sort(function (a, b) { return crossCenterOf(a) - crossCenterOf(b); });
-      var total = 0;
-      ids.forEach(function (id) { total += crossSizeOf(id) + gap; });
-      total -= gap;
-      /* 目标组中心：上级/下级连线的平均中心；没有连线时保持当前组中心 */
-      var centers = [];
-      ids.forEach(function (id) {
+      var items = ids.map(function (id) {
+        var centers = [];
         primaryConnections.forEach(function (c) {
           if (useSources && c.tid === id && L.pos[c.sid]) centers.push(crossCenterOf(c.sid));
           if (!useSources && c.sid === id && L.pos[c.tid]) centers.push(crossCenterOf(c.tid));
         });
+        var cur = crossCenterOf(id);
+        var desired = centers.length
+          ? centers.reduce(function (a, b) { return a + b; }, 0) / centers.length
+          : cur;
+        return { id: id, size: crossSizeOf(id), desired: desired };
       });
-      var target;
-      if (centers.length) {
-        target = centers.reduce(function (a, b) { return a + b; }, 0) / centers.length;
-      } else {
-        var cur = ids.map(crossCenterOf);
-        target = cur.reduce(function (a, b) { return a + b; }, 0) / cur.length;
-      }
-      var cursor = Math.max(8, target - total / 2);
-      ids.forEach(function (id) {
-        var d = Store.getDevice(id);
-        var p = L.pos[id];
-        if (!d || !p) { cursor += gap; return; }
+      var prevEnd = 8 - gap;
+      items.forEach(function (itx) {
+        var d = Store.getDevice(itx.id);
+        var p = L.pos[itx.id];
+        if (!d || !p) { prevEnd += gap; return; }
+        var cursor = Math.max(8, itx.desired - itx.size / 2, prevEnd + gap);
         if (L.horiz) {
           d.py = Math.round(cursor);
           d.px = Math.round(L.lanePos[li]);
@@ -792,7 +1034,7 @@
           d.py = Math.round(L.lanePos[li]);
           p.x = cursor;
         }
-        cursor += crossSizeOf(id) + gap;
+        prevEnd = cursor + itx.size;
       });
     }
     if (mode === 'down') {
@@ -802,6 +1044,45 @@
     }
     Store.save();
     SP.renderWiringDiagram(container);
+  };
+
+  /* 拖完自动挤开：只处理被拖节点所在层。
+     主轴吸附回本层行（保持向下对齐），层内按当前顺序保序去重叠 ——
+     只把重叠的挤开，不改变相对顺序，也不做等间距重排。 */
+  SP.settleAfterDrag = function (devId) {
+    var L = SP._layout;
+    if (!L) return;
+    var li = -1;
+    for (var i = 0; i < L.lanes.length; i++) {
+      if (L.lanes[i].indexOf(devId) >= 0) { li = i; break; }
+    }
+    if (li < 0) return;
+    var gap = L.horiz ? 40 : 56;
+    var margin = 42;
+    function cStart(id) { var p = L.pos[id]; return L.horiz ? p.y : p.x; }
+    function cSize(id) { var p = L.pos[id]; return L.horiz ? p.h : p.w; }
+    function cCenter(id) { return cStart(id) + cSize(id) / 2; }
+    var ids = L.lanes[li].filter(function (id) { return L.pos[id]; });
+    ids.sort(function (a, b) { return cCenter(a) - cCenter(b); });
+    /* 被拖节点主轴吸附回本层行 */
+    var dragged = Store.getDevice(devId);
+    if (dragged) {
+      if (L.horiz) dragged.px = Math.round(L.lanePos[li]);
+      else dragged.py = Math.round(L.lanePos[li]);
+    }
+    var prevEnd = margin - gap;
+    ids.forEach(function (id) {
+      var d = Store.getDevice(id);
+      if (!d) return;
+      var cur = cStart(id);
+      var c2 = Math.max(margin, cur, prevEnd + gap);
+      /* 只有真被挤动的节点才写入手动位置，其余保持原状（自动位不被钉死） */
+      if (Math.round(c2) !== Math.round(cur)) {
+        if (L.horiz) d.py = Math.round(c2);
+        else d.px = Math.round(c2);
+      }
+      prevEnd = c2 + cSize(id);
+    });
   };
 
   /* 切换横版 / 竖版（清除手动拖动位置，按新方向重新自动排版） */
@@ -1107,6 +1388,23 @@
         }, 50);
       });
     });
+    /* Dante 聚合节点：点击打开该台 Dante 分配 */
+    svgEl.querySelectorAll('[data-dante-node]').forEach(function (g) {
+      g.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+      g.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (SP.openDanteConfig) SP.openDanteConfig(g.dataset.danteNode);
+      });
+    });
+    svgEl.querySelectorAll('[data-switch-net]').forEach(function (g) {
+      g.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+      g.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (SP.selectDevice) SP.selectDevice(g.dataset.switchNet, false);
+      });
+    });
     svgEl.querySelectorAll('[data-node]').forEach(function (g) {
       g.addEventListener('contextmenu', function (e) {
         e.preventDefault();
@@ -1143,8 +1441,13 @@
           document.removeEventListener('pointermove', onMove);
           document.removeEventListener('pointerup', onUp);
           document.removeEventListener('pointercancel', onUp);
-          if (dragging) Store.save();
-          else if (SP.selectDevice) SP.selectDevice(dev.id, true);
+          if (dragging) {
+            /* 拖完自动挤开：先同步刷新布局快照，再吸附本层 + 保序去重叠 */
+            SP.renderWiringDiagram(container);
+            if (SP.settleAfterDrag) SP.settleAfterDrag(dev.id);
+            Store.save();
+            SP.renderWiringDiagram(container);
+          } else if (SP.selectDevice) SP.selectDevice(dev.id, true);
         }
         document.addEventListener('pointermove', onMove);
         document.addEventListener('pointerup', onUp);
@@ -1156,6 +1459,23 @@
   /* 重置为自动排版 */
   SP.resetDiagramLayout = function (container, mode) {
     Store.state.diagramLayout = mode === 'bottomup' ? 'bottomup' : 'topdown';
+    Store.state.devices.forEach(function (d) { delete d.px; delete d.py; });
+    Store.save();
+    SP.renderWiringDiagram(container);
+  };
+
+  /* 恢复默认布局：清除所有手动拖动位置，回到最初的自动布局
+     （保留 diagramLayout 模式本身，快速布局后的智能对齐不丢） */
+  SP.restoreDefaultLayout = function (container) {
+    Store.state.devices.forEach(function (d) { delete d.px; delete d.py; });
+    Store.save();
+    SP.renderWiringDiagram(container);
+  };
+
+  /* 默认对齐：清手动位 + 切到「按功放分组的整齐树」布局并重排。
+     用户手动调整后想彻底重排回整齐分组，用它。 */
+  SP.defaultAlignLayout = function (container) {
+    Store.state.diagramLayout = 'bottomup';
     Store.state.devices.forEach(function (d) { delete d.px; delete d.py; });
     Store.save();
     SP.renderWiringDiagram(container);

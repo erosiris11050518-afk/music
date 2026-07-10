@@ -24,6 +24,267 @@
   function outsOf(t) { return Array.isArray(t.outs) ? t.outs.length : t.outs; }
   var CIRCLED = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
 
+  function roleLabel(role) { return role === 'sub' ? '超低' : '全频'; }
+  function normToken(s) {
+    return String(s || '').toLowerCase().replace(/\s+/g, '').replace(/[^\w\u4e00-\u9fa5]/g, '');
+  }
+  function normalizeSpeakerVoiceText(s) {
+    s = String(s || '');
+    var map = { '〇': '零', '○': '零', '幺': '一', '壹': '一', '贰': '二', '貳': '二', '俩': '两',
+      '叁': '三', '參': '三', '肆': '四', '伍': '五', '陆': '六', '陸': '六', '柒': '七', '捌': '八', '玖': '九', '拾': '十' };
+    s = s.replace(/[〇○幺壹贰貳俩叁參肆伍陆陸柒捌玖拾]/g, function (c) { return map[c] || c; });
+    s = s.replace(/(\d+|[一二两三四五六七八九十]+)\s*(?:对|双)/g, function (_, n) {
+      var v = cnNumber(n);
+      return v ? (v * 2) + '只' : _;
+    });
+    s = s.replace(/全\s*(?:屏|凭|評|评|品|平|苹|瓶|频)/g, '全频')
+      .replace(/全拼/g, '全频')
+      .replace(/全品/g, '全频')
+      .replace(/全屏/g, '全频')
+      .replace(/全瓶/g, '全频')
+      .replace(/全凭/g, '全频')
+      .replace(/全评/g, '全频')
+      .replace(/全平/g, '全频')
+      .replace(/超\s*(?:底|地|抵|迪|低)/g, '超低')
+      .replace(/低音炮|重低音|低频|低音/g, '超低')
+      .replace(/有\s*(?:缘|原|圆|元|源)|油源|优源|有电源|电源音响|主动音响|带功放音响|自带功放音响|自带功放/g, '有源')
+      .replace(/无\s*(?:缘|原|源)|被动音响|不带功放音响|不带功放/g, '无源')
+      .replace(/并联串联|并连串接|并连串结|并联串结|并联穿接|串联|串接/g, '并联串接')
+      .replace(/并\s*联/g, '并联')
+      .replace(/([0-9一二两三四五六七八九十]+)\s*(?:字|子|仔)(?=\s*(?:全频|超低|有源|无源|音箱|音响|[A-Za-z0-9]))/g, '$1只')
+      .replace(/([0-9一二两三四五六七八九十]+)\s*(?:支|只|个|台|之|枝)/g, '$1只')
+      .replace(/([0-9一二两三四五六七八九十]+)\s*箱/g, '$1只')
+      .replace(/第([0-9一二两三四五六七八九十]+)只/g, '第$1个')
+      .replace(/两只都/g, '两个都');
+    return s;
+  }
+  function cnNumber(s) {
+    s = String(s || '').trim();
+    if (/^\d+$/.test(s)) return +s;
+    var map = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+    if (s === '十') return 10;
+    var m = s.match(/^十([一二两三四五六七八九])$/);
+    if (m) return 10 + map[m[1]];
+    m = s.match(/^([一二两三四五六七八九])十([一二两三四五六七八九])?$/);
+    if (m) return map[m[1]] * 10 + (m[2] ? map[m[2]] : 0);
+    return map[s] || 0;
+  }
+  function roleFromText(s) {
+    s = String(s || '').toLowerCase();
+    if (/超低|低音|sub/.test(s)) return 'sub';
+    if (/全频|full/.test(s)) return 'fullrange';
+    return '';
+  }
+  function rolesFromText(s) {
+    var out = [];
+    if (/全频|full/i.test(s)) out.push('fullrange');
+    if (/超低|低音|sub/i.test(s)) out.push('sub');
+    return out;
+  }
+  function activeFromText(s) {
+    s = String(s || '');
+    if (/无源|被动/.test(s)) return false;
+    if (/有源|主动|自带功放|带功放/.test(s)) return true;
+    return undefined;
+  }
+  function connectionFromText(s) {
+    s = String(s || '');
+    if (!/并联串接|并联|一通道带|每通道/.test(s)) return null;
+    var m = s.match(/(?:并联串接|并联|一通道带|每通道)\s*(\d+|[二两三四])只?/) ||
+      s.match(/(\d+|[二两三四])只?\s*(?:一组|每通道)/);
+    return { mode: 'parallel', units: Math.max(2, Math.min(4, cnNumber(m && m[1]) || 2)) };
+  }
+  function speakerTplRole(t) { return t.speakerRole || SP.inferSpeakerRole(t.name); }
+  function speakerTplPowered(t) { return !!(t.specs && t.specs.powered === 'active'); }
+  function tplStock(t) {
+    var s = (t && t.specs) || {};
+    var vals = [t && t.stock, t && t.inventory, t && t.qty, t && t['库存'],
+      s.stock, s.inventory, s.qty, s['库存']];
+    for (var i = 0; i < vals.length; i++) {
+      if (vals[i] === undefined || vals[i] === null || vals[i] === '') continue;
+      var n = Number(vals[i]);
+      if (isFinite(n)) return Math.max(0, n);
+    }
+    return null;
+  }
+  function speakerTplMatches(t, role, active) {
+    if (!t || t.type !== 'speaker') return false;
+    if (role && speakerTplRole(t) !== role) return false;
+    if (active !== undefined && speakerTplPowered(t) !== !!active) return false;
+    return true;
+  }
+  function speakerTemplateMatch(query, role, active, templates) {
+    var q = normToken(query);
+    if (!q) return null;
+    var list = templates || (Store.state && Store.state.deviceTemplates) || [];
+    var loose = null;
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i];
+      if (!speakerTplMatches(t, role, active)) continue;
+      var n = normToken(t.name);
+      if (n === q || (t.tplId && normToken(t.tplId) === q)) return { tpl: t, idx: i, exact: true };
+      if (!loose && (n.indexOf(q) >= 0 || q.indexOf(n) >= 0)) loose = { tpl: t, idx: i, exact: false };
+    }
+    return loose;
+  }
+  function modelTokenPattern() {
+    return '([A-Za-z0-9][A-Za-z0-9_-]*[A-Za-z][A-Za-z0-9_-]*)';
+  }
+  function cleanVoiceText(text) {
+    return normalizeSpeakerVoiceText(text).replace(/[，。；、,.;]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function voiceCountMentions(raw) {
+    var text = cleanVoiceText(raw);
+    var out = [], re = /(\d+|[一二两三四五六七八九十]+)\s*(?:只|个|支|台)/g, m;
+    while ((m = re.exec(text))) out.push({ count: cnNumber(m[1]), text: m[0] });
+    return out.filter(function (x) { return x.count > 0; });
+  }
+  function unusedVoiceCounts(raw, groups) {
+    var mentions = voiceCountMentions(raw);
+    var used = {};
+    (groups || []).forEach(function (g) {
+      for (var i = 0; i < mentions.length; i++) {
+        if (used[i] || mentions[i].count !== +g.count) continue;
+        used[i] = true;
+        break;
+      }
+    });
+    return mentions.filter(function (_, i) { return !used[i]; }).map(function (x) { return x.count; });
+  }
+  function parseSpeakerGroupsFromText(raw, templates) {
+    var text = cleanVoiceText(raw);
+    var groups = [], spans = [];
+    var num = '(\\d+|[一二两三四五六七八九十]+)';
+    var role = '((?:有源|无源)\\s*(?:全频|超低|低音|sub)|(?:全频|超低|低音|sub)\\s*(?:有源|无源)|(?:全频|超低|低音|sub))';
+    var model = modelTokenPattern();
+    function overlaps(a, b) { return a[0] < b[1] && b[0] < a[1]; }
+    function push(span, roleText, countText, modelText) {
+      if (spans.some(function (x) { return overlaps(x, span); })) return;
+      if (span[0] > 0 && /[A-Za-z0-9_-]/.test(text.charAt(span[0] - 1))) return;
+      var r = roleFromText(roleText), count = cnNumber(countText);
+      if (!r || !count) return;
+      var model = String(modelText || '').replace(/^(用|选|选择|型号)/, '').trim();
+      var spanText = text.slice(span[0], span[1]);
+      var active = activeFromText(roleText + ' ' + spanText);
+      var hit = model ? speakerTemplateMatch(model, r, active, templates) : null;
+      var conn = connectionFromText(spanText);
+      groups.push({
+        role: r, count: count, templateId: hit ? (hit.tpl.tplId || hit.tpl.name) : null,
+        active: active !== undefined ? active : (hit ? speakerTplPowered(hit.tpl) : false),
+        templateName: hit ? hit.tpl.name : null, templateQuery: hit ? model : (model || null),
+        connectionMode: conn ? conn.mode : null, unitsPerChannel: conn ? conn.units : null
+      });
+      spans.push(span);
+    }
+    function pushModel(span, modelText, countText, roleText) {
+      if (spans.some(function (x) { return overlaps(x, span); })) return;
+      var q = String(modelText || '').trim();
+      var count = cnNumber(countText);
+      if (!q || !count) return;
+      var explicitRole = roleFromText(roleText || '');
+      var spanText = text.slice(span[0], span[1]);
+      var active = activeFromText((roleText || '') + ' ' + spanText);
+      var hit = speakerTemplateMatch(q, explicitRole || '', active, templates);
+      var resolvedRole = explicitRole || (hit ? speakerTplRole(hit.tpl) : 'fullrange');
+      var conn = connectionFromText(spanText);
+      groups.push({
+        role: resolvedRole, count: count, templateId: hit ? (hit.tpl.tplId || hit.tpl.name) : null,
+        active: active !== undefined ? active : (hit ? speakerTplPowered(hit.tpl) : false),
+        templateName: hit ? hit.tpl.name : null, templateQuery: q,
+        connectionMode: conn ? conn.mode : null, unitsPerChannel: conn ? conn.units : null
+      });
+      spans.push(span);
+    }
+    var m;
+    var re5 = new RegExp(num + '\\s*(?:个|只|支|台)?\\s*(?:' + role + '\\s*)?(?:并联串接|并联)\\s*(?:的)?\\s*' + model, 'ig');
+    while ((m = re5.exec(text))) pushModel([m.index, re5.lastIndex], m[3], m[1], m[2] || '');
+    var re6 = new RegExp(num + '\\s*(?:个|只|支|台)?\\s*' + model + '\\s*(?:并联串接|并联)', 'ig');
+    while ((m = re6.exec(text))) pushModel([m.index, re6.lastIndex], m[2], m[1], '');
+    var re1 = new RegExp(num + '\\s*(?:个|只|支|台)?\\s*' + role + '\\s*(?:用|选|选择|型号)?\\s*' + model + '?', 'ig');
+    while ((m = re1.exec(text))) push([m.index, re1.lastIndex], m[2], m[1], m[3]);
+    var re2 = new RegExp(role + '\\s*' + num + '\\s*(?:个|只|支|台)?\\s*(?:用|选|选择|型号)?\\s*' + model + '?', 'ig');
+    while ((m = re2.exec(text))) push([m.index, re2.lastIndex], m[1], m[2], m[3]);
+    var re4a = new RegExp(model + '\\s*(?:([一二两三四五六七八九十]+)\\s*(?:个|只|支|台)?|(\\d+)\\s*(?:个|只|支|台))', 'ig');
+    while ((m = re4a.exec(text))) pushModel([m.index, re4a.lastIndex], m[1], m[2] || m[3], '');
+    var re4b = new RegExp(model + '(?:\\s+(?:来|要|用|给我|给|需要)?\\s*|\\s*(?:来|要|用|给我|给|需要)\\s*)' +
+      num + '\\s*(?:个|只|支|台)?', 'ig');
+    while ((m = re4b.exec(text))) pushModel([m.index, re4b.lastIndex], m[1], m[2], '');
+    var re3 = new RegExp(num + '(?:\\s*(?:个|只|支|台)\\s*(?:音箱|音响|箱子)?\\s*|\\s+)' + model, 'ig');
+    while ((m = re3.exec(text))) pushModel([m.index, re3.lastIndex], m[2], m[1], '');
+    return groups;
+  }
+  function parseOrdinalPick(text) {
+    var m = String(text || '').match(/第?(\d+|[一二两三四五六七八九十]+)个/);
+    return m ? cnNumber(m[1]) : 0;
+  }
+
+  SP.speakerTemplateStock = tplStock;
+  SP.normalizeSpeakerVoiceText = normalizeSpeakerVoiceText;
+  SP.parseSpeakerVoiceCommand = function (text, opt) {
+    opt = opt || {};
+    var raw = normalizeSpeakerVoiceText(text).trim();
+    var compact = raw.replace(/\s+/g, '');
+    var templates = opt.templates || (Store.state && Store.state.deviceTemplates) || [];
+    var modelTerm = modelTokenPattern();
+    if (/撤销|撤回|回退|上一步|取消刚刚|取消刚才|删掉刚刚|删掉刚才|不要刚刚|不要刚才/.test(compact)) {
+      return { intent: 'undo_last', text: raw };
+    }
+    var parsedGroups = parseSpeakerGroupsFromText(raw, templates);
+    if (parsedGroups.length) {
+      var missingCounts = unusedVoiceCounts(raw, parsedGroups);
+      var isAppend = /再加|再要|再来|还要|另外|还有|补一|补个|补上|追加|多一组|新建一组|来一组|来\d+只|来[一二两三四五六七八九十]+只/.test(compact);
+      var isModify = /刚刚|刚才|上一组|前面那个|前一组|这一组|这个|改成|不是|数量改为|数量改|换成/.test(compact);
+      return {
+        intent: 'create_speaker_groups',
+        mode: isModify ? 'modify' : (isAppend ? 'append' : 'replace'),
+        groups: parsedGroups,
+        missingCounts: missingCounts
+      };
+    }
+    if (/确认.*(?:并联|串接)|(?:并联|串接).*确认/.test(compact)) return { intent: 'confirm_connection_mode', mode: 'parallel' };
+    var par = compact.match(/(全频|超低|低音|sub)?(?:.*?)(?:并联串接|并联|串接|一通道带)(\d+|[二两三四])只?/i);
+    if (par) {
+      return { intent: 'set_connection_mode', mode: 'parallel',
+        roles: par[1] ? [roleFromText(par[1])] : rolesFromText(raw),
+        units: Math.max(2, cnNumber(par[2]) || 2), preview: true };
+    }
+    if (/确认/.test(compact)) {
+      var cr = rolesFromText(raw);
+      return { intent: 'confirm_groups', roles: (/两个|全部|全都|都/.test(compact) || !cr.length) ? ['all'] : cr };
+    }
+    var selections = [];
+    var bothRank = compact.match(/(?:两个|全部|全都|都).*(?:用|选|选择)第?(\d+|[一二两三四五六七八九十]+)个/);
+    if (bothRank) {
+      selections.push({ role: 'fullrange', pick: 'rank', rank: cnNumber(bothRank[1]) || 1 });
+      selections.push({ role: 'sub', pick: 'rank', rank: cnNumber(bothRank[1]) || 1 });
+    }
+    ['fullrange', 'sub'].forEach(function (r) {
+      var label = r === 'sub' ? '(?:超低|低音|sub)' : '(?:全频)';
+      var stockRe = new RegExp(label + '.*库存最多');
+      if (stockRe.test(compact)) selections.push({ role: r, pick: 'stock' });
+      var rankRe = new RegExp(label + '(?:用|选|选择)?第?(\\d+|[一二两三四五六七八九十]+)个');
+      var rm = compact.match(rankRe);
+      if (rm) selections.push({ role: r, pick: 'rank', rank: cnNumber(rm[1]) || 1 });
+      var modelRe = new RegExp(label + '(?:给我用|型号是|换成|改成|要|用|选|选择|型号|给|是)?' + modelTerm, 'i');
+      var mm = compact.match(modelRe);
+      if (mm && !/库存|第/.test(mm[1])) selections.push({ role: r, pick: 'model', query: mm[1] });
+    });
+    var modelOnly = selections.length ? null : compact.match(new RegExp('(?:用|选|选择|型号)?' + modelTerm + '$', 'i'));
+    if (modelOnly) {
+      var hitOnly = speakerTemplateMatch(modelOnly[1], '', false, templates);
+      if (hitOnly) selections.push({ role: speakerTplRole(hitOnly.tpl), pick: 'model', query: modelOnly[1] });
+    }
+    if (selections.length) return { intent: 'select_templates', selections: selections };
+    if (/功放|放大器|后级|dsp|DSP|处理器|调音台|调音臺|数字台|数位台|交换机|dante|Dante/.test(raw)) {
+      return { intent: 'ignore_system_device', text: raw };
+    }
+    var bareCounts = unusedVoiceCounts(raw, []);
+    if (bareCounts.length) return { intent: 'incomplete_count', counts: bareCounts, text: raw };
+    var bareRoles = rolesFromText(raw);
+    if (bareRoles.length) return { intent: 'incomplete_role', roles: bareRoles, text: raw };
+    return { intent: 'unknown', text: raw };
+  };
+
   var CATS = [
     { key: 'mixer',      title: '调音台',     type: 'mixer' },
     { key: 'dsp',        title: 'DSP',        type: 'dsp' },
@@ -92,10 +353,11 @@
     return have < need ? { need: need, have: have } : null;
   }
 
-  SP.openQuickLayout = function () {
+  SP.openQuickLayout = function (opt) {
+    opt = opt || {};
     var tpls = Store.state.deviceTemplates;
     var showActive = false;
-    var mode = 'count';   /* count = 数量布局；reverse = 音响反推 */
+    var mode = (opt.mode === 'reverse' || opt.command) ? 'reverse' : 'count';   /* count = 数量布局；reverse = 音响反推 */
 
     /* ================= 数量布局（count 页）HTML ================= */
 
@@ -239,13 +501,18 @@
       return '<select id="' + id + '">' + autoOpt + (html || '<option value="">无可用模板</option>') + '</select>';
     }
 
+    var rvRecentNames = SP._rvRecentSpeakerTemplates || (SP._rvRecentSpeakerTemplates = []);
+
     /* 组模型：支持同类多组（不同型号全频/超低同时入场）；active 组不参与功放反推 */
     function newGroup(role, active) {
       return { role: role, active: !!active, count: '', tplIdx: -1,
-        name: '', power: '', ohms: '', parallel: 1 };
+        name: '', power: '', ohms: '', parallel: 1,
+        connectionMode: 'independent', unitsPerChannel: 1, parallelDraft: 0,
+        status: 'selecting-template', aiExact: '' };
     }
     var rvGroups = [newGroup('fullrange', false), newGroup('sub', false)];
     var rvShowActive = false;
+    var rvVoiceUndoStack = [];
     /* 功放「智能配接」状态即下拉 value==='auto'（选具体型号则固定），无需额外标志 */
     /* 5：「查看当前案例反推过程」双态：点亮载入画布，点灭还原之前的填写 */
     var rvViewing = false, rvViewStash = null;
@@ -263,24 +530,172 @@
     }
     function groupVisible(g) { return !g.active || rvShowActive; }
 
+    function normalizeRvGroup(g) {
+      if (!g) return g;
+      if (!g.connectionMode) g.connectionMode = (+g.parallel || 1) > 1 ? 'parallel' : 'independent';
+      if (g.connectionMode !== 'parallel') g.connectionMode = 'independent';
+      g.unitsPerChannel = Math.max(1, Math.min(4, +g.unitsPerChannel || +g.parallel || 1));
+      g.parallel = g.connectionMode === 'parallel' ? g.unitsPerChannel : 1;
+      if (!g.status) g.status = g.tplIdx >= 0 || +g.power ? 'pending-confirm' : 'selecting-template';
+      return g;
+    }
+    function groupParallel(g, override) {
+      if (override !== undefined) return Math.max(1, +override || 1);
+      normalizeRvGroup(g);
+      return (!g.active && g.connectionMode === 'parallel') ? Math.max(2, +g.unitsPerChannel || 2) : 1;
+    }
+    function markGroupDirty(g) {
+      if (!g) return;
+      g.status = (g.tplIdx >= 0 || +g.power) ? 'pending-confirm' : 'selecting-template';
+    }
+    function rememberTpl(t) {
+      if (!t || !t.name) return;
+      rvRecentNames = rvRecentNames.filter(function (n) { return n !== t.name; });
+      rvRecentNames.unshift(t.name);
+      if (rvRecentNames.length > 12) rvRecentNames.length = 12;
+      SP._rvRecentSpeakerTemplates = rvRecentNames;
+    }
+    function applyTplToGroup(g, idx, exact) {
+      if (!g) return false;
+      g.tplIdx = +idx;
+      g.aiExact = exact || g.aiExact || '';
+      if (g.tplIdx >= 0 && tpls[g.tplIdx]) {
+        var tp = tpls[g.tplIdx];
+        g.power = String(powTpl(tp) || '');
+        g.ohms = String((tp.specs && tp.specs.ohms) || '');
+        g.name = '';
+        g.status = 'pending-confirm';
+        rememberTpl(tp);
+        return true;
+      }
+      g.status = 'selecting-template';
+      return false;
+    }
+    function rvTemplateItemsFor(g) {
+      normalizeRvGroup(g);
+      var need = Math.max(0, parseInt(g.count, 10) || 0);
+      var exact = normToken(g.aiExact || '');
+      var items = [];
+      tpls.forEach(function (t, ti) {
+        if (!speakerTplMatches(t, g.role, g.active)) return;
+        var stock = tplStock(t);
+        var enough = stock !== null && (!need || stock >= need);
+        var hit = exact && normToken(t.name).indexOf(exact) >= 0;
+        var recent = rvRecentNames.indexOf(t.name);
+        items.push({ t: t, idx: ti, stock: stock, enough: enough, exact: !!hit,
+          recent: recent >= 0 ? recent : 9999, orig: ti, power: powTpl(t) });
+      });
+      items.sort(function (a, b) {
+        if (a.enough !== b.enough) return a.enough ? -1 : 1;
+        if (a.exact !== b.exact) return a.exact ? -1 : 1;
+        if (a.recent !== b.recent) return a.recent - b.recent;
+        var as = a.stock === null ? -1 : a.stock;
+        var bs = b.stock === null ? -1 : b.stock;
+        if (as !== bs) return bs - as;
+        return a.orig - b.orig;
+      });
+      return items;
+    }
+    function stockNoteHtml(item, g) {
+      if (!item || item.stock === null) return '';
+      var need = Math.max(0, parseInt(g.count, 10) || 0);
+      if (need && item.stock < need) {
+        return '<em class="rv-stock bad">库存' + item.stock + '只，需要' + need + '只</em>';
+      }
+      return '<em class="rv-stock">库存' + item.stock + '只</em>';
+    }
     function rvTplOptionsFor(g, i) {
       var html = '<option value="-1"' + (g.tplIdx === -1 ? ' selected' : '') + '>（选择模板）</option>';
-      tpls.forEach(function (t, ti) {
-        if (t.type !== 'speaker') return;
-        if ((t.speakerRole || SP.inferSpeakerRole(t.name)) !== g.role) return;
-        var isActive = t.specs && t.specs.powered === 'active';
-        if (isActive !== g.active) return;
-        var w = powTpl(t);
+      rvTemplateItemsFor(g).forEach(function (it) {
+        var t = it.t, ti = it.idx, w = it.power;
         html += '<option value="' + ti + '"' + (g.tplIdx === ti ? ' selected' : '') +
           (w ? '' : ' disabled') + '>' + esc(t.name) +
           (w ? '（' + w + 'W' + (t.specs.ohms ? '/' + t.specs.ohms + 'Ω' : '') + '）' : '（缺功率）') +
+          (it.stock === null ? '' : ' · 库存' + it.stock + '只') +
           '</option>';
       });
       return html;
     }
 
+    function rvTemplateChoicesHtml(g, i) {
+      var items = rvTemplateItemsFor(g).slice(0, 6);
+      if (!items.length) return '<div class="rv-tpl-list empty">暂无' + roleLabel(g.role) + '模板</div>';
+      return '<div class="rv-tpl-list">' +
+        '<div class="rv-tpl-title">' + (g.tplIdx >= 0 ? '可切换型号' : '请选择' + roleLabel(g.role) + '型号') + '</div>' +
+        items.map(function (it) {
+          var t = it.t, selected = g.tplIdx === it.idx;
+          return '<button class="rv-tpl-chip' + (selected ? ' on' : '') + (it.power ? '' : ' disabled') + '"' +
+            ' data-act="rv-pick-tpl" data-i="' + i + '" data-tpl="' + it.idx + '"' +
+            (it.power ? '' : ' disabled') + ' title="' + esc(t.name) + '">' +
+            '<b>' + esc(t.name) + '</b>' +
+            '<span>' + (it.power ? it.power + 'W' + ((t.specs && t.specs.ohms) ? ' / ' + t.specs.ohms + 'Ω' : '') : '缺功率') + '</span>' +
+            stockNoteHtml(it, g) + '</button>';
+        }).join('') + '</div>';
+    }
+    function rvOneCalcLineHtml(g, i, par) {
+      var row = groupData(g, i, par);
+      if (!row.count || !row.power) return '<span class="muted">填写数量和型号后显示</span>';
+      if (row.active) return '<span>有源占用 <b>' + row.count + '</b> 路线路输出</span>';
+      var c = Store.reverseCalc([row], {
+        ratio: rvRatio(),
+        subRatio: rvSubRatio(),
+        ampMode: (el('rv-ampmode') || {}).value || 'mix',
+        amp2W: rvTpl('rv-amp2-tpl') ? powTpl(rvTpl('rv-amp2-tpl')) : 0,
+        amp4W: rvTpl('rv-amp4-tpl') ? powTpl(rvTpl('rv-amp4-tpl')) : 0,
+        amp2W4: rvTpl('rv-amp2-tpl') ? pow4Tpl(rvTpl('rv-amp2-tpl')) : 0,
+        amp4W4: rvTpl('rv-amp4-tpl') ? pow4Tpl(rvTpl('rv-amp4-tpl')) : 0,
+        minOhms: +((el('rv-minohm') || {}).value) || 4
+      });
+      if (c.errors.length) return '<span class="bad">' + esc(c.errors[0]) + '</span>';
+      if (c.warns.length) return '<span class="bad">' + esc(c.warns[0]) + '</span>';
+      var parts = c.rows[0] ? [reverseRowStatHtml(c.rows[0])] : [];
+      if (c.amp2N) parts.push('2通道功放 ' + c.amp2N + ' 台');
+      if (c.amp4N) parts.push('4通道功放 ' + c.amp4N + ' 台');
+      if (c.dspN) parts.push('DSP ' + c.dspN + ' 台');
+      return parts.join(' · ');
+    }
+    function rvGroupCalcHtml(g, i) {
+      if (!g.count && g.tplIdx < 0 && !+g.power) return '';
+      return '<div class="rv-mini-calc">' + rvOneCalcLineHtml(g, i) + '</div>';
+    }
+    function rvConnectionHtml(g, i) {
+      if (g.active) return '';
+      normalizeRvGroup(g);
+      var draft = +g.parallelDraft ? Math.max(2, Math.min(4, +g.parallelDraft || 2)) : 0;
+      var html = '<div class="rv-conn">' +
+        '<div class="rv-conn-head"><span>接线方式</span><div class="seg rv-conn-seg">' +
+        '<button data-act="rv-mode" data-mode="independent" data-i="' + i + '"' +
+        (g.connectionMode === 'independent' ? ' class="on"' : '') + '>独立</button>' +
+        '<button data-act="rv-mode" data-mode="parallel" data-i="' + i + '"' +
+        (g.connectionMode === 'parallel' ? ' class="on"' : '') + '>并联串接</button>' +
+        '</div></div>';
+      if (g.connectionMode === 'parallel' && !draft) {
+        html += '<div class="rv-conn-note">并联串接 ' + groupParallel(g) + ' 只 / 通道</div>';
+      }
+      if (draft) {
+        html += '<div class="rv-par-preview">' +
+          '<div class="rv-par-picks">' + [2, 3, 4].map(function (n) {
+            return '<button class="btn ghost sm' + (draft === n ? ' on' : '') + '" data-act="rv-par-draft" data-i="' + i +
+              '" data-units="' + n + '">' + n + '只</button>';
+          }).join('') + '</div>' +
+          '<div class="rv-par-compare"><b>独立</b><span>' + rvOneCalcLineHtml(g, i, 1) + '</span></div>' +
+          '<div class="rv-par-compare after"><b>并联串接' + draft + '只</b><span>' + rvOneCalcLineHtml(g, i, draft) + '</span></div>' +
+          '<div class="rv-par-actions"><button class="btn primary sm" data-act="rv-par-confirm" data-i="' + i + '">确认并联串接</button>' +
+          '<button class="btn ghost sm" data-act="rv-par-cancel" data-i="' + i + '">保持独立</button></div>' +
+          '</div>';
+      }
+      return html + '</div>';
+    }
+    function rvStatusHtml(g) {
+      normalizeRvGroup(g);
+      var cls = g.status === 'confirmed' ? ' ok' : (g.status === 'pending-confirm' ? ' warn' : '');
+      var text = g.status === 'confirmed' ? '已确认' : (g.status === 'pending-confirm' ? '待确认' : '待选型号');
+      return '<i class="rv-status' + cls + '">' + text + '</i>';
+    }
+
     /* 一张卡：标题✕ / 数量 / 功率 / 阻抗 / 模板 / 并联 —— 全部打字输入，无加减按钮 */
     function rvCardHtml(g, i) {
+      normalizeRvGroup(g);
       var usingTpl = g.tplIdx >= 0 && tpls[g.tplIdx];
       var t = usingTpl ? tpls[g.tplIdx] : null;
       var powerVal = usingTpl ? String(powTpl(t) || '') : g.power;
@@ -288,9 +703,10 @@
       var ro = usingTpl ? ' readonly' : '';
       var canDel = rvGroups.filter(groupVisible).length > 1;
       var ratioNote = (!g.active && g.role === 'sub') ? '<i class="rv-tag-note">超低余量×' + rvSubRatio() + '</i>' : '';
-      return '<div class="rv-card' + (g.active ? ' rv-active' : '') + '" data-rv-card="' + i + '">' +
+      return '<div class="rv-card' + (g.active ? ' rv-active' : '') + (g.aiHit ? ' rv-ai-hit' : '') +
+        '" data-rv-card="' + i + '">' +
         '<div class="rv-card-head"><span>' + esc(groupTitle(g, i)) +
-        (g.active ? '<i class="rv-tag-note">不反推</i>' : ratioNote) + '</span>' +
+        (g.active ? '<i class="rv-tag-note">不反推</i>' : ratioNote) + '</span>' + rvStatusHtml(g) +
         (canDel ? '<button class="btn icon danger" data-act="rv-del" data-i="' + i + '" title="删除本组">✕</button>' : '') +
         '</div>' +
         '<input type="text" inputmode="numeric" class="rv-count" data-rv-cnt="' + i +
@@ -302,12 +718,9 @@
           '" value="' + esc(ohmsVal) + '" placeholder="阻抗 Ω"' + ro + '>') +
         '<select data-rv-tpl="' + i + '" title="选模板自动带出功率/阻抗；选（选择模板）项则直接打字输入">' +
         rvTplOptionsFor(g, i) + '</select>' +
-        (g.active ? '' :
-          '<select data-rv-par="' + i + '" title="每通道并联只数（需阻抗；并联阻抗减半、功率叠加）">' +
-          [1, 2, 3, 4].map(function (n) {
-            return '<option value="' + n + '"' + (g.parallel === n ? ' selected' : '') + '>' +
-              (n === 1 ? '不并联' : '并联 ' + n + ' 只') + '</option>';
-          }).join('') + '</select>') +
+        rvTemplateChoicesHtml(g, i) +
+        rvConnectionHtml(g, i) +
+        rvGroupCalcHtml(g, i) +
         (usingTpl ? '' :
           '<input type="text" data-rv-name="' + i + '" value="' + esc(g.name) + '" placeholder="名称（选填）">' +
           '<button class="btn ghost sm" data-act="rv-save-tpl" data-i="' + i + '" title="把本组音响参数存为模板">存为模板</button>') +
@@ -331,9 +744,31 @@
       return '<div class="rv-cards">' + cards + '</div>' + adds;
     }
 
+    var RV_AI_POS_KEY = 'signalpath.rvAiFloatPos';
+    function rvAiSavedPos() {
+      try { return JSON.parse(localStorage.getItem(RV_AI_POS_KEY) || 'null') || null; } catch (e) { return null; }
+    }
+    function rvAiFloatStyle() {
+      var p = rvAiSavedPos();
+      if (p && isFinite(+p.left) && isFinite(+p.top)) {
+        return 'left:' + Math.max(8, +p.left) + 'px;top:' + Math.max(8, +p.top) + 'px;';
+      }
+      return 'right:18px;bottom:18px;';
+    }
+    function rvAiFloatHtml() {
+      return '<div class="rv-ai-float is-active is-open" id="rv-ai-float" style="' + rvAiFloatStyle() + '">' +
+        '<button class="rv-ai-orb" data-act="rv-ai-toggle" data-rv-ai-drag title="快捷指令">' +
+        '<img class="rv-ai-img" alt="" hidden><span class="rv-ai-symbol">⚡</span><span class="rv-ai-pulse"></span></button>' +
+        '<div class="rv-ai-pop">' +
+        '<div class="rv-ai-title"><b>快捷指令</b><span>回车执行</span></div>' +
+        '<div class="rv-ai-row"><input id="rv-ai-text" type="text" placeholder="我要6只206M，4只118S / 全频用第二个 / 两个都确认"></div>' +
+        '<div class="rv-ai-hint" id="rv-ai-hint">输入数量+型号回车执行；匹配到模板后自动判断全频或超低。</div>' +
+        '</div></div>';
+    }
+
     /* 6：上下结构 —— 模板调用 / 参数 / 音响卡片 / 实时结果，避免右侧挤压 */
     var rvPane =
-      '<div id="ql-pane-rv" style="display:none"><div class="rv-stack">' +
+      '<div id="ql-pane-rv"' + (mode === 'reverse' ? '' : ' style="display:none"') + '><div class="rv-stack">' +
       '<div id="rv-preset-tools">' + reversePresetToolsHtml() + '</div>' +
       '<section class="rv-settings-panel">' +
       '<div class="insp-grid2">' +
@@ -372,8 +807,8 @@
       '</div>' +
       '</section>' +
       '<section class="rv-input-panel">' +
-      '<p class="cfg-note ql-note" style="margin-top:0">每组卡片：<b>数量 → 功率 → 阻抗</b> 竖排直接打字；' +
-      '可加多组应对不同型号；空格跳下一组数量格；Shift 展开有源。</p>' +
+      '<p class="cfg-note ql-note">每组卡片：<b>数量 → 功率 → 阻抗</b> 竖排直接打字；' +
+      '默认独立接线；并联串接需预览后确认；空格跳下一组数量格；Shift 展开有源。</p>' +
       '<div id="rv-cards-wrap">' + rvCardsHtml() + '</div>' +
       '<div class="ql-presets rv-presets" id="rv-presets">' + rvPresetChips() + '</div>' +
       '</section>' +
@@ -388,9 +823,9 @@
       '<button class="btn icon" data-close-modal>✕</button></div>' +
       '<div class="modal-body ql-body">' +
       '<div class="mode-switch">' +
-      '<button class="active" data-ql-mode="count">数量布局</button>' +
-      '<button data-ql-mode="reverse">音响反推</button></div>' +
-      '<div id="ql-pane-count">' +
+      '<button' + (mode === 'count' ? ' class="active"' : '') + ' data-ql-mode="count">数量布局</button>' +
+      '<button' + (mode === 'reverse' ? ' class="active"' : '') + ' data-ql-mode="reverse">音响反推</button></div>' +
+      '<div id="ql-pane-count"' + (mode === 'count' ? '' : ' style="display:none"') + '>' +
       '<div id="ql-preset-tools">' + countPresetToolsHtml() + '</div>' +
       '<p class="cfg-note ql-note" style="margin-top:0">依次输入 <b>调音台 · DSP · 功放 · 全频 · 超低</b> 的数量，回车创建并自动智能连接（一步可撤销）。</p>' +
       '<div class="ql-grid">' + CATS.map(catColumn).join('') + '</div>' +
@@ -406,7 +841,7 @@
       rvPane +
       '</div>' +
       '<div class="modal-foot">' +
-      '<span class="foot-left" id="rv-foot-actions" style="display:none">' +
+      '<span class="foot-left" id="rv-foot-actions"' + (mode === 'reverse' ? '' : ' style="display:none"') + '>' +
       '<button class="btn ghost" data-act="rv-view-current" title="把当前画布的音响反推配置刷新到本面板，查看这次案例的反推过程">查看当前案例反推过程</button>' +
       '<button class="btn ghost" data-act="rv-save-preset" title="把当前反推配置存为反推模板">保存为反推模板</button>' +
       '</span>' +
@@ -452,6 +887,44 @@
     function raf(fn) {
       if (typeof requestAnimationFrame === 'function') requestAnimationFrame(fn);
       else fn();
+    }
+    var rvAiDrag = null, rvAiSuppressClick = false;
+    function rvAiFloat() { return el('rv-ai-float'); }
+    function activateRvAi(openPanel) {
+      var f = rvAiFloat();
+      if (!f) return;
+      f.classList.add('is-active');
+      if (openPanel !== false) f.classList.add('is-open');
+      if (openPanel !== false) {
+        raf(function () {
+          var inp = el('rv-ai-text');
+          if (inp && inp.focus) inp.focus();
+        });
+      }
+    }
+    function toggleRvAi(openPanel) {
+      var f = rvAiFloat();
+      if (!f) return;
+      f.classList.add('is-active');
+      var open = openPanel === undefined ? !f.classList.contains('is-open') : !!openPanel;
+      f.classList.toggle('is-open', open);
+      if (open) activateRvAi(true);
+    }
+    function saveRvAiPos(left, top) {
+      try { localStorage.setItem(RV_AI_POS_KEY, JSON.stringify({ left: Math.round(left), top: Math.round(top) })); } catch (e) {}
+    }
+    function moveRvAiFloat(left, top) {
+      var f = rvAiFloat(), pane = el('ql-pane-rv') || box;
+      if (!f || !pane) return;
+      var maxLeft = Math.max(8, (pane.clientWidth || 900) - (f.offsetWidth || 300) - 8);
+      var maxTop = Math.max(8, (pane.clientHeight || 560) - (f.offsetHeight || 80) - 8);
+      left = Math.max(8, Math.min(maxLeft, left));
+      top = Math.max(8, Math.min(maxTop, top));
+      f.style.left = left + 'px';
+      f.style.top = top + 'px';
+      f.style.right = 'auto';
+      f.style.bottom = 'auto';
+      return { left: left, top: top };
     }
 
     /* ================= 数量布局辅助 ================= */
@@ -696,19 +1169,20 @@
       }
       return +((sel && sel.value) || 2);
     }
-    function groupData(g, idx) {
+    function groupData(g, idx, overrideParallel) {
+      normalizeRvGroup(g);
       var count = Math.max(0, parseInt(g.count, 10) || 0);
       if (g.tplIdx >= 0 && tpls[g.tplIdx]) {
         var t = tpls[g.tplIdx];
         return { name: t.name, power: powTpl(t), ohms: +(t.specs && t.specs.ohms) || 0,
-          count: count, parallel: g.active ? 1 : g.parallel, tpl: t,
+          count: count, parallel: g.active ? 1 : groupParallel(g, overrideParallel), tpl: t,
           role: g.role, active: g.active };
       }
       /* 未填名称时用与卡片一致的「类型+编号」（全频① / 超低②…），不再出现“手填音响” */
       var fallback = groupTitle(g, idx !== undefined ? idx : rvGroups.indexOf(g));
       return { name: g.name || fallback,
         power: +g.power || 0, ohms: +g.ohms || 0,
-        count: count, parallel: g.active ? 1 : g.parallel, tpl: null,
+        count: count, parallel: g.active ? 1 : groupParallel(g, overrideParallel), tpl: null,
         role: g.role, active: g.active };
     }
     function rvPassiveRows() {
@@ -928,8 +1402,11 @@
         var count = Math.max(0, parseInt(g.count, 10) || 0);
         if (!count) return;
         var t = g.tplIdx >= 0 ? tpls[g.tplIdx] : null;
+        normalizeRvGroup(g);
         rows.push({ role: g.role, active: g.active, tplName: t ? t.name : '',
-          name: g.name, power: g.power, ohms: g.ohms, count: g.count, parallel: g.parallel });
+          name: g.name, power: g.power, ohms: g.ohms, count: g.count,
+          parallel: groupParallel(g), connectionMode: g.connectionMode,
+          unitsPerChannel: g.unitsPerChannel, status: g.status });
       });
       return {
         rows: rows,
@@ -956,6 +1433,10 @@
           g.ohms = r.ohms || '';
           g.count = r.count || '';
           g.parallel = Math.max(1, +r.parallel || 1);
+          g.connectionMode = r.connectionMode || (g.parallel > 1 ? 'parallel' : 'independent');
+          g.unitsPerChannel = Math.max(1, +r.unitsPerChannel || g.parallel || 1);
+          g.status = r.status || (g.tplIdx >= 0 || +g.power ? 'pending-confirm' : 'selecting-template');
+          normalizeRvGroup(g);
           return g;
         });
         if (!rvGroups.some(function (g) { return !g.active; })) rvGroups.unshift(newGroup('fullrange', false));
@@ -1081,6 +1562,229 @@
       refreshRvCards();
       SP.toast('已存为音响模板「' + g.name + '」');
     }
+
+    function rvGroupsAreBlank() {
+      return !rvGroups.some(function (g) {
+        return (parseInt(g.count, 10) || 0) || g.tplIdx >= 0 || g.name || +g.power || +g.ohms;
+      });
+    }
+    function cloneRvGroups(groups) {
+      return JSON.parse(JSON.stringify(groups || []));
+    }
+    function pushRvVoiceUndo() {
+      rvVoiceUndoStack.push({ groups: cloneRvGroups(rvGroups), showActive: rvShowActive });
+      if (rvVoiceUndoStack.length > 30) rvVoiceUndoStack.shift();
+    }
+    function restoreRvVoiceSnapshot(s) {
+      if (!s) return false;
+      rvGroups = cloneRvGroups(s.groups);
+      rvShowActive = !!s.showActive;
+      refreshRvCards();
+      return true;
+    }
+    function parsedTplIndex(pg) {
+      var q = pg.templateQuery || pg.templateName || pg.templateId || '';
+      if (!q) return -1;
+      var active = pg.active === undefined ? undefined : !!pg.active;
+      for (var i = 0; i < tpls.length; i++) {
+        var t = tpls[i];
+        if (!speakerTplMatches(t, pg.role, active)) continue;
+        if ((pg.templateId && (t.tplId === pg.templateId || t.name === pg.templateId)) ||
+            (pg.templateName && t.name === pg.templateName)) return i;
+      }
+      var hit = speakerTemplateMatch(q, pg.role, active, tpls);
+      return hit ? hit.idx : -1;
+    }
+    function applyParsedConnection(g, pg) {
+      if (!g || g.active || pg.connectionMode !== 'parallel') return;
+      g.connectionMode = 'parallel';
+      g.unitsPerChannel = Math.max(2, Math.min(4, +pg.unitsPerChannel || 2));
+      g.parallel = g.unitsPerChannel;
+      g.parallelDraft = 0;
+    }
+    function groupFromParsed(pg) {
+      var g = newGroup(pg.role || 'fullrange', !!pg.active);
+      g.count = String(pg.count || '');
+      g.aiExact = pg.templateQuery || pg.templateName || '';
+      g.aiHit = true;
+      var idx = parsedTplIndex(pg);
+      if (idx >= 0) applyTplToGroup(g, idx, g.aiExact);
+      else g.status = 'selecting-template';
+      applyParsedConnection(g, pg);
+      normalizeRvGroup(g);
+      return g;
+    }
+    function setAiHint(msg, bad) {
+      var h = el('rv-ai-hint');
+      if (h) {
+        h.textContent = msg;
+        h.classList.toggle('bad', !!bad);
+      }
+      if (!h && msg) SP.toast(msg, !!bad);
+    }
+    function firstEditableGroup(role, active) {
+      var hasActive = active !== undefined;
+      var list = rvGroups.filter(function (g) { return g.role === role && (hasActive ? g.active === !!active : !g.active); });
+      if (!list.length) {
+        var g = newGroup(role, !!active);
+        rvGroups.push(g);
+        if (active) rvShowActive = true;
+        return g;
+      }
+      return list.filter(function (g) { return g.status !== 'confirmed'; })[0] || list[0];
+    }
+    function applyCreateSpeakerGroups(cmd) {
+      var next = (cmd.groups || []).map(groupFromParsed);
+      if (!next.length) { setAiHint('没有识别到全频或超低数量', true); return; }
+      if (next.some(function (g) { return g.active; })) rvShowActive = true;
+      if (cmd.mode === 'modify') {
+        next.forEach(function (ng) {
+          var g = firstEditableGroup(ng.role, ng.active);
+          g.count = ng.count;
+          g.aiHit = true;
+          g.aiExact = ng.aiExact || g.aiExact || '';
+          if (ng.tplIdx >= 0) applyTplToGroup(g, ng.tplIdx, ng.aiExact);
+          else markGroupDirty(g);
+          applyParsedConnection(g, ng);
+        });
+      } else if (cmd.mode === 'replace' && rvGroupsAreBlank()) {
+        rvGroups = next;
+      } else {
+        rvGroups = rvGroups.concat(next);
+      }
+      refreshRvCards('data-rv-cnt', rvGroups.length - 1);
+      var msg = '收到，先记下 ' + next.map(function (g) {
+        return (g.active ? '有源' : '') + roleLabel(g.role) + ' ' + g.count + '只';
+      }).join('、') + '。';
+      if (cmd.missingCounts && cmd.missingCounts.length) {
+        msg += ' 后面的 ' + cmd.missingCounts.join('、') + '只还差类型或型号，请继续说。';
+      } else if (next.some(function (g) { return g.tplIdx < 0; })) {
+        msg += ' 接下来告诉我型号就行。';
+      } else {
+        msg += ' 信息齐啦，可以继续补充或确认。';
+      }
+      setAiHint(msg);
+    }
+    function targetGroupsForSelection(sel) {
+      var roles = sel.role === 'all' ? ['fullrange', 'sub'] : [sel.role];
+      return roles.map(firstEditableGroup);
+    }
+    function applySelectionToGroup(g, sel) {
+      if (!g) return false;
+      var idx = -1;
+      if (sel.pick === 'rank') {
+        var ranked = rvTemplateItemsFor(g);
+        idx = ranked[(sel.rank || 1) - 1] ? ranked[(sel.rank || 1) - 1].idx : -1;
+      } else if (sel.pick === 'stock') {
+        var stockItems = rvTemplateItemsFor(g).filter(function (it) { return it.stock !== null; });
+        idx = stockItems[0] ? stockItems[0].idx : -1;
+      } else if (sel.pick === 'model') {
+        var hit = speakerTemplateMatch(sel.query, g.role, g.active, tpls);
+        idx = hit ? hit.idx : -1;
+        g.aiExact = sel.query || '';
+      }
+      if (idx < 0) return false;
+      g.aiHit = true;
+      return applyTplToGroup(g, idx, sel.query || g.aiExact);
+    }
+    function applySelectTemplates(cmd) {
+      var ok = 0;
+      (cmd.selections || []).forEach(function (sel) {
+        targetGroupsForSelection(sel).forEach(function (g) {
+          if (applySelectionToGroup(g, sel)) ok++;
+        });
+      });
+      refreshRvCards();
+      setAiHint(ok ? '已选择 ' + ok + ' 组型号，反推结果已刷新。' : '没有匹配到可用型号，请在候选型号里点选。', !ok);
+    }
+    function groupConfirmIssue(g, i) {
+      normalizeRvGroup(g);
+      if (!parseInt(g.count, 10)) return groupTitle(g, i) + '：请先填写数量';
+      if (g.tplIdx < 0) return groupTitle(g, i) + '：请先选择型号';
+      if (g.parallelDraft) return groupTitle(g, i) + '：并联预览还未确认';
+      var t = tpls[g.tplIdx], st = tplStock(t), need = parseInt(g.count, 10) || 0;
+      if (st !== null && need > st) return groupTitle(g, i) + '：库存' + st + '只，需要' + need + '只';
+      if (g.active) return '';
+      var row = groupData(g, i);
+      var c = Store.reverseCalc([row], {
+        ratio: rvRatio(), subRatio: rvSubRatio(),
+        ampMode: (el('rv-ampmode') || {}).value || 'mix',
+        minOhms: +((el('rv-minohm') || {}).value) || 4
+      });
+      return c.errors[0] || c.warns[0] || '';
+    }
+    function confirmRvGroups(roles) {
+      var all = roles.indexOf('all') >= 0;
+      var targets = rvGroups.map(function (g, i) { return { g: g, i: i }; })
+        .filter(function (x) { return groupVisible(x.g) && (all || roles.indexOf(x.g.role) >= 0); });
+      if (!targets.length) { setAiHint('没有可确认的音响组', true); return; }
+      for (var k = 0; k < targets.length; k++) {
+        var issue = groupConfirmIssue(targets[k].g, targets[k].i);
+        if (issue) { setAiHint(issue, true); return; }
+      }
+      targets.forEach(function (x) { x.g.status = 'confirmed'; });
+      refreshRvCards();
+      setAiHint('已确认 ' + targets.length + ' 组音响。');
+    }
+    function applyConnectionCommand(cmd) {
+      var roles = (cmd.roles && cmd.roles.length) ? cmd.roles : ['fullrange', 'sub'];
+      var units = Math.max(2, Math.min(4, +cmd.units || 2));
+      var n = 0;
+      rvGroups.forEach(function (g) {
+        if (g.active || roles.indexOf(g.role) < 0) return;
+        g.parallelDraft = units;
+        markGroupDirty(g);
+        n++;
+      });
+      refreshRvCards();
+      setAiHint(n ? '已生成并联串接' + units + '只/通道预览，请确认后生效。' : '没有可并联串接的无源音响组', !n);
+    }
+    function confirmParallelDrafts() {
+      var n = 0;
+      rvGroups.forEach(function (g) {
+        if (g.active || !g.parallelDraft) return;
+        g.connectionMode = 'parallel';
+        g.unitsPerChannel = Math.max(2, Math.min(4, +g.parallelDraft || 2));
+        g.parallel = g.unitsPerChannel;
+        g.parallelDraft = 0;
+        markGroupDirty(g);
+        n++;
+      });
+      refreshRvCards();
+      setAiHint(n ? '已确认 ' + n + ' 组并联串接设置。' : '当前没有待确认的并联串接预览', !n);
+    }
+    function undoLastVoiceStep() {
+      var last = rvVoiceUndoStack.pop();
+      if (last && restoreRvVoiceSnapshot(last)) {
+        setAiHint('已撤销刚刚那一步，可以继续说新的需求。');
+        return true;
+      }
+      if (Store.undo && Store.undo()) {
+        SP.renderAll();
+        setAiHint('已撤销上一步。');
+        return true;
+      }
+      setAiHint('现在没有可撤销的步骤啦。', true);
+      return false;
+    }
+    function applySpeakerVoiceCommand(text) {
+      var cmd = SP.parseSpeakerVoiceCommand(text, { templates: tpls });
+      if (cmd.intent === 'undo_last') undoLastVoiceStep();
+      else if (cmd.intent === 'create_speaker_groups') { pushRvVoiceUndo(); applyCreateSpeakerGroups(cmd); }
+      else if (cmd.intent === 'select_templates') { pushRvVoiceUndo(); applySelectTemplates(cmd); }
+      else if (cmd.intent === 'confirm_groups') { pushRvVoiceUndo(); confirmRvGroups(cmd.roles || ['all']); }
+      else if (cmd.intent === 'set_connection_mode') { pushRvVoiceUndo(); applyConnectionCommand(cmd); }
+      else if (cmd.intent === 'confirm_connection_mode') { pushRvVoiceUndo(); confirmParallelDrafts(); }
+      else if (cmd.intent === 'incomplete_count') {
+        setAiHint('收到，先记下 ' + (cmd.counts || []).join('、') + '只。还差类型或型号，请继续说。', true);
+      } else if (cmd.intent === 'incomplete_role') {
+        setAiHint('好，听到' + (cmd.roles || []).map(roleLabel).join('、') + '了，还需要几只呢？', true);
+      } else if (cmd.intent === 'ignore_system_device') {
+        setAiHint('功放、DSP、调音台先保持智能选配；请继续告诉我音响数量、类型或型号。');
+      } else setAiHint('这句有点糊，再说一次就好。可以说：我要8只全频，4只超低。', true);
+      return cmd;
+    }
+    SP.applySpeakerVoiceCommand = applySpeakerVoiceCommand;
 
     function syncAmpModeUI() {
       var m = (el('rv-ampmode') || {}).value || 'mix';
@@ -1219,7 +1923,47 @@
       afterCreate(Store.quickLayout(picks));
     }
 
-    /* ================= 事件委托：click ================= */
+    /* ================= 事件委托：拖动 / click ================= */
+
+    on('mousedown', function (e) {
+      var handle = e.target.closest && e.target.closest('[data-rv-ai-drag]');
+      if (!handle) return;
+      var f = rvAiFloat();
+      var pane = el('ql-pane-rv') || box;
+      if (!f || !pane || !f.getBoundingClientRect || !pane.getBoundingClientRect) return;
+      var fr = f.getBoundingClientRect();
+      var pr = pane.getBoundingClientRect();
+      rvAiDrag = {
+        dx: (e.clientX || 0) - fr.left,
+        dy: (e.clientY || 0) - fr.top,
+        paneLeft: pr.left,
+        paneTop: pr.top,
+        startX: e.clientX || 0,
+        startY: e.clientY || 0,
+        pos: null
+      };
+      rvAiSuppressClick = false;
+      if (e.preventDefault) e.preventDefault();
+    });
+
+    on('mousemove', function (e) {
+      if (!rvAiDrag) return;
+      var x = (e.clientX || 0) - rvAiDrag.paneLeft - rvAiDrag.dx;
+      var y = (e.clientY || 0) - rvAiDrag.paneTop - rvAiDrag.dy;
+      if (Math.abs((e.clientX || 0) - rvAiDrag.startX) > 3 ||
+          Math.abs((e.clientY || 0) - rvAiDrag.startY) > 3) {
+        rvAiSuppressClick = true;
+      }
+      rvAiDrag.pos = moveRvAiFloat(x, y);
+      if (e.preventDefault) e.preventDefault();
+    });
+
+    function endRvAiDrag() {
+      if (rvAiDrag && rvAiDrag.pos) saveRvAiPos(rvAiDrag.pos.left, rvAiDrag.pos.top);
+      rvAiDrag = null;
+    }
+    on('mouseup', endRvAiDrag);
+    on('mouseleave', endRvAiDrag);
 
     on('click', function (e) {
       var modeBtn = e.target.closest && e.target.closest('[data-ql-mode]');
@@ -1232,8 +1976,8 @@
         if (el('ql-pane-rv')) el('ql-pane-rv').style.display = mode === 'reverse' ? '' : 'none';
         var footActs = el('rv-foot-actions');
         if (footActs) footActs.style.display = mode === 'reverse' ? '' : 'none';
-        if (mode === 'reverse') { syncAmpModeUI(); rvCalcShow(); }
-        raf(function () { focusFirstCount(false); });
+        if (mode === 'reverse') { syncAmpModeUI(); rvCalcShow(); activateRvAi(true); }
+        else raf(function () { focusFirstCount(false); });
         return;
       }
       var chip = e.target.closest && e.target.closest('[data-preset]');
@@ -1278,6 +2022,59 @@
       else if (act === 'ql-rename-preset') renameSelectedCountPreset();
       else if (act === 'ql-delete-preset') deleteSelectedCountPreset();
       else if (act === 'rv-toggle-active') toggleRvActive();
+      else if (act === 'rv-ai-toggle') {
+        if (rvAiSuppressClick) { rvAiSuppressClick = false; return; }
+        toggleRvAi();
+      }
+      else if (act === 'rv-ai-apply') {
+        var ai = el('rv-ai-text');
+        applySpeakerVoiceCommand(ai ? ai.value : '');
+      } else if (act === 'rv-pick-tpl') {
+        var pi = +actBtn.dataset.i;
+        if (rvGroups[pi]) {
+          applyTplToGroup(rvGroups[pi], +actBtn.dataset.tpl, '');
+          refreshRvCards();
+          setAiHint('已选择' + groupTitle(rvGroups[pi], pi) + '型号，反推结果已刷新。');
+        }
+      } else if (act === 'rv-mode') {
+        var mi = +actBtn.dataset.i, mg = rvGroups[mi];
+        if (mg) {
+          if (actBtn.dataset.mode === 'parallel') {
+            mg.parallelDraft = Math.max(2, +mg.unitsPerChannel || 2);
+          } else {
+            mg.connectionMode = 'independent';
+            mg.unitsPerChannel = 1;
+            mg.parallel = 1;
+            mg.parallelDraft = 0;
+            markGroupDirty(mg);
+          }
+          refreshRvCards();
+        }
+      } else if (act === 'rv-par-draft') {
+        var di = +actBtn.dataset.i, dg = rvGroups[di];
+        if (dg) { dg.parallelDraft = Math.max(2, Math.min(4, +actBtn.dataset.units || 2)); refreshRvCards(); }
+      } else if (act === 'rv-par-confirm') {
+        var ci = +actBtn.dataset.i, cg = rvGroups[ci];
+        if (cg) {
+          cg.connectionMode = 'parallel';
+          cg.unitsPerChannel = Math.max(2, Math.min(4, +cg.parallelDraft || 2));
+          cg.parallel = cg.unitsPerChannel;
+          cg.parallelDraft = 0;
+          markGroupDirty(cg);
+          refreshRvCards();
+          setAiHint('已确认' + groupTitle(cg, ci) + '并联串接设置。');
+        }
+      } else if (act === 'rv-par-cancel') {
+        var xi = +actBtn.dataset.i, xg = rvGroups[xi];
+        if (xg) {
+          xg.connectionMode = 'independent';
+          xg.unitsPerChannel = 1;
+          xg.parallel = 1;
+          xg.parallelDraft = 0;
+          markGroupDirty(xg);
+          refreshRvCards();
+        }
+      }
       else if (act === 'rv-add') {
         rvGroups.push(newGroup(actBtn.dataset.role || 'fullrange', actBtn.dataset.active === '1'));
         refreshRvCards('data-rv-cnt', rvGroups.length - 1);
@@ -1332,22 +2129,27 @@
       }
       if (t.getAttribute('data-rv-cnt') !== null) {
         var g1 = rvGroups[+t.getAttribute('data-rv-cnt')];
-        if (g1) { g1.count = t.value.replace(/\D/g, ''); if (g1.count !== t.value) t.value = g1.count; rvCalcShow(); }
+        if (g1) {
+          g1.count = t.value.replace(/\D/g, '');
+          if (g1.count !== t.value) t.value = g1.count;
+          markGroupDirty(g1);
+          rvCalcShow();
+        }
         return;
       }
       if (t.getAttribute('data-rv-w') !== null) {
         var g2 = rvGroups[+t.getAttribute('data-rv-w')];
-        if (g2 && g2.tplIdx < 0) { g2.power = t.value; rvCalcShow(); }
+        if (g2 && g2.tplIdx < 0) { g2.power = t.value; markGroupDirty(g2); rvCalcShow(); }
         return;
       }
       if (t.getAttribute('data-rv-o') !== null) {
         var g3 = rvGroups[+t.getAttribute('data-rv-o')];
-        if (g3 && g3.tplIdx < 0) { g3.ohms = t.value; rvCalcShow(); }
+        if (g3 && g3.tplIdx < 0) { g3.ohms = t.value; markGroupDirty(g3); rvCalcShow(); }
         return;
       }
       if (t.getAttribute('data-rv-name') !== null) {
         var g4 = rvGroups[+t.getAttribute('data-rv-name')];
-        if (g4) g4.name = t.value;
+        if (g4) { g4.name = t.value; markGroupDirty(g4); }
         return;
       }
       if (t.id === 'rv-ratio-custom' || t.id === 'rv-subratio-custom' || t.id === 'rv-mixer-n') rvCalcShow();
@@ -1361,20 +2163,20 @@
         var i = +t.getAttribute('data-rv-tpl');
         var g = rvGroups[i];
         if (g) {
-          g.tplIdx = +t.value;
-          if (g.tplIdx >= 0 && tpls[g.tplIdx]) {
-            /* 选模板：自动带出功率/阻抗（只读显示） */
-            var tp = tpls[g.tplIdx];
-            g.power = String(powTpl(tp) || '');
-            g.ohms = String((tp.specs && tp.specs.ohms) || '');
-          }
+          applyTplToGroup(g, +t.value, '');
           refreshRvCards('data-rv-tpl', i);
         }
         return;
       }
       if (t.getAttribute('data-rv-par') !== null) {
         var gp = rvGroups[+t.getAttribute('data-rv-par')];
-        if (gp) { gp.parallel = +t.value; rvCalcShow(); }
+        if (gp) {
+          gp.unitsPerChannel = Math.max(1, +t.value || 1);
+          gp.connectionMode = gp.unitsPerChannel > 1 ? 'parallel' : 'independent';
+          gp.parallel = groupParallel(gp);
+          markGroupDirty(gp);
+          rvCalcShow();
+        }
         return;
       }
       if (t.id === 'rv-ratio') {
@@ -1417,6 +2219,11 @@
 
       var t = e.target;
       var tag = (t && t.tagName) || '';
+      if (e.key === 'Enter' && t && t.id === 'rv-ai-text') {
+        e.preventDefault();
+        applySpeakerVoiceCommand(t.value || '');
+        return;
+      }
       if (e.key === 'Enter' && tag !== 'TEXTAREA') {
         e.preventDefault();
         confirm2();
@@ -1437,14 +2244,14 @@
           if (t.value !== '') {
             t.value = '';
             if (isQlCell) qlCalcShow();
-            if (isRvCell) { var gg = rvGroups[+t.getAttribute('data-rv-cnt')]; if (gg) { gg.count = ''; rvCalcShow(); } }
+            if (isRvCell) { var gg = rvGroups[+t.getAttribute('data-rv-cnt')]; if (gg) { gg.count = ''; markGroupDirty(gg); rvCalcShow(); } }
           } else if (pos > 0) {
             var pv = list[pos - 1];
             pv.value = '';
             if (isQlCell) qlCalcShow();
             if (isRvCell && pv.getAttribute('data-rv-cnt') !== null) {
               var gp2 = rvGroups[+pv.getAttribute('data-rv-cnt')];
-              if (gp2) { gp2.count = ''; rvCalcShow(); }
+              if (gp2) { gp2.count = ''; markGroupDirty(gp2); rvCalcShow(); }
             }
             pv.focus();
             if (pv.select) pv.select();
@@ -1454,7 +2261,7 @@
           var v = (t.value + e.key).replace(/^0+(\d)/, '$1');
           t.value = String(Math.min(128, +v));
           if (isQlCell) qlCalcShow();
-          if (isRvCell) { var gg2 = rvGroups[+t.getAttribute('data-rv-cnt')]; if (gg2) { gg2.count = t.value; rvCalcShow(); } }
+          if (isRvCell) { var gg2 = rvGroups[+t.getAttribute('data-rv-cnt')]; if (gg2) { gg2.count = t.value; markGroupDirty(gg2); rvCalcShow(); } }
         } else if (e.key.length === 1) {
           e.preventDefault();   /* 数量格只接受数字 */
         }
@@ -1475,7 +2282,7 @@
           if (target.getAttribute('data-ql-count') !== null) qlCalcShow();
           if (target.getAttribute('data-rv-cnt') !== null) {
             var gf = rvGroups[+target.getAttribute('data-rv-cnt')];
-            if (gf) { gf.count = e.key; rvCalcShow(); }
+            if (gf) { gf.count = e.key; markGroupDirty(gf); rvCalcShow(); }
           }
         }
       }
@@ -1495,7 +2302,12 @@
 
     syncActiveCols();
     syncAmpModeUI();
-    qlCalcShow();
-    raf(function () { focusFirstCount(false); });
+    if (mode === 'reverse') {
+      rvCalcShow();
+      if (opt.command) applySpeakerVoiceCommand(opt.command);
+    } else {
+      qlCalcShow();
+      raf(function () { focusFirstCount(false); });
+    }
   };
 })();

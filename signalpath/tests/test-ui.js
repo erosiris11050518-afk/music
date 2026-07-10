@@ -94,6 +94,7 @@ load('js/store.js');
 load('js/diagram.js');
 load('js/inspector.js');
 load('js/quick.js');
+load('js/guide.js');
 load('js/keys.js');
 load('js/cables.js');
 load('js/mixer.js');
@@ -102,7 +103,7 @@ load('js/report.js');
 load('js/main.js');
 
 print('== 模块加载 ==');
-T('全部 11 个模块加载无异常', true);
+T('全部 12 个模块加载无异常', true);
 T('SP.Store / renderAll 前置就绪', !!SP.Store && !!SP.renderWiringDiagram);
 
 print('== DOMContentLoaded 启动 ==');
@@ -125,6 +126,66 @@ Promise.resolve().then(function () {
   T('框图默认对齐下级', Store.state.diagramLayout === 'bottomup');
 
   print('== 各功能入口不抛异常 ==');
+  Store.mergeTemplate({ type:'speaker', name:'206M', ins:1, outs:1, speakerRole:'fullrange',
+    specs:{ powered:'passive', power:'450', ohms:'8', stock:'10' } });
+  Store.mergeTemplate({ type:'speaker', name:'DO115', ins:1, outs:1, speakerRole:'fullrange',
+    specs:{ powered:'passive', power:'500', ohms:'8', stock:'12' } });
+  Store.mergeTemplate({ type:'speaker', name:'DO118S', ins:1, outs:1, speakerRole:'sub',
+    specs:{ powered:'passive', power:'900', ohms:'8', stock:'6' } });
+  Store.mergeTemplate({ type:'speaker', name:'DO118S少库存', ins:1, outs:1, speakerRole:'sub',
+    specs:{ powered:'passive', power:'900', ohms:'8', stock:'2' } });
+  var vp = SP.parseSpeakerVoiceCommand('我要8个全频，4个超低', { templates: Store.state.deviceTemplates });
+  T('AI语音配系统：一次识别全频和超低数量',
+    vp.intent === 'create_speaker_groups' && vp.groups.length === 2 &&
+    vp.groups[0].role === 'fullrange' && vp.groups[0].count === 8 && vp.groups[0].templateId === null &&
+    vp.groups[1].role === 'sub' && vp.groups[1].count === 4 && vp.groups[1].templateId === null);
+  var vp2 = SP.parseSpeakerVoiceCommand('我要8只全频DO115，4只超低DO118S', { templates: Store.state.deviceTemplates });
+  T('AI语音配系统：数量和型号可在一句话里识别',
+    vp2.groups[0].templateName === 'DO115' && vp2.groups[1].templateName === 'DO118S');
+  var vp2b = SP.parseSpeakerVoiceCommand('我要6只206M', { templates: Store.state.deviceTemplates });
+  var vp2c = SP.parseSpeakerVoiceCommand('206M六只，DO118S四只', { templates: Store.state.deviceTemplates });
+  T('AI语音配系统：无角色时按型号反查全频/超低',
+    vp2b.intent === 'create_speaker_groups' && vp2b.groups[0].count === 6 &&
+    vp2b.groups[0].role === 'fullrange' && vp2b.groups[0].templateName === '206M' &&
+    vp2c.groups.length === 2 && vp2c.groups[0].templateName === '206M' &&
+    vp2c.groups[1].role === 'sub' && vp2c.groups[1].templateName === 'DO118S');
+  var vp2d = SP.parseSpeakerVoiceCommand('我要5支全屏八只', { templates: Store.state.deviceTemplates });
+  var vp2e = SP.parseSpeakerVoiceCommand('我要六只全瓶，八字超低', { templates: Store.state.deviceTemplates });
+  T('AI语音配系统：纠正全屏/支并保留缺失数量追问',
+    vp2d.intent === 'create_speaker_groups' && vp2d.groups[0].role === 'fullrange' &&
+    vp2d.groups[0].count === 5 && vp2d.missingCounts && vp2d.missingCounts[0] === 8 &&
+    vp2e.groups.length === 2 && vp2e.groups[0].count === 6 && vp2e.groups[0].role === 'fullrange' &&
+    vp2e.groups[1].count === 8 && vp2e.groups[1].role === 'sub');
+  var vp3 = SP.parseSpeakerVoiceCommand('全频选第二个');
+  var vp4 = SP.parseSpeakerVoiceCommand('两个都用第一个');
+  var vp5 = SP.parseSpeakerVoiceCommand('超低选库存最多的');
+  var vp5b = SP.parseSpeakerVoiceCommand('全频要206M', { templates: Store.state.deviceTemplates });
+  var vp5c = SP.parseSpeakerVoiceCommand('超低型号是DO118S', { templates: Store.state.deviceTemplates });
+  T('AI语音配系统：支持序号/两个都用/库存最多选择',
+    vp3.intent === 'select_templates' && vp3.selections[0].rank === 2 &&
+    vp4.selections.length === 2 && vp5.selections[0].pick === 'stock' &&
+    vp5b.intent === 'select_templates' && vp5b.selections[0].query === '206M' &&
+    vp5c.intent === 'select_templates' && vp5c.selections[0].query === 'DO118S');
+  var vp6 = SP.parseSpeakerVoiceCommand('确认全频');
+  var vp7 = SP.parseSpeakerVoiceCommand('超低并联串接2只');
+  T('AI语音配系统：支持确认和并联串接预览',
+    vp6.intent === 'confirm_groups' && vp6.roles[0] === 'fullrange' &&
+    vp7.intent === 'set_connection_mode' && vp7.mode === 'parallel' && vp7.units === 2);
+  var vp8 = SP.parseSpeakerVoiceCommand('然后再要3只并联的206M', { templates: Store.state.deviceTemplates });
+  var vp9 = SP.parseSpeakerVoiceCommand('再加一对有缘全频', { templates: Store.state.deviceTemplates });
+  var vp10 = SP.parseSpeakerVoiceCommand('再加一对全频有原音响', { templates: Store.state.deviceTemplates });
+  T('AI语音配系统：支持追加、有源错字、一对和并联口语',
+    vp8.intent === 'create_speaker_groups' && vp8.mode === 'append' &&
+    vp8.groups[0].count === 3 && vp8.groups[0].templateName === '206M' &&
+    vp8.groups[0].connectionMode === 'parallel' &&
+    vp9.groups[0].active === true && vp9.groups[0].count === 2 &&
+    vp10.groups[0].active === true && vp10.groups[0].role === 'fullrange');
+  var vp11 = SP.parseSpeakerVoiceCommand('全频串联2只');
+  var vp12 = SP.parseSpeakerVoiceCommand('撤销');
+  var vp13 = SP.parseSpeakerVoiceCommand('功放用SA2002，调音台用WING RACK');
+  T('AI语音配系统：串联纠正、撤销和系统设备交给智能选配',
+    vp11.intent === 'set_connection_mode' && vp11.mode === 'parallel' && vp11.units === 2 &&
+    vp12.intent === 'undo_last' && vp13.intent === 'ignore_system_device');
   function tryRun(name, fn) {
     var err = null;
     try { fn(); } catch (e) { err = e; }
@@ -161,6 +222,84 @@ Promise.resolve().then(function () {
     qlHtml.indexOf('rv-stack') >= 0 && qlHtml.indexOf('rv-settings-panel') >= 0 &&
     qlHtml.indexOf('rv-result-panel') >= 0 && qlHtml.indexOf('rv-right') < 0 &&
     qlHtml.indexOf('rv-amp2-flag') >= 0);
+  T('语音识别已移除，反推弹窗保留型号候选和独立/并联串接状态',
+    typeof window.SpeechRecognitionHandler === 'undefined' &&
+    typeof SP.startGlobalSpeakerVoice === 'undefined' &&
+    typeof SP.initGlobalSpeakerAi === 'undefined' &&
+    qlHtml.indexOf('rv-ai-float') < 0 &&
+    qlHtml.indexOf('rv-tpl-chip') >= 0 && qlHtml.indexOf('接线方式') >= 0 &&
+    qlHtml.indexOf('独立') >= 0 && qlHtml.indexOf('并联串接') >= 0 &&
+    qlHtml.indexOf('暂不支持串联') < 0);
+  /* ---- 小蝶引导（纯点击，替代语音入口）---- */
+  T('小蝶引导入口就绪', typeof SP.initGuide === 'function' && !!SP.Guide &&
+    typeof SP.Guide.go === 'function' && typeof SP.Guide.act === 'function' &&
+    typeof SP.Guide.spotlight === 'function');
+  tryRun('引导主菜单渲染（状态感知）', function () {
+    SP.closeModal();
+    SP.Guide.go('home');
+    if (!registry['guide-msg'].innerHTML || registry['guide-opts'].innerHTML.indexOf('常见问题') < 0) {
+      throw new Error('主菜单没有渲染出选项');
+    }
+  });
+  tryRun('引导数量步骤：输入框与型号下拉', function () {
+    SP.Guide.go('counts');
+    var ex = registry['guide-extra'].innerHTML;
+    if (ex.indexOf('guide-n-full') < 0 || ex.indexOf('guide-n-sub') < 0 ||
+        ex.indexOf('智能推荐') < 0 || registry['guide-msg'].innerHTML.indexOf('全频') < 0) {
+      throw new Error('数量步骤缺输入或型号选择');
+    }
+  });
+  tryRun('引导填数量 → 自动写进反推并选库存最多', function () {
+    document.getElementById('guide-n-full').value = '6';
+    document.getElementById('guide-n-sub').value = '4';
+    document.getElementById('guide-tpl-full').value = '';
+    document.getElementById('guide-tpl-sub').value = '';
+    SP.Guide.act('counts-apply');
+    var h = registry['rv-cards-wrap'].innerHTML;
+    if (h.indexOf('206M') < 0 && h.indexOf('DO115') < 0) throw new Error('全频组没有按库存自动选型');
+    if (h.indexOf('DO118S') < 0) throw new Error('超低组没有落卡片');
+    if (registry['guide-msg'].innerHTML.indexOf('确认') < 0) throw new Error('没有进入确认引导步骤');
+  });
+  tryRun('引导确认音响组 → 创建步骤', function () {
+    SP.Guide.act('confirm-groups');
+    if (registry['guide-msg'].innerHTML.indexOf('创建') < 0) throw new Error('没有进入创建步骤');
+  });
+  tryRun('引导高亮带路 spotlight', function () {
+    if (!SP.Guide.spotlight('ql-confirm')) throw new Error('spotlight 找不到目标');
+    if (!registry['ql-confirm'].classList.contains('guide-spot')) throw new Error('目标没有加高亮类');
+  });
+  tryRun('引导常见问题列表与回答', function () {
+    SP.Guide.go('faq');
+    if (registry['guide-opts'].innerHTML.indexOf('Dante') < 0) throw new Error('FAQ 列表缺项');
+    SP.Guide.act('faq-cable');
+    if (registry['guide-msg'].innerHTML.indexOf('线材') < 0) throw new Error('FAQ 回答没有渲染');
+  });
+  tryRun('AI语音配系统：命令应用到反推卡片', function () {
+	    SP.closeModal();
+	    SP.openQuickLayout({ mode: 'reverse' });
+	    SP.applySpeakerVoiceCommand('我要8个全频，4个超低');
+	    SP.applySpeakerVoiceCommand('全频要206M，超低型号是DO118S');
+	    var h1 = registry['rv-cards-wrap'].innerHTML;
+	    if (h1.indexOf('206M') < 0 || h1.indexOf('DO118S') < 0 ||
+	        h1.indexOf('待确认') < 0 || h1.indexOf('独立') < 0) {
+	      throw new Error('语音创建/选型未渲染到卡片');
+	    }
+    SP.applySpeakerVoiceCommand('全频并联串接2只');
+    var h2 = registry['rv-cards-wrap'].innerHTML;
+    if (h2.indexOf('确认并联串接') < 0 || h2.indexOf('并联串接2只') < 0) throw new Error('未生成并联串接预览');
+    SP.applySpeakerVoiceCommand('确认并联串接');
+    var h3 = registry['rv-cards-wrap'].innerHTML;
+    if (h3.indexOf('确认并联串接') >= 0 ||
+        (h3.indexOf('并联串接 2 只 / 通道') < 0 && h3.indexOf('并联串接2只') < 0)) {
+      throw new Error('并联串接确认未生效');
+    }
+    SP.applySpeakerVoiceCommand('两个都确认');
+    if (registry['rv-cards-wrap'].innerHTML.indexOf('已确认') < 0) throw new Error('组确认状态未生效');
+    SP.applySpeakerVoiceCommand('再加一对有缘全频');
+    if (registry['rv-cards-wrap'].innerHTML.indexOf('有源全频') < 0) throw new Error('有源全频未加入反推卡片');
+    SP.applySpeakerVoiceCommand('撤销');
+    if (registry['rv-cards-wrap'].innerHTML.indexOf('有源全频') >= 0) throw new Error('撤销没有回退上一条语音添加');
+  });
   SP.closeModal();
   /* 1：重复打开面板不叠加委托监听（此前输入 1 变 11 的根因回归） */
   tryRun('重复打开面板：输入 1 仍是 1（监听器已去重）', function () {
@@ -364,6 +503,55 @@ Promise.resolve().then(function () {
     SP.fitDiagramZoom(box);
     SP.focusSelectedInDiagram(box);
   });
+  /* ---- 交换机路由页 + Dante 报告纳入 ---- */
+  var uiSw, uiMx;
+  tryRun('交换机 + 网口线 + Dante 分配 + 交换机路由页', function () {
+    uiSw = Store.addDevice({ type: 'switch', name: 'UI交换机', ins: 4, outs: 0 });
+    uiMx = Store.addDevice({ type: 'mixer', name: 'UI调音台', ins: 8, outs: 8 });
+    Store.setActiveMixer(uiMx.id);
+    SP.routePageId = uiMx.id;
+    var r = Store.addNetLink(uiMx.id, uiSw.id);
+    if (!r.ok) throw new Error('网口线失败: ' + r.msg);
+    Store.toggleDante(uiMx.id, 'out', 0);
+    Store.toggleDante(uiMx.id, 'in', 2);
+    SP.renderNetRoute();
+  });
+  T('交换机路由页签显示', registry['tab-netroute'].hidden === false);
+  T('交换机路由页含网口与调音台',
+    registry['netroute-body'].innerHTML.indexOf('网口 1') >= 0 &&
+    registry['netroute-body'].innerHTML.indexOf('UI调音台') >= 0);
+  T('交换机路由页只显示互联状态', registry['netroute-body'].innerHTML.indexOf('net-status-linked') >= 0 &&
+    registry['netroute-body'].innerHTML.indexOf('Dante 输出') < 0);
+  tryRun('Dante 配置弹窗 openDanteConfig', function () { SP.openDanteConfig(uiMx.id); });
+  T('Dante 弹窗有通道 pill', registry['modal-box'].innerHTML.indexOf('rcell-pill') >= 0 ||
+    registry['dante-cfg-body'].innerHTML.indexOf('rcell-pill') >= 0 ||
+    (registry['modal-box'].innerHTML + '').indexOf('Dante') >= 0);
+  SP.closeModal();
+  tryRun('台内路由矩阵显示 Dante 色块', function () {
+    SP.renderInputPatchGrid();
+    SP.renderOutputPatchGrid();
+  });
+  T('台内路由矩阵含 Dante 色块与图例',
+    (registry['in-route-grid-wrap'].innerHTML + registry['out-route-grid-wrap'].innerHTML).indexOf('dante-route') >= 0 &&
+    (registry['in-route-grid-wrap'].innerHTML + registry['out-route-grid-wrap'].innerHTML).indexOf('dante-legend') >= 0);
+  tryRun('报告纳入网络层（Dante）', function () { SP.openReportOptions(); });
+  T('报告含网络层（Dante）', registry['report-preview'].srcdoc.indexOf('网络层（Dante）') >= 0);
+  SP.closeModal();
+  tryRun('框图渲染 Dante 短网线示意', function () {
+    SP.renderWiringDiagram(registry['wiring-diagram']);
+  });
+  T('框图含 Dante 短网线且不画跨设备网口线',
+    registry['wiring-diagram'].innerHTML.indexOf('dante-stub') >= 0 &&
+    registry['wiring-diagram'].innerHTML.indexOf('net-edge') < 0);
+  T('框图 Dante 标注交换机网口号',
+    registry['wiring-diagram'].innerHTML.indexOf('dante-link-tag') >= 0 &&
+    registry['wiring-diagram'].innerHTML.indexOf('网口 1') >= 0);
+  tryRun('删交换机后路由页自动隐藏', function () {
+    Store.removeDevice(uiSw.id);
+    SP.renderNetRoute();
+  });
+  T('无交换机时页签隐藏', registry['tab-netroute'].hidden === true);
+
   tryRun('清设备：清空当前设备连线图全部设备', function () {
     if (!Store.state.devices.length) throw new Error('测试前应有设备');
     SP.clearDiagramDevicesPrompt();

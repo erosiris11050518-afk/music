@@ -75,7 +75,8 @@
     var byType = {}, typeOrder = [];
     conns.forEach(function (c) {
       var s = Store.getDevice(c.sid), t = Store.getDevice(c.tid);
-      if (!s || !t || !s.outputs[c.sport] || !t.inputs[c.tport]) return;
+      if (!s || !t) return;
+      if (!c.net && (!s.outputs[c.sport] || !t.inputs[c.tport])) return;
       var k = Store.cableOf(c);
       if (!byType[k]) { byType[k] = []; typeOrder.push(k); }
       byType[k].push(c);
@@ -83,7 +84,7 @@
     var bySource = {}, sourceOrder = [];
     conns.forEach(function (c) {
       var s = Store.getDevice(c.sid);
-      if (!s || !s.outputs[c.sport]) return;
+      if (!s || (!c.net && !s.outputs[c.sport])) return;
       if (!bySource[c.sid]) { bySource[c.sid] = { dev: s, conns: [], ports: {} }; sourceOrder.push(c.sid); }
       bySource[c.sid].conns.push(c);
       bySource[c.sid].ports[c.sport] = true;
@@ -105,7 +106,7 @@
         esc(Store.outLabelOf(s, c.sport)) + '</span></td>' +
         '<td class="cell-arrow">→</td>' +
         '<td><span class="cell-dev">' + esc(t.name) + '</span> <span class="cell-port">' +
-        esc(t.inputs[c.tport].label) + '</span></td>' +
+        esc(c.tport >= 0 && t.inputs[c.tport] ? t.inputs[c.tport].label : '网口') + '</span></td>' +
         '<td><select class="conn-cable" data-key="' + key + '">' + cableOpts + '</select></td>' +
         '<td><input type="number" class="conn-len" data-key="' + key + '" min="0" step="0.5" value="' +
         esc(c.lenM || '') + '" placeholder="米"></td>' +

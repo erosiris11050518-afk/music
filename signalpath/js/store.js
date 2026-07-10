@@ -8,17 +8,21 @@ var SP = window.SP = window.SP || {};
 
 SP.DEVICE_TYPES = {
   mixer:   { name: '调音台', abbr: 'MIX' },
+  switch:  { name: '交换机', abbr: 'SW' },
   dsp:     { name: 'DSP',    abbr: 'DSP' },
   amp:     { name: '功放',   abbr: 'AMP' },
   speaker: { name: '音箱',   abbr: 'SPK' }
 };
 
-SP.TYPE_ORDER = ['mixer', 'dsp', 'amp', 'speaker'];
+SP.TYPE_ORDER = ['mixer', 'switch', 'dsp', 'amp', 'speaker'];
 
 /* 各类型默认颜色（可被每台设备单独覆盖） */
 SP.TYPE_COLORS = {
-  mixer: '#eda63d', dsp: '#6ba3c4', amp: '#a08fc0', speaker: '#4fbf8b'
+  mixer: '#eda63d', switch: '#3fbfb0', dsp: '#6ba3c4', amp: '#a08fc0', speaker: '#4fbf8b'
 };
+
+/* 网口线（Dante 数字层）在框图中的专属颜色 */
+SP.NET_COLOR = '#3fbfb0';
 SP.typeColor = function (type) { return SP.TYPE_COLORS[type] || '#7f8b99'; };
 
 /* ---------- 线材类型 ---------- */
@@ -72,6 +76,7 @@ SP.TEMPLATES = [
     mixerDefaults: { channels: 24, buses: 16, mains: 4, matrices: 8, mainMode: 'LR' } },
   { type: 'mixer', name: 'MR18', ins: 18, outs: 8,
     mixerDefaults: { channels: 16, buses: 0, mains: 1, matrices: 0, mainMode: 'Mono' } },
+  { type: 'switch', name: 'Dante 交换机（8 网口）', ins: 8, outs: 0 },
   { type: 'dsp', name: 'Unit48', ins: 4, outs: 8 },
   { type: 'amp', name: '两通道功放（2进2出）', ins: 2, outs: 2 },
   { type: 'amp', name: '四通道功放（4进4出）', ins: 4, outs: 4 },
@@ -101,6 +106,9 @@ SP.specString = function (d) {
     if (s.ohms) parts.push(fmt(s.ohms, 'Ω'));
     if (s.power) parts.push(fmt(s.power, 'W'));
     if (s.size) parts.push(fmt(s.size, '寸'));
+  }
+  if (d.type === 'switch' && d.inputs && d.inputs.length) {
+    parts.push(d.inputs.length + ' 网口');
   }
   if ((d.type === 'mixer' || d.type === 'dsp' || d.type === 'amp') && s.rackU) {
     parts.push(fmt(s.rackU, 'U'));
@@ -198,7 +206,7 @@ SP.Store = (function () {
   function defaultState() {
     return { devices: [], connections: [], customTypes: [], inputGear: [],
       userMixerTemplates: [], deviceTemplates: JSON.parse(JSON.stringify(SP.TEMPLATES)),
-      deviceTemplatesVersion: 4, mixer: defaultMixer(), activeMixerId: '',
+      deviceTemplatesVersion: 5, mixer: defaultMixer(), activeMixerId: '',
       diagramLayout: 'bottomup', diagramOrient: 'v', seq: 1, quickPresets: [], reversePresets: [],
       powerAlarmMode: 'show',
       power: { eff: 0.7, headroom: 1.3, mixerW: 150, dspW: 50, seqW: 30 } };
@@ -281,8 +289,8 @@ SP.Store = (function () {
        迁移时保留用户自建的型号（按名称去重） */
     if (!s.deviceTemplates) {
       s.deviceTemplates = JSON.parse(JSON.stringify(SP.TEMPLATES));
-      s.deviceTemplatesVersion = 4;
-    } else if (s.deviceTemplatesVersion !== 4) {
+      s.deviceTemplatesVersion = 5;
+    } else if (s.deviceTemplatesVersion !== 5) {
       var seeds = JSON.parse(JSON.stringify(SP.TEMPLATES));
       var seen = {};
       seeds.forEach(function (t) { seen[t.name] = true; });
@@ -290,7 +298,7 @@ SP.Store = (function () {
         if (!seen[t.name]) { seeds.push(t); seen[t.name] = true; }
       });
       s.deviceTemplates = seeds;
-      s.deviceTemplatesVersion = 4;
+      s.deviceTemplatesVersion = 5;
     }
     if (s.mixer) normalizeMixer(s.mixer);
     (s.devices || []).forEach(function (d) {
@@ -331,6 +339,20 @@ SP.Store = (function () {
     /* 接线教学：乐器清单条目补 id；调音台的输入接线表清理失效项 */
     (s.inputGear || []).forEach(function (g) {
       if (!g.id) g.id = 'g' + (s.seq++);
+    });
+    /* Dante 分配字段补齐（仅调音台）：清越界端口 + 去重排序（不再限 4 路，支持全选） */
+    (s.devices || []).forEach(function (d) {
+      if (d.type !== 'mixer') return;
+      ['danteIn', 'danteOut'].forEach(function (k) {
+        var max = k === 'danteIn' ? (d.inputs || []).length : (d.outputs || []).length;
+        var seen = {};
+        d[k] = (Array.isArray(d[k]) ? d[k] : [])
+          .filter(function (i) {
+            if (i < 0 || i >= max || seen[i]) return false;
+            seen[i] = true; return true;
+          })
+          .sort(function (a, b) { return a - b; });
+      });
     });
     (s.devices || []).forEach(function (d) {
       if (d.type !== 'mixer') return;
@@ -591,6 +613,9 @@ SP.Store = (function () {
       for (var pi = 0; pi < Math.ceil(dev.outputs.length / 2); pi++) dev.ampPairModes.push('S');
     }
     if (dev.type === 'dsp') ensureDspRoute(dev);
+    if (dev.type === 'switch') {
+      dev.inputs.forEach(function (p, i) { p.label = '网口 ' + (i + 1); });
+    }
     if (dev.type === 'speaker' && dev.specs.powered !== 'active') dev.specs.powered = 'passive';
     if (dev.type === 'mixer') {
       dev.mixer = defaultMixerFor(dev, opt.mixerDefaults || null);
@@ -938,6 +963,7 @@ SP.Store = (function () {
   /* ---------- 智能分配：为该设备的未接输入按序接入上游空闲输出 ---------- */
 
   function autoSourceTypes(dev) {
+    if (dev.type === 'switch') return [];   /* 交换机走网口线，不参与音频智连 */
     if (dev.type === 'dsp') return ['mixer'];
     if (dev.type === 'amp') return ['dsp', 'mixer'];
     /* 智能连接默认不自动并联：音箱只自动接功放/线路口，多余音箱提示未接。
@@ -949,6 +975,7 @@ SP.Store = (function () {
 
   function canAutoConnect(target, source) {
     if (!target || !source || target.id === source.id) return false;
+    if (target.type === 'switch' || source.type === 'switch') return false;
     if (target.type === 'speaker') {
       /* 音箱 → 音箱 并联仅限手动连线（智能分配不会走到这里，autoSourceTypes 已排除） */
       if (source.type === 'speaker') {
@@ -1009,6 +1036,9 @@ SP.Store = (function () {
   function smartAssign(id) {
     var dev = getDevice(id);
     if (!dev) return { lines: [], msg: '' };
+    if (dev.type === 'switch') {
+      return { lines: [], msg: '交换机通过网口线连接调音台（右键设备 → 网口线），不参与音频智能连接。' };
+    }
 
     /* 并联锁定组：把这一组接顺 */
     var group = parallelGroupOf(dev);
@@ -1080,6 +1110,7 @@ SP.Store = (function () {
     var roleOrd = { linearray: 0, fullrange: 1, sub: 2 };
     function layerOf(d) {
       if (d.type === 'mixer') return -1;   /* 信号源，不参与 */
+      if (d.type === 'switch') return -1;  /* 交换机走网口线，不参与音频智连 */
       if (d.type === 'dsp') return 1;
       if (d.type === 'amp') return 2;
       if (d.type === 'speaker') return 3 + (roleOrd[d.speakerRole || 'fullrange'] || 1) / 10;
@@ -1113,11 +1144,26 @@ SP.Store = (function () {
       lines.push('　已恢复 ' + lockedN + ' 条受控并联串接线');
       count += lockedN;
     }
+    /* Dante：有交换机时，把还没上网的调音台按顺序接到交换机网口 1、2、3… */
+    var sw0 = state.devices.filter(function (d) { return d.type === 'switch'; })[0];
+    if (sw0) {
+      var netN = 0;
+      state.devices.forEach(function (d) {
+        if (d.type !== 'mixer' || netLinkBetween(d.id, sw0.id)) return;
+        var r = addNetLink(d.id, sw0.id);
+        if (r.ok) netN++;
+      });
+      if (netN) {
+        lines.push('— Dante 网口：');
+        lines.push('　已把 ' + netN + ' 台调音台接到「' + sw0.name + '」网口');
+        count += netN;
+      }
+    }
     /* 仍未接的输入口（不含调音台的话筒/线路输入）；音响单独统计只数用于提示 */
     var remaining = 0;
     var speakerLeft = 0;
     state.devices.forEach(function (d) {
-      if (d.type === 'mixer') return;
+      if (d.type === 'mixer' || d.type === 'switch') return;
       var unfed = false;
       d.inputs.forEach(function (pt, i) {
         if (!sourceFor(d.id, i)) { remaining++; unfed = true; }
@@ -1399,7 +1445,7 @@ SP.Store = (function () {
           }
         });
       }
-      state.diagramLayout = 'smart';
+      state.diagramLayout = 'bottomup';   /* 默认对齐（按功放分组的上级对齐下级） */
     });
     return added;
   }
@@ -1438,7 +1484,7 @@ SP.Store = (function () {
             chainParallelSpeakers(perItem[idx], it.parallel);
           }
         });
-        state.diagramLayout = 'smart';   /* 12：交叉更少的对齐方案自动生效 */
+        state.diagramLayout = 'bottomup';   /* 默认对齐（按功放分组的上级对齐下级） */
       }
     });
     return added;
@@ -1605,6 +1651,7 @@ SP.Store = (function () {
   }
 
   function outLabelOf(dev, i) {
+    if (i < 0) return '网口';   /* 网口线源端不占音频输出口 */
     var p = dev.outputs[i];
     if (!p) return '';
     if (dev.type === 'amp' && i % 2 === 0 && ampPairMode(dev, i / 2) === 'B') {
@@ -1685,14 +1732,198 @@ SP.Store = (function () {
 
   function disconnect(tid, tport, noSave) {
     state.connections = state.connections.filter(function (c) {
-      return !(c.tid === tid && c.tport === tport);
+      return !(c.tid === tid && c.tport === tport && !c.net);
     });
     if (!noSave) save();
+  }
+
+  /* ---------- 网口线（Dante 数字层）----------
+     与音频连线共用 connections 存储，c.net = true 标记。
+     · 不占音频端口：源端 sport = -1；交换机端占用真实网口（tport）
+     · 调音台 ↔ 调音台直连时 tport 也为 -1
+     · 不参与信号层级 / 智能连接 / 功率计算 */
+  function isNetConn(c) { return !!(c && c.net); }
+
+  function netLinksOf(id) {
+    return state.connections.filter(function (c) {
+      return c.net && (c.sid === id || c.tid === id);
+    });
+  }
+
+  function netLinkBetween(aid, bid) {
+    for (var i = 0; i < state.connections.length; i++) {
+      var c = state.connections[i];
+      if (!c.net) continue;
+      if ((c.sid === aid && c.tid === bid) || (c.sid === bid && c.tid === aid)) return c;
+    }
+    return null;
+  }
+
+  /* 自定义交换机网口数量（1~64）。缩减时断开落在被删网口上的网口线。 */
+  function setSwitchPorts(devId, n) {
+    var d = getDevice(devId);
+    if (!d || d.type !== 'switch') return { ok: false, msg: '仅交换机可设置网口数。' };
+    n = Math.max(1, Math.min(64, Math.floor(+n) || 1));
+    var old = d.inputs.length;
+    if (n === old) return { ok: true };
+    if (n > old) {
+      for (var i = old; i < n; i++) d.inputs.push({ label: '网口 ' + (i + 1) });
+    } else {
+      /* 断开落在将被删除网口（index >= n）上的网口线 */
+      state.connections = state.connections.filter(function (c) {
+        return !(c.net && c.tid === devId && c.tport >= n);
+      });
+      d.inputs = d.inputs.slice(0, n);
+    }
+    save();
+    return { ok: true };
+  }
+
+  /* 交换机上第一个空闲网口；没有返回 -1 */
+  function freeNetPort(sw) {
+    for (var i = 0; i < (sw.inputs || []).length; i++) {
+      var used = state.connections.some(function (c) {
+        return c.net && c.tid === sw.id && c.tport === i;
+      });
+      if (!used) return i;
+    }
+    return -1;
+  }
+
+  function addNetLink(aid, bid) {
+    var a = getDevice(aid), b = getDevice(bid);
+    if (!a || !b || aid === bid) return { ok: false, msg: '设备无效。' };
+    function netOK(d) { return d.type === 'mixer' || d.type === 'switch'; }
+    if (!netOK(a) || !netOK(b)) return { ok: false, msg: '网口线只用于调音台与交换机之间。' };
+    if (a.type === 'switch' && b.type === 'switch') {
+      return { ok: false, msg: '暂不支持交换机级联，请把调音台分别接到同一台交换机。' };
+    }
+    if (netLinkBetween(aid, bid)) return { ok: false, msg: '两台设备之间已有网口线。' };
+    var c;
+    if (a.type === 'switch' || b.type === 'switch') {
+      var sw = a.type === 'switch' ? a : b;
+      var mx = a.type === 'switch' ? b : a;
+      var port = freeNetPort(sw);
+      if (port < 0) return { ok: false, msg: '「' + sw.name + '」的网口已用完。' };
+      /* 接入交换机 = 走集中式 Dante：自动清掉该调音台原有的「调音台↔调音台」直连，
+         避免"既直连又走交换机"的矛盾（用户确认：有交换机就只连交换机） */
+      state.connections = state.connections.filter(function (x) {
+        if (!x.net) return true;
+        var s = getDevice(x.sid), t = getDevice(x.tid);
+        var involvesMx = x.sid === mx.id || x.tid === mx.id;
+        var bothMixer = s && t && s.type === 'mixer' && t.type === 'mixer';
+        return !(involvesMx && bothMixer);
+      });
+      c = { sid: mx.id, sport: -1, tid: sw.id, tport: port,
+        net: true, cable: '网线(Dante)', color: '', lenM: '', note: '' };
+    } else {
+      /* 调音台 ↔ 调音台 直连（小系统无交换机）。
+         若任一台已接入交换机，则不允许再直连（有交换机就只走交换机） */
+      function onSwitch(id) {
+        return state.connections.some(function (x) {
+          if (!x.net) return false;
+          var o = getDevice(x.sid === id ? x.tid : x.sid);
+          return (x.sid === id || x.tid === id) && o && o.type === 'switch';
+        });
+      }
+      if (onSwitch(aid) || onSwitch(bid)) {
+        return { ok: false, msg: '已接入交换机的调音台走集中式 Dante，请在交换机上互联，不再直连。' };
+      }
+      /* tport 用未占用的负数，保证 (tid,tport) 键全局唯一（线材表按键定位） */
+      var np = -1;
+      while (state.connections.some(function (x) {
+        return x.tid === bid && x.tport === np;
+      })) np--;
+      c = { sid: aid, sport: -1, tid: bid, tport: np,
+        net: true, cable: '网线(Dante)', color: '', lenM: '', note: '' };
+    }
+    state.connections.push(c);
+    save();
+    return { ok: true, msg: '', conn: c };
+  }
+
+  /* ---------- 调音台 Dante 通道分配 ----------
+     每台调音台可把任意物理输入/输出标记为「走 Dante」（支持整段拖选 / 全选），
+     三个入口共用同一数据：设备详情页 / 右键菜单 / 台内路由页 / 框图聚合亮节点。 */
+  function danteList(dev, side) {
+    if (!dev || dev.type !== 'mixer') return [];
+    var arr = side === 'in' ? dev.danteIn : dev.danteOut;
+    return Array.isArray(arr) ? arr : [];
+  }
+
+  function isDante(dev, side, i) {
+    return danteList(dev, side).indexOf(i) >= 0;
+  }
+
+  function toggleDante(devId, side, i) {
+    var d = getDevice(devId);
+    if (!d || d.type !== 'mixer') return { ok: false, msg: '仅调音台支持 Dante 分配。' };
+    var key = side === 'in' ? 'danteIn' : 'danteOut';
+    if (!Array.isArray(d[key])) d[key] = [];
+    var idx = d[key].indexOf(i);
+    if (idx >= 0) {
+      d[key].splice(idx, 1);
+    } else {
+      d[key].push(i);
+      d[key].sort(function (a, b) { return a - b; });
+    }
+    save();
+    return { ok: true, on: idx < 0 };
+  }
+
+  /* 批量设置一段/整组 Dante 通道（拖拽框选 / 整行 / 全选 / 全不选共用）。
+     ports: 端口下标数组；on: true=全设为 Dante，false=全取消 */
+  function setDante(devId, side, ports, on) {
+    var d = getDevice(devId);
+    if (!d || d.type !== 'mixer') return { ok: false, msg: '仅调音台支持 Dante 分配。' };
+    var key = side === 'in' ? 'danteIn' : 'danteOut';
+    var max = side === 'in' ? d.inputs.length : d.outputs.length;
+    var set = {};
+    (Array.isArray(d[key]) ? d[key] : []).forEach(function (i) { set[i] = true; });
+    (ports || []).forEach(function (i) {
+      if (i < 0 || i >= max) return;
+      if (on) set[i] = true; else delete set[i];
+    });
+    d[key] = Object.keys(set).map(Number).sort(function (a, b) { return a - b; });
+    save();
+    return { ok: true };
+  }
+
+  function setDanteAll(devId, side, on) {
+    var d = getDevice(devId);
+    if (!d || d.type !== 'mixer') return { ok: false, msg: '仅调音台支持 Dante 分配。' };
+    var ports = [];
+    var n = side === 'in' ? d.inputs.length : d.outputs.length;
+    for (var i = 0; i < n; i++) ports.push(i);
+    return setDante(devId, side, ports, on);
+  }
+
+  function removeNetLink(aid, bid) {
+    var before = state.connections.length;
+    state.connections = state.connections.filter(function (c) {
+      if (!c.net) return true;
+      return !((c.sid === aid && c.tid === bid) || (c.sid === bid && c.tid === aid));
+    });
+    var removed = before - state.connections.length;
+    if (removed) save();
+    return removed;
+  }
+
+  function removeNetLink(aid, bid) {
+    var before = state.connections.length;
+    state.connections = state.connections.filter(function (c) {
+      if (!c.net) return true;
+      return !((c.sid === aid && c.tid === bid) || (c.sid === bid && c.tid === aid));
+    });
+    var removed = before - state.connections.length;
+    if (removed) save();
+    return removed;
   }
 
   function connWarning(c) {
     var s = getDevice(c.sid), t = getDevice(c.tid);
     if (!s || !t) return null;
+    if (c.net) return null;   /* 网口线：数字层，无音频警示 */
     var list = [];
     var err = connectionError(c);
     if (err) list.push(err);
@@ -1707,7 +1938,14 @@ SP.Store = (function () {
 
   function connectionError(c) {
     var s = getDevice(c.sid), t = getDevice(c.tid);
-    if (!s || !t || t.type !== 'speaker') return null;
+    if (!s || !t) return null;
+    /* 网口线是独立数字层，不做音频信号校验 */
+    if (c.net) return null;
+    /* 交换机只通过网口线连接（右键调音台 / 交换机添加），不接音频线 */
+    if (s.type === 'switch' || t.type === 'switch') {
+      return '交换机只通过网口线连接（右键设备 → 网口线）。';
+    }
+    if (t.type !== 'speaker') return null;
     var so = signalOf(s, 'out');
     if (speakerPowered(t) && so === 'speaker') {
       return '有源音箱不能接音响线/功放输出。';
@@ -1715,17 +1953,33 @@ SP.Store = (function () {
     if (!speakerPowered(t) && so === 'line') {
       return '无源音箱不能接信号线，必须接功放音响线。';
     }
+    /* 需求 A：无源音箱最多从功放接入一条音响线，其余输入口只能用于 link 串接。
+       检测该音箱是否已有「另一个输入口」来自功放（换口重连不算） */
+    if (!speakerPowered(t) && s.type === 'amp') {
+      var hasAmpFeed = state.connections.some(function (x) {
+        if (x.tid !== t.id || x.tport === c.tport) return false;
+        var xs = getDevice(x.sid);
+        return xs && xs.type === 'amp';
+      });
+      if (hasAmpFeed) {
+        return '音箱只能从功放接入一条音响线，其余端口用于 link 串接。';
+      }
+    }
     return null;
   }
 
   function cleanupConnectionErrors() {
     var removed = [];
-    state.connections = state.connections.filter(function (c) {
+    /* 逐条检查并渐进保留：像「音箱多条功放线」这类相互冲突的连线
+       只清多余的一条，而不是把两条都删掉 */
+    var all = state.connections;
+    var kept = [];
+    state.connections = kept;
+    all.forEach(function (c) {
       var err = connectionError(c);
-      if (!err) return true;
+      if (!err) { kept.push(c); return; }
       var s = getDevice(c.sid), t = getDevice(c.tid);
       removed.push((s ? s.name : '?') + ' → ' + (t ? t.name : '?') + '：' + err);
-      return false;
     });
     if (removed.length) save();
     return removed;
@@ -2108,9 +2362,10 @@ SP.Store = (function () {
     return (s && signalOf(s, 'out') === 'speaker') ? '音箱线' : '卡农信号线';
   }
 
-  /* 线色：连接自定义色 > 源设备颜色 */
+  /* 线色：连接自定义色 > 源设备颜色；网口线用专属青绿色 */
   function colorOf(c) {
     if (c.color) return c.color;
+    if (c.net) return SP.NET_COLOR;
     var s = getDevice(c.sid);
     return (s && s.color) || '#d99a3f';
   }
@@ -2461,6 +2716,18 @@ SP.Store = (function () {
     consumersOf: consumersOf,
     connect: connect,
     disconnect: disconnect,
+    isNetConn: isNetConn,
+    danteList: danteList,
+    isDante: isDante,
+    toggleDante: toggleDante,
+    setDante: setDante,
+    setDanteAll: setDanteAll,
+    netLinksOf: netLinksOf,
+    netLinkBetween: netLinkBetween,
+    freeNetPort: freeNetPort,
+    setSwitchPorts: setSwitchPorts,
+    addNetLink: addNetLink,
+    removeNetLink: removeNetLink,
     connWarning: connWarning,
     connectionError: connectionError,
     cleanupConnectionErrors: cleanupConnectionErrors,
