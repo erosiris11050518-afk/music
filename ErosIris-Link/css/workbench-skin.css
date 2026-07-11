@@ -1326,3 +1326,66 @@ html:not([data-theme="light"]) .diagram-scroll {
     max-height: calc(100vh - 112px);
   }
 }
+
+/* 极光体验室：轻量状态提示与作者邀请。 */
+.demo-quota-badge {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  color: var(--text);
+  font: 700 11px/1.2 -apple-system, "PingFang SC", sans-serif;
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.demo-invite {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) 1fr;
+  gap: 22px;
+  align-items: center;
+  max-width: 620px;
+}
+
+.demo-invite img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.demo-invite p,
+.demo-limit p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.demo-invite p:first-child {
+  color: var(--text);
+  font-weight: 750;
+  font-size: 16px;
+}
+
+.demo-wechat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.demo-wechat span { color: var(--muted); font-size: 12px; }
+.demo-wechat b { color: var(--accent); font: 800 19px/1 monospace; letter-spacing: 0; }
+.demo-limit { max-width: 520px; }
+.demo-limit > b { display: block; margin-bottom: 10px; color: var(--text); font-size: 16px; }
+
+@media (max-width: 620px) {
+  .demo-quota-badge { display: none; }
+  .demo-invite { grid-template-columns: 1fr; }
+  .demo-invite img { width: min(190px, 70vw); margin: 0 auto; }
+}

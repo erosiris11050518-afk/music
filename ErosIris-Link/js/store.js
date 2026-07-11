@@ -129,8 +129,10 @@ SP.warnStorage = (function () {
 })();
 
 SP.Store = (function () {
-  var KEY = 'signalpath-v2';
-  var LEGACY_KEY = 'signalpath-v1';   /* v1 数据只读迁移，原样保留作备份 */
+  var demoMode = false;
+  try { demoMode = new URLSearchParams(window.location.search || '').get('demo') === '1'; } catch (e) {}
+  var KEY = demoMode ? 'erosiris-aurora-state-v2' : 'signalpath-v2';
+  var LEGACY_KEY = demoMode ? '' : 'signalpath-v1';   /* 正式版继续兼容 v1；Demo 使用独立空白工程 */
 
   function defaultMixer() {
     return { physIn: 16, channels: 16, buses: 6, mains: 2, matrices: 4, mainMode: 'LR',
@@ -446,7 +448,7 @@ SP.Store = (function () {
 
   var state;
   try {
-    var raw = localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY);
+    var raw = localStorage.getItem(KEY) || (LEGACY_KEY && localStorage.getItem(LEGACY_KEY));
     if (raw) {
       state = Object.assign(defaultState(), JSON.parse(raw));
       state.mixer = Object.assign(defaultMixer(), state.mixer);

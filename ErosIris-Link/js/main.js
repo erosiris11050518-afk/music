@@ -42,7 +42,9 @@
     if (scene < 0) {
       try { scene = Number(localStorage.getItem('signalpath-welcome-scene')); } catch (e) { scene = -1; }
     }
-    link.href = 'welcome-reverse-prototype/index.html?from=workbench' +
+    var demo = '';
+    try { demo = new URLSearchParams(window.location.search).get('demo') === '1' ? '&demo=1' : ''; } catch (e) {}
+    link.href = 'welcome-reverse-prototype/index.html?from=workbench' + demo +
       (Number.isInteger(scene) && scene >= 0 ? '&v=' + scene : '');
   }
 
@@ -80,8 +82,10 @@
   /* ================= 配置槽：导入多个 JSON 后切换对比（v2 支持临时移除） ================= */
 
   var ConfigSlots = (function () {
-    var KEY = 'signalpath-config-slots-v2';
-    var LEGACY = 'signalpath-config-slots-v1';
+    var demoMode = false;
+    try { demoMode = new URLSearchParams(window.location.search || '').get('demo') === '1'; } catch (e) {}
+    var KEY = demoMode ? 'erosiris-aurora-config-slots-v2' : 'signalpath-config-slots-v2';
+    var LEGACY = demoMode ? '' : 'signalpath-config-slots-v1';
     var slots = [], activeId = 'work';
 
     function cloneState() { return JSON.parse(JSON.stringify(Store.state)); }
@@ -104,7 +108,7 @@
     }
     function load() {
       try {
-        var raw = localStorage.getItem(KEY) || localStorage.getItem(LEGACY);
+        var raw = localStorage.getItem(KEY) || (LEGACY && localStorage.getItem(LEGACY));
         if (raw) {
           var pack = JSON.parse(raw);
           slots = Array.isArray(pack.slots) ? pack.slots : [];

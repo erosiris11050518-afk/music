@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="refresh" content="0; url=../ErosIris-Link/welcome-reverse-prototype/index.html?demo=1&amp;from=aurora-room">
+<title>极光体验室</title>
+</head>
+<body>
+<p>正在进入极光体验室...</p>
+<p><a href="../ErosIris-Link/welcome-reverse-prototype/index.html?demo=1&amp;from=aurora-room">如果页面没有自动打开，请点击这里。</a></p>
+<script>
+(function () {
+  var target = new URL('../ErosIris-Link/welcome-reverse-prototype/index.html', window.location.href);
+  target.searchParams.set('demo', '1');
+  target.searchParams.set('from', 'aurora-room');
+  window.location.replace(target.href);
+})();
+</script>
+</body>
+</html>

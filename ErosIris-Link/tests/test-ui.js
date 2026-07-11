@@ -116,6 +116,7 @@ var rootEntryHtml = readFile('点我打开ErosIris-Link软件.html');
 var githubEntryHtml = readFile('index.html');
 var welcomeAppSource = readFile('welcome-reverse-prototype/app.js');
 var guideSource = readFile('js/guide.js');
+var demoSource = readFile('js/demo.js');
 T('GitHub根入口始终转到软件入口并保留参数', githubEntryHtml.indexOf('点我打开ErosIris-Link软件.html') >= 0 &&
   githubEntryHtml.indexOf('target.search = window.location.search') >= 0 &&
   githubEntryHtml.indexOf('target.hash = window.location.hash') >= 0);
@@ -131,6 +132,22 @@ T('欢迎页优先当前视频并为卡顿播放自动重试', welcomeAppSource.
   welcomeAppSource.indexOf('ensureVideoSource((i + 1) % videos.length, "auto")') >= 0);
 T('小蝶默认位置向页面内侧移动且旧坐标会重新限位', guideSource.indexOf("return 'right:48px;bottom:40px;'") >= 0 &&
   guideSource.indexOf("window.addEventListener('resize'") >= 0);
+T('极光体验室保留欢迎页并把 Demo 参数带入工作台',
+  welcomeAppSource.indexOf('const demoMode = urlParams.get("demo") === "1"') >= 0 &&
+  welcomeAppSource.indexOf('url.searchParams.set("demo", "1")') >= 0 &&
+  rootEntryHtml.indexOf('js/demo.js') >= 0);
+T('Demo 基础不限次，导出与进阶额度各为 3 次',
+  demoSource.indexOf('var LIMIT = 3') >= 0 &&
+  demoSource.indexOf("consume('export'") >= 0 &&
+  demoSource.indexOf("consume('advanced'") >= 0);
+T('Demo 工程、配置与教学进度使用独立存储区',
+  readFile('js/store.js').indexOf('erosiris-aurora-state-v2') >= 0 &&
+  readFile('js/main.js').indexOf('erosiris-aurora-config-slots-v2') >= 0 &&
+  guideSource.indexOf('erosiris.auroraGuideCoursesV1') >= 0);
+T('小蝶可导入 36 型号案例并仅主动邀请作者一次',
+  demoSource.indexOf("'206M'") >= 0 && demoSource.indexOf("'DO115S'") >= 0 &&
+  demoSource.indexOf('wechat.jpg') >= 0 && demoSource.indexOf('ErosAUC') >= 0 &&
+  guideSource.indexOf("'demo-case-import'") >= 0);
 
 print('== DOMContentLoaded 启动 ==');
 var bootErr = null;

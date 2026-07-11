@@ -19,6 +19,7 @@
   const $ = (id) => document.getElementById(id);
   const hero = $("hero");
   const urlParams = new URLSearchParams(window.location.search);
+  const demoMode = urlParams.get("demo") === "1";
 
   function validSceneIndex(value) {
     const n = Number(value);
@@ -50,7 +51,6 @@
   $("logo").textContent = C.brand.logo;
   $("badge").textContent = C.hero.badge;
   $("subtext").textContent = C.hero.subtext;
-
   const heading = $("heading");
   C.hero.headingLines.forEach((line, i) => {
     if (i > 0) heading.appendChild(document.createElement("br"));
@@ -63,6 +63,12 @@
   $("entry-cta").textContent = C.hero.inputCta;
   $("nav-get-started").textContent = C.nav.cta;
   $("m-get-started").textContent = C.nav.cta;
+  if (demoMode) {
+    document.body.classList.add("demo-mode");
+    $("nav-get-started").textContent = "进入体验室";
+    $("m-get-started").textContent = "进入体验室";
+    $("entry-cta").textContent = "开始体验";
+  }
 
   /* ============================================================
      2. 导航链接（桌面胶囊 + 移动菜单共用 config.nav.links）
@@ -325,6 +331,7 @@
     url.searchParams.set("from", "welcome");
     url.searchParams.set("theme", sceneTheme(activeVideo));
     url.searchParams.set("scene", String(activeVideo));
+    if (demoMode) url.searchParams.set("demo", "1");
     const command = withCommand ? entryInput.value.trim() : "";
     if (command) url.searchParams.set("reverse", command);
     return url.href;

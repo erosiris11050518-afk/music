@@ -17,7 +17,10 @@ import update_manifest
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 DIST = os.path.join(ROOT, 'dist')
-PUBLISH_ITEMS = ('index.html', 'mix-export.html', 'assets', 'audio', 'libs', 'ErosIris-Link', 'signalpath')
+PUBLISH_ITEMS = (
+    'index.html', 'mix-export.html', 'assets', 'audio', 'libs',
+    'ErosIris-Link', 'aurora-room', 'signalpath',
+)
 IGNORE_NAMES = {
     '.DS_Store',
     '__MACOSX',
@@ -35,6 +38,7 @@ REQUIRED_AFTER_BUILD = (
     'ErosIris-Link/assets/brand/logo-title.png',
     'ErosIris-Link/css/style.css',
     'ErosIris-Link/js/main.js',
+    'aurora-room/index.html',
     'signalpath/index.html',
 )
 

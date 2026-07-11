@@ -14,9 +14,11 @@
     });
   }
 
-  var POS_KEY = 'signalpath.guideFloatPos';
-  var COURSE_KEY = 'signalpath.guideCoursesV1';
-  var TIP_KEY = 'signalpath.guideTipsV1';
+  var demoMode = false;
+  try { demoMode = new URLSearchParams(window.location.search || '').get('demo') === '1'; } catch (e) {}
+  var POS_KEY = demoMode ? 'erosiris.auroraGuideFloatPos' : 'signalpath.guideFloatPos';
+  var COURSE_KEY = demoMode ? 'erosiris.auroraGuideCoursesV1' : 'signalpath.guideCoursesV1';
+  var TIP_KEY = demoMode ? 'erosiris.auroraGuideTipsV1' : 'signalpath.guideTipsV1';
   var WELCOME_MS = 3000;
   var WELCOME_LINES = [
     '我可以教你帅气的 3 秒反推系统喔！',
@@ -736,10 +738,13 @@
 
   STEPS.home = function () {
     var s = appState();
+    var demoNeedsCase = SP.Demo && SP.Demo.active && !SP.Demo.caseImported();
     var basicsHandled = COURSE_ORDER.every(function (id) {
       return courseData.completed[id] || courseData.skipped[id];
     });
-    var text = courseRun
+    var text = demoNeedsCase
+      ? '欢迎来到极光体验室。要不要让我先导入一套真实案例模板？36 个型号准备好后，你可以马上体验完整反推。'
+      : courseRun
       ? '欢迎回来，上次的教学进度还在。可以继续，也可以选择其他课程。'
       : (basicsHandled
         ? '基础流程已经处理好啦。下面的进阶教学会带你认识第一主界面的每一个按钮。'
@@ -747,11 +752,15 @@
         ? '型号库已经准备好了。五门基础教学会从音响数据一直带到工程交付。'
         : '嗨，我是小蝶。第一次来就从“音响数据”开始，我会一步一步带你操作。'));
     var chips = [];
-    if (courseRun) chips.push(chip('course-resume', '继续上次教学', 'primary'));
+    if (demoNeedsCase) {
+      chips.push(chip('demo-case-import', '帮我导入案例模板', 'primary'));
+      chips.push(chip('demo-case-skip', '先自己看看'));
+    } else if (courseRun) chips.push(chip('course-resume', '继续上次教学', 'primary'));
     else if (basicsHandled) chips.push(chip('course-advanced-global', '开始主界面进阶教学', 'primary'));
     else chips.push(chip('course-templates', '从第一课开始', 'primary'));
     if (s.devices && !s.connections) chips.push(chip('smart-all', '一键连接现有设备'));
     chips.push(chip('faq2', '常见问题'));
+    if (SP.Demo && SP.Demo.active) chips.push(chip('demo-author', '关于作者'));
     return { id: 'home', text: text, chips: chips,
       extra: courseCardsHtml() + tipHtml() };
   };
@@ -930,6 +939,15 @@
     import: function () { go('import'); },
     faq: function () { go('faq'); },
     faq2: function () { go('faq'); },
+    'demo-case-import': function () {
+      if (SP.Demo && SP.Demo.importCaseTemplates) SP.Demo.importCaseTemplates();
+      go('counts');
+    },
+    'demo-case-skip': function () { go('counts'); },
+    'demo-author': function () {
+      closePanel();
+      if (SP.Demo && SP.Demo.showInvite) SP.Demo.showInvite(true);
+    },
     teach: function () {
       closePanel();
       if (SP.switchView) SP.switchView('teach');
