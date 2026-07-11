@@ -115,6 +115,9 @@ T('项目根地址默认进入欢迎页', rootEntryHtml.indexOf("entryParams.get
   rootEntryHtml.indexOf("welcome-reverse-prototype/index.html?from=root") >= 0);
 T('欢迎页使用持久工作台参数避免刷新循环', welcomeAppSource.indexOf('url.searchParams.set("workspace", "1")') >= 0 &&
   rootEntryHtml.indexOf("entryParams.get('from') === 'welcome'") >= 0);
+T('欢迎页首个场景在媒体就绪后显式播放', welcomeAppSource.indexOf('function playActiveVideo()') >= 0 &&
+  welcomeAppSource.indexOf('addEventListener("canplay", playActiveVideo') >= 0 &&
+  welcomeAppSource.indexOf('window.addEventListener("load", playActiveVideo') >= 0);
 
 print('== DOMContentLoaded 启动 ==');
 var bootErr = null;

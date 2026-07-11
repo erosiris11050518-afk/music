@@ -100,6 +100,7 @@
     const v = document.createElement("video");
     v.className = "bg-video" + (i === initialScene ? " is-active" : "");
     v.muted = true;
+    v.defaultMuted = true;
     v.loop = false;
     v.autoplay = i === initialScene;
     v.playsInline = true;
@@ -134,6 +135,26 @@
   hero.classList.toggle("dark-content", !!C.scenes[initialScene].darkContent);
   rememberScene(initialScene);
 
+  function playActiveVideo() {
+    const current = videos[activeVideo];
+    if (!current || document.hidden) return;
+    current.muted = true;
+    current.defaultMuted = true;
+    current.playsInline = true;
+    const playPromise = current.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => { /* 静音自动播放仍被浏览器限制时保持静态首帧 */ });
+    }
+  }
+
+  // 动态创建的 video 不能只依赖 autoplay 属性；显式启动并在媒体就绪后兜底。
+  videos[activeVideo].addEventListener("loadeddata", playActiveVideo, { once: true });
+  videos[activeVideo].addEventListener("canplay", playActiveVideo, { once: true });
+  window.requestAnimationFrame(playActiveVideo);
+  if (document.readyState === "complete") playActiveVideo();
+  else window.addEventListener("load", playActiveVideo, { once: true });
+  window.addEventListener("pageshow", playActiveVideo);
+
   function setActiveVideo(index) {
     if (index === activeVideo || isTransitioning) return;
     isTransitioning = true;
@@ -143,7 +164,7 @@
     rememberScene(index);
 
     videos[index].currentTime = 0;
-    videos[index].play().catch(() => { /* 自动播放被拒时静默 */ });
+    playActiveVideo();
     videos[index].classList.add("is-active");
     videos[prev].classList.remove("is-active");
 
@@ -167,7 +188,7 @@
     if (document.hidden) {
       videos.forEach((v) => { if (!v.paused) v.pause(); });
     } else {
-      videos[activeVideo].play().catch(() => { /* ignore */ });
+      playActiveVideo();
     }
   });
 
