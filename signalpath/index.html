@@ -8,6 +8,17 @@
 <script>
 (function () {
   try {
+    var entryParams = new URLSearchParams(window.location.search);
+    var isWorkspace = entryParams.get('workspace') === '1' || entryParams.get('from') === 'welcome';
+    if (!isWorkspace) {
+      window.location.replace('welcome-reverse-prototype/index.html?from=root');
+    }
+  } catch (e) {}
+})();
+</script>
+<script>
+(function () {
+  try {
     var params = new URLSearchParams(window.location.search);
     var requested = params.get('from') === 'welcome' ? params.get('theme') : '';
     var theme = requested || localStorage.getItem('signalpath-theme');

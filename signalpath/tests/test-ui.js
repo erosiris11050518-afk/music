@@ -109,6 +109,12 @@ T('SP.Store / renderAll 前置就绪', !!SP.Store && !!SP.renderWiringDiagram);
 T('欢迎场景均声明工作台昼夜主题', window.SITE_CONFIG.scenes.every(function (scene) {
   return scene.workbenchTheme === 'light' || scene.workbenchTheme === 'dark';
 }));
+var rootEntryHtml = readFile('index.html');
+var welcomeAppSource = readFile('welcome-reverse-prototype/app.js');
+T('项目根地址默认进入欢迎页', rootEntryHtml.indexOf("entryParams.get('workspace') === '1'") >= 0 &&
+  rootEntryHtml.indexOf("welcome-reverse-prototype/index.html?from=root") >= 0);
+T('欢迎页使用持久工作台参数避免刷新循环', welcomeAppSource.indexOf('url.searchParams.set("workspace", "1")') >= 0 &&
+  rootEntryHtml.indexOf("entryParams.get('from') === 'welcome'") >= 0);
 
 print('== DOMContentLoaded 启动 ==');
 var bootErr = null;

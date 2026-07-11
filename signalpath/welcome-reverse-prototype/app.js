@@ -237,6 +237,7 @@
      ============================================================ */
   function workspaceUrl(withCommand) {
     const url = new URL(C.workspaceUrl, window.location.href);
+    url.searchParams.set("workspace", "1");
     url.searchParams.set("from", "welcome");
     url.searchParams.set("theme", sceneTheme(activeVideo));
     url.searchParams.set("scene", String(activeVideo));
