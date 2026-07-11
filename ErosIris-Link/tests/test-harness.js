@@ -1058,6 +1058,21 @@ T('智连把调音台接到交换机 1、2 口', Store.netLinksOf(scSw.id).lengt
   Store.state.connections.some(function(c){ return c.net && c.tid === scSw.id && c.tport === 0; }) &&
   Store.state.connections.some(function(c){ return c.net && c.tid === scSw.id && c.tport === 1; }));
 
+print('== 27. 清设备保留案例模板与库存 ==');
+Store.replaceState(Store.defaultState());
+Store.mergeTemplate({ type:'speaker', name:'案例库存音箱', ins:1, outs:1,
+  speakerRole:'fullrange', specs:{ powered:'passive', power:500, ohms:8, stock:36 } });
+Store.addQuickPreset('案例数量预设', { counts:[1, 1, 2, 4, 2] });
+Store.addReversePreset('案例反推预设', { rows:[{ role:'fullrange', name:'案例库存音箱', count:4 }] });
+Store.addDevice('speaker', '临时画布音箱', 1, 1);
+var clearedN = Store.clearAllDevices();
+var keptCase = Store.state.deviceTemplates.filter(function (t) { return t.name === '案例库存音箱'; })[0];
+T('清设备后画布设备与连线为空', clearedN === 1 && Store.state.devices.length === 0 && Store.state.connections.length === 0);
+T('清设备后案例模板与库存数量保留', !!keptCase && +keptCase.specs.stock === 36);
+T('清设备后数量预设与反推预设保留',
+  Store.state.quickPresets.some(function (p) { return p.name === '案例数量预设'; }) &&
+  Store.state.reversePresets.some(function (p) { return p.name === '案例反推预设'; }));
+
 print('');
 print('结果: ' + pass + ' 通过, ' + fail + ' 失败');
 if (fail) throw new Error(fail + ' tests failed');

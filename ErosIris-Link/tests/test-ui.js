@@ -117,6 +117,7 @@ var githubEntryHtml = readFile('index.html');
 var welcomeAppSource = readFile('welcome-reverse-prototype/app.js');
 var welcomeHtml = readFile('welcome-reverse-prototype/index.html');
 var guideSource = readFile('js/guide.js');
+var mainSource = readFile('js/main.js');
 var demoSource = readFile('js/demo.js');
 var diagramSource = readFile('js/diagram.js');
 var skinSource = readFile('css/workbench-skin.css');
@@ -158,6 +159,12 @@ T('极光体验室保留欢迎页并把 Demo 参数带入工作台',
   welcomeAppSource.indexOf('const demoMode = urlParams.get("demo") === "1"') >= 0 &&
   welcomeAppSource.indexOf('url.searchParams.set("demo", "1")') >= 0 &&
   rootEntryHtml.indexOf('js/demo.js') >= 0);
+T('顶栏默认清设备且明确保留案例库存',
+  rootEntryHtml.indexOf('id="btn-clear"') >= 0 &&
+  rootEntryHtml.indexOf('>清设备</button>') >= 0 &&
+  rootEntryHtml.indexOf('保留案例模板和库存') >= 0 &&
+  mainSource.indexOf('Store.clearAllDevices()') >= 0 &&
+  mainSource.indexOf('案例模板和库存已保留') >= 0);
 T('Demo 基础不限次，导出与进阶额度各为 3 次',
   demoSource.indexOf('var LIMIT = 3') >= 0 &&
   demoSource.indexOf("consume('export'") >= 0 &&

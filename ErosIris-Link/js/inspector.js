@@ -2599,7 +2599,7 @@
       SP.multiSelected = [];
       SP.diagramScope = 'all';
       SP.renderAll();
-      SP.toast('已清空当前设备连线图 ' + n + ' 台设备（⌘Z 可撤销）');
+      SP.toast('已清空当前设备连线图 ' + n + ' 台设备，案例模板和库存已保留（⌘Z 可撤销）');
     };
     var clearDevBtn = el('btn-clear-devices-diagram');
     if (clearDevBtn) clearDevBtn.addEventListener('click', SP.clearDiagramDevicesPrompt);

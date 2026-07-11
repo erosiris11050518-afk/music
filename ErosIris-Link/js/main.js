@@ -861,17 +861,18 @@
       readNext(0);
     });
 
-    /* ---------- 清空（不再确认：进撤销栈，⌘Z 可回退） ---------- */
+    /* ---------- 清设备：只清画布，案例模板、库存和各类预设全部保留 ---------- */
     el('btn-clear').addEventListener('click', function () {
       if (!Store.state.devices.length && !Store.state.connections.length) {
-        SP.toast('当前已是空白', true);
+        SP.toast('当前已经没有设备，案例模板和库存仍保留', true);
         return;
       }
-      Store.replaceState(Store.defaultState());
+      var n = Store.clearAllDevices();
       SP.selectedDeviceId = '';
       SP.multiSelected = [];
+      SP.diagramScope = 'all';
       SP.renderAll();
-      SP.toast('已清空全部数据（⌘Z 可撤销）');
+      SP.toast('已清空 ' + n + ' 台设备，案例模板和库存已保留（⌘Z 可撤销）');
     });
 
     /* ---------- 启动：IndexedDB 图片缓存就绪后再渲染 ---------- */
