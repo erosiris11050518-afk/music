@@ -71,7 +71,7 @@ SP.inferSpeakerRole = function (name) {
   return 'fullrange';
 };
 
-SP.TEMPLATES = [
+var BASE_TEMPLATES = [
   { type: 'mixer', name: 'WING RACK', ins: 24, outs: 8,
     mixerDefaults: { channels: 24, buses: 16, mains: 4, matrices: 8, mainMode: 'LR' } },
   { type: 'mixer', name: 'MR18', ins: 18, outs: 8,
@@ -84,6 +84,68 @@ SP.TEMPLATES = [
   { type: 'speaker', name: '全频音箱', ins: 1, outs: 1, speakerRole: 'fullrange' },
   { type: 'speaker', name: '超低音箱', ins: 1, outs: 1, speakerRole: 'sub' }
 ];
+
+function caseTemplate(type, name, ins, outs, specs, role) {
+  var item = { type: type, name: name, ins: ins, outs: outs, specs: specs || {} };
+  if (role) item.speakerRole = role;
+  return item;
+}
+
+/* 正式版与体验版共用的 36 型号案例库。新用户开局即有，旧用户升级时只补缺失项。 */
+SP.CASE_TEMPLATES = [
+  caseTemplate('speaker', 'DO106', 1, 1, { powered: 'passive', power: 120, ohms: 8, size: '6.5' }, 'fullrange'),
+  caseTemplate('speaker', 'DO108', 1, 1, { powered: 'passive', power: 150, ohms: 8, size: '8' }, 'fullrange'),
+  caseTemplate('speaker', 'DO110', 1, 1, { powered: 'passive', power: 250, ohms: 8, size: '10' }, 'fullrange'),
+  caseTemplate('speaker', 'DO112', 1, 1, { powered: 'passive', power: 300, ohms: 8, size: '12' }, 'fullrange'),
+  caseTemplate('speaker', 'DO115', 1, 1, { powered: 'passive', power: 400, ohms: 8, size: '15' }, 'fullrange'),
+  caseTemplate('speaker', 'DO115H', 1, 1, { powered: 'passive', power: 600, ohms: 8, size: '15' }, 'fullrange'),
+  caseTemplate('speaker', 'DO215', 1, 1, { powered: 'passive', power: 800, ohms: 4, size: '双' }, 'fullrange'),
+  caseTemplate('speaker', '206M', 2, 2, { powered: 'passive', power: 280, ohms: 12, size: '双' }, 'fullrange'),
+  caseTemplate('speaker', 'DO115S', 1, 1, { powered: 'passive', power: 600, ohms: 8, size: '15' }, 'sub'),
+  caseTemplate('speaker', 'DO118S', 1, 1, { powered: 'passive', power: 600, ohms: 8, size: '18' }, 'sub'),
+  caseTemplate('speaker', 'DO218S', 1, 1, { powered: 'passive', power: 1200, ohms: 4, size: '双' }, 'sub'),
+  caseTemplate('speaker', 'K212S', 1, 1, { powered: 'passive', power: 700, ohms: 4, size: '双' }, 'sub'),
+  caseTemplate('speaker', 'K18S', 1, 1, { powered: 'passive', power: 600, ohms: 8, size: '18' }, 'sub'),
+  caseTemplate('speaker', '有源双6寸', 1, 1, { powered: 'active', power: 350, size: '双6寸' }, 'fullrange'),
+  caseTemplate('speaker', '有源超低18', 1, 1, { powered: 'active', power: 1200, size: '18' }, 'sub'),
+  caseTemplate('amp', 'FA1500', 2, 2, { rackU: 3, power: 1500 }),
+  caseTemplate('amp', 'FA1250', 2, 2, { rackU: 2, power: 1250 }),
+  caseTemplate('amp', 'FA900', 2, 2, { rackU: 2, power: 900 }),
+  caseTemplate('amp', 'FA700', 2, 2, { rackU: 2, power: 700 }),
+  caseTemplate('amp', 'FA500', 2, 2, { rackU: 2, power: 500 }),
+  caseTemplate('amp', 'SA2002', 2, 2, { rackU: 2, power: 2000 }),
+  caseTemplate('amp', 'SA1402', 2, 2, { rackU: 2, power: 1400 }),
+  caseTemplate('amp', 'SA1002', 2, 2, { rackU: 2, power: 1000 }),
+  caseTemplate('amp', 'SA802', 2, 2, { rackU: 2, power: 800 }),
+  caseTemplate('amp', 'SA602', 2, 2, { rackU: 1, power: 600 }),
+  caseTemplate('amp', 'SA202', 2, 2, { rackU: 1, power: 200 }),
+  caseTemplate('amp', 'SA2004', 4, 4, { rackU: 2, power: 2000 }),
+  caseTemplate('amp', 'SA1404', 4, 4, { rackU: 2, power: 1400 }),
+  caseTemplate('amp', 'SA1004', 4, 4, { rackU: 2, power: 1000 }),
+  caseTemplate('amp', 'SA804', 4, 4, { rackU: 2, power: 800 }),
+  caseTemplate('amp', 'SA604', 4, 4, { rackU: 1, power: 600 }),
+  caseTemplate('dsp', 'Unit48', 4, 8, { rackU: 1 }),
+  caseTemplate('dsp', 'DS48', 4, 8, { rackU: 1 }),
+  caseTemplate('dsp', 'DS36', 3, 6, {}),
+  caseTemplate('dsp', 'DS24', 2, 4, { rackU: 1 }),
+  caseTemplate('mixer', 'WING RACK', 16, 8, { rackU: 3 })
+];
+
+SP.TEMPLATES = JSON.parse(JSON.stringify(BASE_TEMPLATES));
+SP.CASE_TEMPLATES.forEach(function (item) {
+  var idx = -1;
+  SP.TEMPLATES.forEach(function (current, i) {
+    if (current.type === item.type && current.name === item.name) idx = i;
+  });
+  if (idx >= 0) {
+    var merged = Object.assign({}, SP.TEMPLATES[idx], JSON.parse(JSON.stringify(item)));
+    if (SP.TEMPLATES[idx].mixerDefaults && !merged.mixerDefaults) {
+      merged.mixerDefaults = JSON.parse(JSON.stringify(SP.TEMPLATES[idx].mixerDefaults));
+    }
+    SP.TEMPLATES[idx] = merged;
+  }
+  else SP.TEMPLATES.push(JSON.parse(JSON.stringify(item)));
+});
 
 SP.MIXER_TEMPLATES = [];
 
@@ -208,7 +270,7 @@ SP.Store = (function () {
   function defaultState() {
     return { devices: [], connections: [], customTypes: [], inputGear: [],
       userMixerTemplates: [], deviceTemplates: JSON.parse(JSON.stringify(SP.TEMPLATES)),
-      deviceTemplatesVersion: 5, mixer: defaultMixer(), activeMixerId: '',
+      deviceTemplatesVersion: 6, mixer: defaultMixer(), activeMixerId: '',
       diagramLayout: 'bottomup', diagramOrient: 'v', seq: 1, quickPresets: [], reversePresets: [],
       powerAlarmMode: 'show',
       power: { eff: 0.7, headroom: 1.3, mixerW: 150, dspW: 50, seqW: 30 } };
@@ -287,20 +349,19 @@ SP.Store = (function () {
     if (!s.diagramLayout) s.diagramLayout = 'bottomup';
     if (s.diagramOrient !== 'h') s.diagramOrient = 'v';
     upgradeData(s);
-    /* v3：播种新的默认常用型号（WING RACK / MR18 / Unit48 / 两类功放 / 三类音箱），
-       迁移时保留用户自建的型号（按名称去重） */
+    /* v6：自动补齐 36 型号案例库；已有同类型同名模板优先，避免覆盖用户修改。 */
     if (!s.deviceTemplates) {
       s.deviceTemplates = JSON.parse(JSON.stringify(SP.TEMPLATES));
-      s.deviceTemplatesVersion = 5;
-    } else if (s.deviceTemplatesVersion !== 5) {
+      s.deviceTemplatesVersion = 6;
+    } else if (s.deviceTemplatesVersion !== 6) {
       var seeds = JSON.parse(JSON.stringify(SP.TEMPLATES));
       var seen = {};
-      seeds.forEach(function (t) { seen[t.name] = true; });
-      s.deviceTemplates.forEach(function (t) {
-        if (!seen[t.name]) { seeds.push(t); seen[t.name] = true; }
+      s.deviceTemplates.forEach(function (t) { seen[t.type + '\n' + t.name] = true; });
+      seeds.forEach(function (t) {
+        var key = t.type + '\n' + t.name;
+        if (!seen[key]) { s.deviceTemplates.push(t); seen[key] = true; }
       });
-      s.deviceTemplates = seeds;
-      s.deviceTemplatesVersion = 5;
+      s.deviceTemplatesVersion = 6;
     }
     if (s.mixer) normalizeMixer(s.mixer);
     (s.devices || []).forEach(function (d) {

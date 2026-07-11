@@ -118,6 +118,7 @@ var welcomeAppSource = readFile('welcome-reverse-prototype/app.js');
 var welcomeHtml = readFile('welcome-reverse-prototype/index.html');
 var guideSource = readFile('js/guide.js');
 var mainSource = readFile('js/main.js');
+var storeSource = readFile('js/store.js');
 var demoSource = readFile('js/demo.js');
 var diagramSource = readFile('js/diagram.js');
 var skinSource = readFile('css/workbench-skin.css');
@@ -173,8 +174,14 @@ T('Demo 工程、配置与教学进度使用独立存储区',
   readFile('js/store.js').indexOf('erosiris-aurora-state-v2') >= 0 &&
   readFile('js/main.js').indexOf('erosiris-aurora-config-slots-v2') >= 0 &&
   guideSource.indexOf('erosiris.auroraGuideCoursesV1') >= 0);
-T('小蝶可导入 36 型号案例并仅主动邀请作者一次',
-  demoSource.indexOf("'206M'") >= 0 && demoSource.indexOf("'DO115S'") >= 0 &&
+T('36 型号案例开局自动补齐且教学重复导入不新增',
+  storeSource.indexOf('SP.CASE_TEMPLATES') >= 0 &&
+  storeSource.indexOf("caseTemplate('speaker', '206M'") >= 0 &&
+  storeSource.indexOf("caseTemplate('speaker', 'DO115S'") >= 0 &&
+  storeSource.indexOf('deviceTemplatesVersion: 6') >= 0 &&
+  demoSource.indexOf('var CASE_TEMPLATES = SP.CASE_TEMPLATES || []') >= 0 &&
+  demoSource.indexOf('if (exists) return') >= 0 &&
+  guideSource.indexOf('不会重复添加') >= 0 &&
   demoSource.indexOf('wechat.jpg') >= 0 && demoSource.indexOf('ErosAUC') >= 0 &&
   guideSource.indexOf("'demo-case-import'") >= 0);
 

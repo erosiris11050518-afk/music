@@ -89,55 +89,17 @@
     return result;
   }
 
-  function template(type, name, ins, outs, specs, role) {
-    var item = { type: type, name: name, ins: ins, outs: outs, specs: specs || {} };
-    if (role) item.speakerRole = role;
-    return item;
-  }
-  var CASE_TEMPLATES = [
-    template('speaker', 'DO106', 1, 1, { powered: 'passive', power: 120, ohms: 8, size: '6.5' }, 'fullrange'),
-    template('speaker', 'DO108', 1, 1, { powered: 'passive', power: 150, ohms: 8, size: '8' }, 'fullrange'),
-    template('speaker', 'DO110', 1, 1, { powered: 'passive', power: 250, ohms: 8, size: '10' }, 'fullrange'),
-    template('speaker', 'DO112', 1, 1, { powered: 'passive', power: 300, ohms: 8, size: '12' }, 'fullrange'),
-    template('speaker', 'DO115', 1, 1, { powered: 'passive', power: 400, ohms: 8, size: '15' }, 'fullrange'),
-    template('speaker', 'DO115H', 1, 1, { powered: 'passive', power: 600, ohms: 8, size: '15' }, 'fullrange'),
-    template('speaker', 'DO215', 1, 1, { powered: 'passive', power: 800, ohms: 4, size: '双' }, 'fullrange'),
-    template('speaker', '206M', 2, 2, { powered: 'passive', power: 280, ohms: 12, size: '双' }, 'fullrange'),
-    template('speaker', 'DO115S', 1, 1, { powered: 'passive', power: 600, ohms: 8, size: '15' }, 'sub'),
-    template('speaker', 'DO118S', 1, 1, { powered: 'passive', power: 600, ohms: 8, size: '18' }, 'sub'),
-    template('speaker', 'DO218S', 1, 1, { powered: 'passive', power: 1200, ohms: 4, size: '双' }, 'sub'),
-    template('speaker', 'K212S', 1, 1, { powered: 'passive', power: 700, ohms: 4, size: '双' }, 'sub'),
-    template('speaker', 'K18S', 1, 1, { powered: 'passive', power: 600, ohms: 8, size: '18' }, 'sub'),
-    template('speaker', '有源双6寸', 1, 1, { powered: 'active', power: 350, size: '双6寸' }, 'fullrange'),
-    template('speaker', '有源超低18', 1, 1, { powered: 'active', power: 1200, size: '18' }, 'sub'),
-    template('amp', 'FA1500', 2, 2, { rackU: 3, power: 1500 }),
-    template('amp', 'FA1250', 2, 2, { rackU: 2, power: 1250 }),
-    template('amp', 'FA900', 2, 2, { rackU: 2, power: 900 }),
-    template('amp', 'FA700', 2, 2, { rackU: 2, power: 700 }),
-    template('amp', 'FA500', 2, 2, { rackU: 2, power: 500 }),
-    template('amp', 'SA2002', 2, 2, { rackU: 2, power: 2000 }),
-    template('amp', 'SA1402', 2, 2, { rackU: 2, power: 1400 }),
-    template('amp', 'SA1002', 2, 2, { rackU: 2, power: 1000 }),
-    template('amp', 'SA802', 2, 2, { rackU: 2, power: 800 }),
-    template('amp', 'SA602', 2, 2, { rackU: 1, power: 600 }),
-    template('amp', 'SA202', 2, 2, { rackU: 1, power: 200 }),
-    template('amp', 'SA2004', 4, 4, { rackU: 2, power: 2000 }),
-    template('amp', 'SA1404', 4, 4, { rackU: 2, power: 1400 }),
-    template('amp', 'SA1004', 4, 4, { rackU: 2, power: 1000 }),
-    template('amp', 'SA804', 4, 4, { rackU: 2, power: 800 }),
-    template('amp', 'SA604', 4, 4, { rackU: 1, power: 600 }),
-    template('dsp', 'Unit48', 4, 8, { rackU: 1 }),
-    template('dsp', 'DS48', 4, 8, { rackU: 1 }),
-    template('dsp', 'DS36', 3, 6, {}),
-    template('dsp', 'DS24', 2, 4, { rackU: 1 }),
-    template('mixer', 'WING RACK', 16, 8, { rackU: 3 })
-  ];
+  var CASE_TEMPLATES = SP.CASE_TEMPLATES || [];
 
   function importCaseTemplates() {
     if (!active || !Store) return { added: 0, updated: 0 };
     var added = 0, updated = 0;
     Store.batch(function () {
       CASE_TEMPLATES.forEach(function (item) {
+        var exists = Store.state.deviceTemplates.some(function (current) {
+          return current.type === item.type && current.name === item.name;
+        });
+        if (exists) return;
         var result = Store.mergeTemplate(JSON.parse(JSON.stringify(item)));
         if (result === 'added') added++; else if (result === 'updated') updated++;
       });
@@ -145,7 +107,9 @@
     state.caseImported = true;
     save();
     if (SP.renderAll) SP.renderAll();
-    if (SP.toast) SP.toast('案例模板已准备好：36 个型号，可以开始反推啦');
+    if (SP.toast) SP.toast(added
+      ? '案例模板已补齐：新增 ' + added + ' 个型号，可以开始反推啦'
+      : '36 个案例型号已经齐全，没有重复添加');
     return { added: added, updated: updated };
   }
 

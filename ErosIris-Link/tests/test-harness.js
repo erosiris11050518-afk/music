@@ -1073,6 +1073,27 @@ T('清设备后数量预设与反推预设保留',
   Store.state.quickPresets.some(function (p) { return p.name === '案例数量预设'; }) &&
   Store.state.reversePresets.some(function (p) { return p.name === '案例反推预设'; }));
 
+print('== 28. 36 型号案例模板自动补齐且不覆盖用户同名模板 ==');
+var defaultCases = Store.defaultState();
+var defaultCaseKeys = {};
+defaultCases.deviceTemplates.forEach(function (t) { defaultCaseKeys[t.type + '\n' + t.name] = true; });
+T('默认状态内置完整 36 型号案例库', SP.CASE_TEMPLATES.length === 36 &&
+  SP.CASE_TEMPLATES.every(function (t) { return defaultCaseKeys[t.type + '\n' + t.name]; }));
+T('案例调音台保留内部通道默认配置', !!defaultCases.deviceTemplates.filter(function (t) {
+  return t.type === 'mixer' && t.name === 'WING RACK' && t.mixerDefaults && t.mixerDefaults.channels === 24;
+})[0]);
+var user206 = { type:'speaker', name:'206M', ins:1, outs:1, speakerRole:'fullrange',
+  specs:{ powered:'passive', power:999, ohms:8, stock:88 } };
+var legacyTemplates = Store.defaultState();
+legacyTemplates.deviceTemplates = [user206];
+legacyTemplates.deviceTemplatesVersion = 5;
+Store.replaceState(legacyTemplates, { noHistory:true, resetHistory:true });
+var migrated206 = Store.state.deviceTemplates.filter(function (t) { return t.type === 'speaker' && t.name === '206M'; });
+T('旧库打开后自动补齐案例型号并升级版本', Store.state.deviceTemplatesVersion === 6 &&
+  Store.state.deviceTemplates.some(function (t) { return t.name === 'DO115S'; }));
+T('自动补齐不覆盖用户同名型号且不制造重复', migrated206.length === 1 &&
+  +migrated206[0].specs.power === 999 && +migrated206[0].specs.stock === 88);
+
 print('');
 print('结果: ' + pass + ' 通过, ' + fail + ' 失败');
 if (fail) throw new Error(fail + ' tests failed');

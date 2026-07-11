@@ -745,7 +745,7 @@
       return courseData.completed[id] || courseData.skipped[id];
     });
     var text = demoNeedsCase
-      ? '欢迎来到极光体验室。要不要让我先导入一套真实案例模板？36 个型号准备好后，你可以马上体验完整反推。'
+      ? '欢迎来到极光体验室。36 个案例型号开局已经准备好了。要不要跟我再走一遍导入教学？同名型号只会识别为已有，不会重复添加。'
       : courseRun
       ? '欢迎回来，上次的教学进度还在。可以继续，也可以选择其他课程。'
       : (basicsHandled
@@ -756,7 +756,7 @@
     var chips = [];
     var demoCaseActions = demoNeedsCase
       ? '<div class="gd-demo-case-actions">' +
-        chip('demo-case-import', '帮我导入案例模板', 'primary') +
+        chip('demo-case-import', '跟我演示导入模板', 'primary') +
         chip('demo-case-skip', '先自己看看') + '</div>'
       : '';
     if (courseRun) chips.push(chip('course-resume', '继续上次教学', 'primary'));
