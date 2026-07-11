@@ -975,6 +975,72 @@ html[data-theme="light"] .gd-fill-guide { background: rgba(232, 242, 248, .72); 
   .gd-course-grid { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 720px), (pointer: coarse) {
+  #wiring-diagram,
+  #wiring-diagram > svg {
+    touch-action: pan-x pan-y;
+  }
+
+  #wiring-diagram {
+    -webkit-overflow-scrolling: touch;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .mobile-client .welcome-btn {
+    display: none;
+  }
+
+  .btn,
+  .tab,
+  button.shortcut-hint {
+    min-height: 42px;
+  }
+
+  #wiring-diagram .port-hit {
+    r: 14px;
+  }
+
+  .diagram-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .diagram-toolbar::-webkit-scrollbar { display: none; }
+  .diagram-toolbar > * { flex: none; }
+
+  .mobile-client .modal {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    max-height: calc(100svh - 16px);
+  }
+
+  .mobile-client .topbar {
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+}
+
+.insp-multi-selection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 2px solid var(--brand);
+  border-radius: 7px;
+  background: var(--brand-softer);
+  box-shadow: 0 0 0 3px rgba(105, 191, 232, .1);
+}
+
+.insp-multi-selection span { min-width: 0; }
+.insp-multi-selection b { display: block; color: var(--text); font-size: 12px; }
+.insp-multi-selection small { display: block; margin-top: 4px; color: var(--text-dim); line-height: 1.45; }
+.insp-multi-selection kbd { color: var(--brand); }
+
 @media (prefers-reduced-motion: reduce) {
   .btn, .tab, .insp-row { transition: none; }
   .guide-spot { animation: none; }

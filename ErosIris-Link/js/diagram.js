@@ -66,7 +66,11 @@
     return '<style>' +
       '.node-box{fill:' + t.nodeFill + ';stroke:' + t.nodeStroke + ';stroke-width:1.25}' +
       '.node-box.speaker-node{fill:' + t.speakerFill + ';stroke-width:1.8}' +
-      '[data-node].sel .node-box{stroke:' + t.sel + ';stroke-width:2.2}' +
+      '[data-node].sel .node-box{stroke:' + t.sel + ';stroke-width:3}' +
+      '[data-node].multi-sel{filter:drop-shadow(0 0 7px ' + t.sel + ')}' +
+      '[data-node].multi-sel .node-box{stroke:' + t.sel + ';stroke-width:4}' +
+      'svg.has-multi-selection [data-node]:not(.multi-sel){opacity:.48}' +
+      'svg.has-multi-selection [data-node]{transition:opacity .12s}' +
       '.speaker-glow{fill:none;stroke:#4fbf8b;stroke-width:1;opacity:.4}' +
       '.node-title{fill:' + t.title + ';font:800 14px ' + SANS + ';letter-spacing:0}' +
       '.node-spec{fill:' + t.dim + ';font:10px ' + MONO + '}' +
@@ -630,7 +634,7 @@
     var tickColor = theme.tick;
     var svg = [];
     svg.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + totalW + '" height="' + totalH +
-      '" viewBox="0 0 ' + totalW + ' ' + totalH + '" style="touch-action:none">');
+      '" viewBox="0 0 ' + totalW + ' ' + totalH + '" style="touch-action:pan-x pan-y">');
     svg.push(svgStyle());
     svg.push('<defs>' +
       '<filter id="node-shadow" x="-18%" y="-24%" width="136%" height="158%">' +
@@ -1097,11 +1101,32 @@
 
   /* --- 选中设备 → 框图节点描边高亮（单选 + 框选多选） --- */
   SP.multiSelected = SP.multiSelected || [];
+  function coarsePointer() {
+    try { return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); }
+    catch (e) { return false; }
+  }
+  function isTouchInput(e) {
+    return !!(e && (e.pointerType === 'touch' || (!e.pointerType && coarsePointer())));
+  }
+  function isMouseInput(e) {
+    return !!(e && (e.pointerType === 'mouse' || (!e.pointerType && !coarsePointer())));
+  }
+  function mobileClient() {
+    return !!(document.documentElement && document.documentElement.classList &&
+      document.documentElement.classList.contains('mobile-client'));
+  }
+  SP.isCoarsePointer = coarsePointer;
+  SP.isTouchInput = isTouchInput;
+  SP.isMobileClient = mobileClient;
   function applySelection(container) {
+    var multi = SP.multiSelected.length > 1;
+    var svgEl = container.querySelector('svg');
+    if (svgEl && svgEl.classList) svgEl.classList.toggle('has-multi-selection', multi);
     container.querySelectorAll('[data-node]').forEach(function (g) {
       if (!g.classList) return;
       var id = g.dataset.node;
       g.classList.toggle('sel', id === SP.selectedDeviceId || SP.multiSelected.indexOf(id) >= 0);
+      g.classList.toggle('multi-sel', multi && SP.multiSelected.indexOf(id) >= 0);
     });
   }
   SP.applyDiagramSelection = applySelection;
@@ -1284,6 +1309,8 @@
     svgEl.addEventListener('pointerdown', function (e) {
       if (e.button !== 0) return;
       if (e.target.closest && e.target.closest('[data-node],[data-in-device],[data-out-device]')) return;
+      /* 框选是鼠标专属动作；手指空白滑动交给浏览器滚动画布。 */
+      if (!isMouseInput(e) || mobileClient()) return;
       e.preventDefault();
       var vb = svgEl.viewBox.baseVal;
       var r0 = svgEl.getBoundingClientRect();
@@ -1414,6 +1441,23 @@
         if (e.button === 2) return;
         var dev = Store.getDevice(g.dataset.node);
         if (!dev) return;
+        if (isTouchInput(e)) {
+          /* 手指不拖设备：短按选中，移动则保持原生单指滚动。 */
+          var tapX = e.clientX, tapY = e.clientY;
+          function clearTouchTap() {
+            document.removeEventListener('pointerup', onTouchUp);
+            document.removeEventListener('pointercancel', clearTouchTap);
+          }
+          function onTouchUp(ev) {
+            clearTouchTap();
+            if (Math.abs(ev.clientX - tapX) <= 10 && Math.abs(ev.clientY - tapY) <= 10 && SP.selectDevice) {
+              SP.selectDevice(dev.id, true);
+            }
+          }
+          document.addEventListener('pointerup', onTouchUp);
+          document.addEventListener('pointercancel', clearTouchTap);
+          return;
+        }
         e.preventDefault();
         /* 按下即高亮：选中反馈零延迟（设备栏定位放到松开时） */
         if (SP.selectDevice) SP.selectDevice(dev.id, false);

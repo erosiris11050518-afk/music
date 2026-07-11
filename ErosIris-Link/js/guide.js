@@ -233,10 +233,10 @@
     reverse: {
       title: '用模板进行音响反推', short: '音响反推', time: '约 4 分钟',
       steps: [
-        { text: '打开「快速布局」。如果还没有自己的音响型号，可以先完成第一课。',
-          target: '#btn-quick', callout: '打开快速布局', wait: 'click' },
-        { text: '切换到「音响反推」。', target: '[data-ql-mode="reverse"]',
-          callout: '进入音响反推', wait: 'click', ensure: 'quick' },
+        { text: '打开「快速布局」。现在会优先进入音响反推；如果还没有自己的音响型号，可以先完成第一课。',
+          target: '#btn-quick', callout: '打开音响反推', wait: 'click' },
+        { text: '「音响反推」已经放在首位并默认打开。点击这个页签，记住以后从这里开始整套系统设计。', target: '[data-ql-mode="reverse"]',
+          callout: '默认进入音响反推', wait: 'click', ensure: 'quick' },
         { text: '先填写全频和超低数量。需要多种型号时可以添加多个音响组。',
           target: '[data-rv-cnt]', callout: '填写音响数量', manual: true, ensure: 'reverse',
           extra: '<div class="gd-concept">数量为 0 的组不会创建；Shift 可以展开有源音响。</div>' },
@@ -307,8 +307,8 @@
           target: '#btn-theme', callout: '切换昼夜主题', manual: true, ensure: 'main' },
         { text: '「报告」打开工程报告中心，可选择章节、预览、打印 PDF，也能导出 Excel 数据。',
           target: '#btn-report', callout: '工程报告中心', manual: true, ensure: 'main' },
-        { text: '「快速布局」是建系统的主要入口：数量布局适合快速搭建，音响反推会根据音响型号和数量选择整套设备。',
-          target: '#btn-quick', callout: '数量布局与音响反推', manual: true, ensure: 'main' },
+        { text: '「快速布局」是建系统的主要入口：默认先进入音响反推，根据音响型号和数量选择整套设备；数量布局保留为快速手动搭建入口。',
+          target: '#btn-quick', callout: '音响反推与数量布局', manual: true, ensure: 'main' },
         { text: '「模板库」管理音响、功放、DSP、调音台和交换机型号，也负责表格下载、批量导入与整库备份。',
           target: '#btn-templates', callout: '设备模板中心', manual: true, ensure: 'main' },
         { text: '「配置」用于保存、导入、导出和切换完整工程配置，适合管理多个项目版本。',
@@ -660,8 +660,8 @@
   /* ================= 每次一条拓展技巧 ================= */
 
   var EXT_TIPS = [
-    { id: 'quick-preset', title: '保存数量预设', text: '常用设备数量和型号可以保存成数量预设，下次在快速布局里一键套用。',
-      target: '[data-act="ql-save-preset"]', prepare: 'quick' },
+    { id: 'quick-preset', title: '保存数量预设', text: '数量布局现在位于第二页签。常用设备数量和型号可以保存成数量预设，下次一键套用。',
+      target: '[data-act="ql-save-preset"]', prepare: 'count' },
     { id: 'reverse-preset', title: '保存反推预设', text: '常用音响组合、倍率和设备选择可以保存为反推预设。',
       target: '[data-act="rv-save-preset"]', prepare: 'reverse' },
     { id: 'template-backup', title: '备份全部模板和预设', text: '模板库导出会同时保存设备模板、数量预设、反推预设和台面模板。',
@@ -720,6 +720,7 @@
     var t = currentTip;
     if (!t) return;
     if (t.prepare === 'quick' && SP.openQuickLayout) SP.openQuickLayout();
+    if (t.prepare === 'count' && SP.openQuickLayout) SP.openQuickLayout({ mode: 'count' });
     if (t.prepare === 'reverse' && SP.openQuickLayout) SP.openQuickLayout({ mode: 'reverse' });
     if (t.prepare === 'templates' && SP.openTemplatePanel) SP.openTemplatePanel();
     if (t.prepare === 'config') { var b = el('btn-config'); if (b && b.click) b.click(); }

@@ -357,7 +357,8 @@
     opt = opt || {};
     var tpls = Store.state.deviceTemplates;
     var showActive = false;
-    var mode = (opt.mode === 'reverse' || opt.command) ? 'reverse' : 'count';   /* count = 数量布局；reverse = 音响反推 */
+    /* 音响反推是快速布局的主入口；旧流程仍可显式传 mode: 'count' 进入数量布局。 */
+    var mode = opt.mode === 'count' ? 'count' : 'reverse';   /* count = 数量布局；reverse = 音响反推 */
 
     /* ================= 数量布局（count 页）HTML ================= */
 
@@ -823,8 +824,8 @@
       '<button class="btn icon" data-close-modal>✕</button></div>' +
       '<div class="modal-body ql-body">' +
       '<div class="mode-switch">' +
-      '<button' + (mode === 'count' ? ' class="active"' : '') + ' data-ql-mode="count">数量布局</button>' +
-      '<button' + (mode === 'reverse' ? ' class="active"' : '') + ' data-ql-mode="reverse">音响反推</button></div>' +
+      '<button' + (mode === 'reverse' ? ' class="active"' : '') + ' data-ql-mode="reverse">音响反推</button>' +
+      '<button' + (mode === 'count' ? ' class="active"' : '') + ' data-ql-mode="count">数量布局</button></div>' +
       '<div id="ql-pane-count"' + (mode === 'count' ? '' : ' style="display:none"') + '>' +
       '<div id="ql-preset-tools">' + countPresetToolsHtml() + '</div>' +
       '<p class="cfg-note ql-note" style="margin-top:0">依次输入 <b>调音台 · DSP · 功放 · 全频 · 超低</b> 的数量，回车创建并自动智能连接（一步可撤销）。</p>' +

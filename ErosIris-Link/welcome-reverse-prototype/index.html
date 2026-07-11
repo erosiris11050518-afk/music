@@ -3,13 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<script>
+(function () {
+  var mobileClient = false;
+  try {
+    var mobileUa = /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+    var coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    var touchPoints = Number(navigator.maxTouchPoints || 0);
+    var ipadDesktop = /Mac/i.test(navigator.platform || '') && touchPoints > 1;
+    var screenWidth = window.screen && window.screen.width ? window.screen.width : 9999;
+    var narrowTouch = coarse && touchPoints > 0 && Math.min(window.innerWidth || 9999, screenWidth) <= 1180;
+    var compactViewport = (window.innerWidth || 9999) <= 720;
+    mobileClient = mobileUa || ipadDesktop || narrowTouch || compactViewport;
+    if (mobileClient) {
+      var current = new URLSearchParams(window.location.search);
+      var target = new URL('../点我打开ErosIris-Link软件.html', window.location.href);
+      target.searchParams.set('workspace', '1');
+      if (current.get('demo') === '1') target.searchParams.set('demo', '1');
+      window.location.replace(target.href);
+      return;
+    }
+  } catch (e) {}
+  window.__EROSIRIS_WELCOME_DESKTOP__ = true;
+  document.write(
+    '<link rel="preload" as="image" href="assets/posters/golden-hour.jpg" fetchpriority="high">' +
+    '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
+    '<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">' +
+    '<link rel="stylesheet" href="style.css?v=20260711-5">'
+  );
+})();
+</script>
 <title>ErosIris-Link</title>
 <meta name="description" content="ErosIris-Link 电影式开场页 — 从音箱数量开始，反推整套声音系统。">
-<link rel="preload" as="image" href="assets/posters/golden-hour.jpg" fetchpriority="high">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260711-5">
 </head>
 <body>
 
@@ -85,7 +111,11 @@
 
 </section>
 
-<script src="config.js?v=20260711-6"></script>
-<script src="app.js?v=20260712-1"></script>
+<script>
+if (window.__EROSIRIS_WELCOME_DESKTOP__) {
+  document.write('<script src="config.js?v=20260711-6"><\/script>' +
+    '<script src="app.js?v=20260712-1"><\/script>');
+}
+</script>
 </body>
 </html>

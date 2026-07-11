@@ -115,8 +115,11 @@ T('欢迎场景均配置轻量首帧图', window.SITE_CONFIG.scenes.every(functi
 var rootEntryHtml = readFile('点我打开ErosIris-Link软件.html');
 var githubEntryHtml = readFile('index.html');
 var welcomeAppSource = readFile('welcome-reverse-prototype/app.js');
+var welcomeHtml = readFile('welcome-reverse-prototype/index.html');
 var guideSource = readFile('js/guide.js');
 var demoSource = readFile('js/demo.js');
+var diagramSource = readFile('js/diagram.js');
+var skinSource = readFile('css/workbench-skin.css');
 T('GitHub根入口始终转到软件入口并保留参数', githubEntryHtml.indexOf('点我打开ErosIris-Link软件.html') >= 0 &&
   githubEntryHtml.indexOf('target.search = window.location.search') >= 0 &&
   githubEntryHtml.indexOf('target.hash = window.location.hash') >= 0);
@@ -132,6 +135,25 @@ T('欢迎页优先当前视频并为卡顿播放自动重试', welcomeAppSource.
   welcomeAppSource.indexOf('ensureVideoSource((i + 1) % videos.length, "auto")') >= 0);
 T('小蝶默认位置向页面内侧移动且旧坐标会重新限位', guideSource.indexOf("return 'right:48px;bottom:40px;'") >= 0 &&
   guideSource.indexOf("window.addEventListener('resize'") >= 0);
+T('手机和 iPad 入口绕过欢迎页且测试版参数继续保留',
+  rootEntryHtml.indexOf('mobileUa || ipadDesktop || narrowTouch || compactViewport') >= 0 &&
+  welcomeHtml.indexOf("target.searchParams.set('workspace', '1')") >= 0 &&
+  welcomeHtml.indexOf("current.get('demo') === '1'") >= 0 &&
+  welcomeHtml.indexOf('ipadDesktop') < welcomeHtml.indexOf('rel="preload"'));
+T('欢迎页资源仅在确认桌面端后加载',
+  welcomeHtml.indexOf('__EROSIRIS_WELCOME_DESKTOP__') >= 0 &&
+  welcomeHtml.indexOf("document.write('<script src=\"config.js") >= 0 &&
+  welcomeHtml.indexOf('mobileClient = mobileUa || ipadDesktop || narrowTouch || compactViewport') >= 0);
+T('触控端单指滚动优先并禁用鼠标框选与设备拖动',
+  diagramSource.indexOf('touch-action:pan-x pan-y') >= 0 &&
+  diagramSource.indexOf('if (!isMouseInput(e) || mobileClient()) return') >= 0 &&
+  diagramSource.indexOf('if (isTouchInput(e))') >= 0 &&
+  skinSource.indexOf('@media (max-width: 720px), (pointer: coarse)') >= 0);
+T('桌面批量选中使用强化高亮和明确删除入口',
+  diagramSource.indexOf('has-multi-selection') >= 0 &&
+  diagramSource.indexOf("classList.toggle('multi-sel'") >= 0 &&
+  readFile('js/inspector.js').indexOf('insp-delete-multi') >= 0 &&
+  skinSource.indexOf('.insp-multi-selection') >= 0);
 T('极光体验室保留欢迎页并把 Demo 参数带入工作台',
   welcomeAppSource.indexOf('const demoMode = urlParams.get("demo") === "1"') >= 0 &&
   welcomeAppSource.indexOf('url.searchParams.set("demo", "1")') >= 0 &&
@@ -236,6 +258,11 @@ Promise.resolve().then(function () {
   }
   tryRun('快速布局面板 openQuickLayout', function () { SP.openQuickLayout(); });
   var qlHtml = registry['modal-box'].innerHTML;
+  T('快速布局默认优先音响反推，且数量布局仍可切换',
+    qlHtml.indexOf('data-ql-mode="reverse"') < qlHtml.indexOf('data-ql-mode="count"') &&
+    /class="active" data-ql-mode="reverse"/.test(qlHtml) &&
+    qlHtml.indexOf('id="ql-pane-rv" style="display:none"') < 0 &&
+    qlHtml.indexOf('id="ql-pane-count" style="display:none"') >= 0);
   T('反推底部含查看反推过程/保存反推模板，且移除更新到一键模板',
     qlHtml.indexOf('查看当前案例反推过程') >= 0 &&
     qlHtml.indexOf('保存为反推模板') >= 0 &&

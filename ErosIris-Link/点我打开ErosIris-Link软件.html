@@ -10,7 +10,16 @@
   try {
     var entryParams = new URLSearchParams(window.location.search);
     var isWorkspace = entryParams.get('workspace') === '1' || entryParams.get('from') === 'welcome';
-    if (!isWorkspace) {
+    var mobileUa = /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+    var coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    var touchPoints = Number(navigator.maxTouchPoints || 0);
+    var ipadDesktop = /Mac/i.test(navigator.platform || '') && touchPoints > 1;
+    var screenWidth = window.screen && window.screen.width ? window.screen.width : 9999;
+    var narrowTouch = coarse && touchPoints > 0 && Math.min(window.innerWidth || 9999, screenWidth) <= 1180;
+    var compactViewport = (window.innerWidth || 9999) <= 720;
+    var mobileClient = mobileUa || ipadDesktop || narrowTouch || compactViewport;
+    if (mobileClient) document.documentElement.classList.add('mobile-client');
+    if (!isWorkspace && !mobileClient) {
       window.location.replace('welcome-reverse-prototype/index.html?from=root');
     }
   } catch (e) {}
@@ -30,7 +39,7 @@
 })();
 </script>
 <link rel="stylesheet" href="css/style.css">
-<link rel="stylesheet" href="css/workbench-skin.css?v=20260712-1">
+<link rel="stylesheet" href="css/workbench-skin.css?v=20260712-3">
 </head>
 <body>
 
@@ -306,10 +315,10 @@
 
 <script src="js/db.js"></script>
 <script src="js/store.js"></script>
-<script src="js/diagram.js?v=20260711-2"></script>
+<script src="js/diagram.js?v=20260712-2"></script>
 <script src="js/inspector.js"></script>
-<script src="js/quick.js"></script>
-<script src="js/guide.js?v=20260712-1"></script>
+<script src="js/quick.js?v=20260712-1"></script>
+<script src="js/guide.js?v=20260712-2"></script>
 <script src="js/keys.js"></script>
 <script src="js/cables.js"></script>
 <script src="js/mixer.js"></script>

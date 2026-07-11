@@ -226,8 +226,9 @@
         '</div>'
       : '';
     var multiHtml = multiCount
-      ? '<div class="insp-stats" style="border-color:var(--amber)"><span class="insp-stat" style="color:var(--amber)">已框选 ' +
-        multiCount + ' 台 · Delete/退格 删除</span></div>'
+      ? '<div class="insp-multi-selection"><span><b>已选中 ' + multiCount + ' 台设备</b>' +
+        '<small>按 <kbd>Backspace</kbd> 或 <kbd>Delete</kbd> 删除，支持撤销</small></span>' +
+        '<button class="btn danger sm" id="insp-delete-multi">删除选中</button></div>'
       : '';
     host.innerHTML = multiHtml + statsHtml + st.devices.map(function (d, di) {
       var info = Store.typeInfo(d.type);
@@ -267,6 +268,9 @@
       var r = Store.saveAllTemplates();
       SP.toast('一键模板完成：新增 ' + r.added + ' 个、更新 ' + r.updated + ' 个型号模板');
     });
+
+    var deleteMulti = el('insp-delete-multi');
+    if (deleteMulti) deleteMulti.addEventListener('click', function () { SP.deleteSelected(); });
 
     host.querySelectorAll('.insp-row').forEach(function (row) {
       row.addEventListener('click', function (e) {
