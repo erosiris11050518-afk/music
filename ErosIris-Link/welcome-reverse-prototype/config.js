@@ -54,8 +54,8 @@ window.SITE_CONFIG = {
     subtext: "",
 
     /* 反推数量格占位数字与按钮文字 */
-    fullrangePlaceholder: "8",
-    subPlaceholder: "4",
+    fullrangePlaceholder: "9",
+    subPlaceholder: "3",
     inputCta: "开始反推"
   },
 

@@ -59,8 +59,8 @@
 
   const entryFull = $("entry-full");
   const entrySub = $("entry-sub");
-  entryFull.placeholder = C.hero.fullrangePlaceholder || "8";
-  entrySub.placeholder = C.hero.subPlaceholder || "4";
+  entryFull.placeholder = C.hero.fullrangePlaceholder || "9";
+  entrySub.placeholder = C.hero.subPlaceholder || "3";
   entryFull.setAttribute("aria-label", "全频数量");
   entrySub.setAttribute("aria-label", "超低数量");
   $("entry-cta").textContent = C.hero.inputCta;

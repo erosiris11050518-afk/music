@@ -143,6 +143,13 @@ T('欢迎页反推使用全频和超低双数字格并复用反推命令',
   welcomeAppSource.indexOf('parts.push(`${full}只全频`)') >= 0 &&
   welcomeAppSource.indexOf('parts.push(`${sub}只超低`)') >= 0 &&
   mainSource.indexOf("SP.openQuickLayout({ mode: 'reverse', command: command })") >= 0);
+T('欢迎页数量格使用数字在前的紧凑 9全频 3超低布局',
+  welcomeHtml.indexOf('id="entry-full" type="number"') < welcomeHtml.indexOf('<span>全频</span>') &&
+  welcomeHtml.indexOf('id="entry-sub" type="number"') < welcomeHtml.indexOf('<span>超低</span>') &&
+  readFile('welcome-reverse-prototype/config.js').indexOf('fullrangePlaceholder: "9"') >= 0 &&
+  readFile('welcome-reverse-prototype/config.js').indexOf('subPlaceholder: "3"') >= 0 &&
+  readFile('welcome-reverse-prototype/style.css').indexOf('width: 2.15rem') >= 0 &&
+  readFile('welcome-reverse-prototype/style.css').indexOf('margin-left: auto') >= 0);
 T('欢迎页首个场景在媒体就绪后显式播放', welcomeAppSource.indexOf('function playActiveVideo()') >= 0 &&
   welcomeAppSource.indexOf('addEventListener("canplay", playActiveVideo') >= 0 &&
   welcomeAppSource.indexOf('window.addEventListener("load", playActiveVideo') >= 0);
