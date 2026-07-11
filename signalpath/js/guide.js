@@ -1050,7 +1050,7 @@
     if (p && isFinite(+p.left) && isFinite(+p.top)) {
       return 'left:' + Math.max(8, +p.left) + 'px;top:' + Math.max(8, +p.top) + 'px;';
     }
-    return 'right:18px;bottom:18px;';
+    return 'right:48px;bottom:40px;';
   }
   function panelHtml() {
     var welcome = WELCOME_LINES[Math.floor(Math.random() * WELCOME_LINES.length)] || WELCOME_LINES[0];
@@ -1145,6 +1145,15 @@
       placeWelcomeBubble();
       return { left: left, top: top };
     }
+    var initialStoredPos = savedPos();
+    if (initialStoredPos && isFinite(+initialStoredPos.left) && isFinite(+initialStoredPos.top)) {
+      move(+initialStoredPos.left, +initialStoredPos.top);
+    }
+    window.addEventListener('resize', function () {
+      if (!host.getBoundingClientRect) return;
+      var r = host.getBoundingClientRect();
+      move(r.left, r.top);
+    });
     host.addEventListener('pointerdown', function (e) {
       if (!(e.target.closest && e.target.closest('[data-guide-drag]'))) return;
       var r = host.getBoundingClientRect();

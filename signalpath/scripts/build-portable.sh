@@ -15,7 +15,7 @@ trap cleanup EXIT INT TERM
 
 mkdir -p "$APP_DIR" "$OUTPUT_DIR"
 
-cp "$ROOT/index.html" "$APP_DIR/index.html"
+cp "$ROOT/点我打开ErosIris-Link软件.html" "$APP_DIR/点我打开ErosIris-Link软件.html"
 cp -R "$ROOT/assets" "$APP_DIR/assets"
 cp -R "$ROOT/css" "$APP_DIR/css"
 cp -R "$ROOT/js" "$APP_DIR/js"
@@ -27,7 +27,6 @@ cp "$ROOT/welcome-reverse-prototype/app.js" "$APP_DIR/welcome-reverse-prototype/
 cp "$ROOT/welcome-reverse-prototype/style.css" "$APP_DIR/welcome-reverse-prototype/style.css"
 cp -R "$ROOT/welcome-reverse-prototype/assets" "$APP_DIR/welcome-reverse-prototype/assets"
 
-cp "$ROOT/portable/START ErosIris Link.html" "$APP_DIR/START ErosIris Link.html"
 cp "$ROOT/portable/使用说明.txt" "$APP_DIR/使用说明.txt"
 
 find "$APP_DIR" -name '.DS_Store' -delete

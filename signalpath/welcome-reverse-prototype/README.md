@@ -39,7 +39,7 @@ welcome-reverse-prototype/
 | 场景进入工作台的主题 | `scenes[].workbenchTheme: "light" / "dark"` |
 | 前景车窗图 | `overlay.image`，文件放 `assets/images/`（设 `""` 可关闭） |
 | 底部统计 | `stats[]` |
-| 工作台跳转地址 | `workspaceUrl`（默认 `../index.html`，同时适配本地与线上） |
+| 工作台跳转地址 | `workspaceUrl`（默认 `../点我打开ErosIris-Link软件.html`，同时适配本地与线上） |
 | 标签页标题 | `pageTitle` |
 
 ## 素材规格速查表

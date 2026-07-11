@@ -12,7 +12,7 @@ window.SITE_CONFIG = {
   /* 进入工作台的跳转地址。
      使用同项目相对路径：本地预览和 GitHub Pages 都会进入当前目录的最新版工作台，
      不再从本地欢迎页跳到写死的线上副本。 */
-  workspaceUrl: "../index.html",
+  workspaceUrl: "../点我打开ErosIris-Link软件.html",
 
   /* ---------- 品牌 ---------- */
   brand: {
