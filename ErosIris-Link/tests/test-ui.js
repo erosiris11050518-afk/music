@@ -157,6 +157,12 @@ T('手机设备连线工具栏按功能组多行显示',
   skinSource.indexOf('flex: 1 1 100%') >= 0 &&
   skinSource.indexOf('grid-template-columns: repeat(2, minmax(0, 1fr))') >= 0 &&
   skinSource.indexOf('overflow-x: visible') >= 0);
+T('iPad和平板工具栏使用两列功能区及独立控制行',
+  skinSource.indexOf('iPad / Android 平板') >= 0 &&
+  skinSource.indexOf('@media (min-width: 721px) and (max-width: 1180px)') >= 0 &&
+  skinSource.indexOf('grid-template-columns: minmax(360px, 1.35fr) minmax(250px, 1fr)') >= 0 &&
+  skinSource.indexOf('min-height: 42px') >= 0 &&
+  skinSource.indexOf('grid-column: 1 / -1') >= 0);
 T('桌面批量选中使用强化高亮和明确删除入口',
   diagramSource.indexOf('has-multi-selection') >= 0 &&
   diagramSource.indexOf("classList.toggle('multi-sel'") >= 0 &&

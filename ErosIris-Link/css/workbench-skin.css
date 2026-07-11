@@ -1023,6 +1023,49 @@ html[data-theme="light"] .gd-fill-guide { background: rgba(232, 242, 248, .72); 
   }
 }
 
+/* iPad / Android 平板：首排两组工具，缩放与导出各占独立行。 */
+@media (min-width: 721px) and (max-width: 1180px) {
+  .diagram-toolbar {
+    display: grid;
+    grid-template-columns: minmax(360px, 1.35fr) minmax(250px, 1fr);
+    align-items: center;
+    gap: 7px 12px;
+    overflow-x: visible;
+    padding: 8px 10px;
+  }
+
+  .diagram-toolbar > .tb-group {
+    min-width: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .diagram-toolbar .btn,
+  .diagram-toolbar button.shortcut-hint {
+    min-height: 42px;
+  }
+
+  .diagram-toolbar > .tb-group:first-child,
+  .diagram-toolbar > .tb-group:nth-child(2) {
+    flex-wrap: wrap;
+  }
+
+  .diagram-toolbar > .tb-group.grow,
+  .diagram-toolbar > .tb-group.toolbar-right {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .diagram-toolbar > .tb-group.grow {
+    justify-content: flex-start;
+  }
+
+  .diagram-toolbar > .tb-group.toolbar-right {
+    justify-content: flex-end;
+    margin-left: 0;
+  }
+}
+
 /* 手机端工具栏按功能组换行，避免所有控制挤在一条横向长带里。 */
 @media (max-width: 720px) {
   .diagram-toolbar {
