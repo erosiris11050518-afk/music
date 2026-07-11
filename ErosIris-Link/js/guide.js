@@ -752,17 +752,19 @@
         ? '型号库已经准备好了。五门基础教学会从音响数据一直带到工程交付。'
         : '嗨，我是小蝶。第一次来就从“音响数据”开始，我会一步一步带你操作。'));
     var chips = [];
-    if (demoNeedsCase) {
-      chips.push(chip('demo-case-import', '帮我导入案例模板', 'primary'));
-      chips.push(chip('demo-case-skip', '先自己看看'));
-    } else if (courseRun) chips.push(chip('course-resume', '继续上次教学', 'primary'));
+    var demoCaseActions = demoNeedsCase
+      ? '<div class="gd-demo-case-actions">' +
+        chip('demo-case-import', '帮我导入案例模板', 'primary') +
+        chip('demo-case-skip', '先自己看看') + '</div>'
+      : '';
+    if (courseRun) chips.push(chip('course-resume', '继续上次教学', 'primary'));
     else if (basicsHandled) chips.push(chip('course-advanced-global', '开始主界面进阶教学', 'primary'));
-    else chips.push(chip('course-templates', '从第一课开始', 'primary'));
+    else if (!demoNeedsCase) chips.push(chip('course-templates', '从第一课开始', 'primary'));
     if (s.devices && !s.connections) chips.push(chip('smart-all', '一键连接现有设备'));
     chips.push(chip('faq2', '常见问题'));
     if (SP.Demo && SP.Demo.active) chips.push(chip('demo-author', '关于作者'));
     return { id: 'home', text: text, chips: chips,
-      extra: courseCardsHtml() + tipHtml() };
+      extra: demoCaseActions + courseCardsHtml() + tipHtml() };
   };
 
   STEPS.counts = function () {

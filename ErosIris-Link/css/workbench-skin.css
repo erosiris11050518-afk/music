@@ -1384,6 +1384,15 @@ html:not([data-theme="light"]) .diagram-scroll {
 .demo-limit { max-width: 520px; }
 .demo-limit > b { display: block; margin-bottom: 10px; color: var(--text); font-size: 16px; }
 
+.gd-demo-case-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 10px 0 14px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--line);
+}
+
 @media (max-width: 620px) {
   .demo-quota-badge { display: none; }
   .demo-invite { grid-template-columns: 1fr; }
