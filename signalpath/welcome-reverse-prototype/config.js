@@ -88,9 +88,9 @@ window.SITE_CONFIG = {
          Hero 文字会以 700ms 过渡切换为深色 #182C41 保证可读性
          （导航与底部统计始终保持白色） */
   scenes: [
-    { label: "暖阳", video: "assets/videos/golden-hour.mp4", poster: "assets/posters/golden-hour.jpg", darkContent: false, workbenchTheme: "light" },
+    { label: "暮霞", video: "assets/videos/golden-hour.mp4", poster: "assets/posters/golden-hour.jpg", darkContent: false, workbenchTheme: "light" },
     { label: "静水", video: "assets/videos/still-water.mp4", poster: "assets/posters/still-water.jpg", darkContent: false, workbenchTheme: "light" },
-    { label: "深林", video: "assets/videos/deep-woods.mp4", poster: "assets/posters/deep-woods.jpg", darkContent: true,  workbenchTheme: "dark"  },
+    { label: "雪域", video: "assets/videos/deep-woods.mp4", poster: "assets/posters/deep-woods.jpg", darkContent: true,  workbenchTheme: "dark"  },
     { label: "晨光", video: "assets/videos/quiet-dawn.mp4", poster: "assets/posters/quiet-dawn.jpg", darkContent: false, workbenchTheme: "light" }
   ],
 

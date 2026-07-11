@@ -12,7 +12,7 @@
 欢迎页 `config.js` 的每个 `scenes[]` 项必须声明：
 
 ```js
-{ label: "暖阳", video: "...", darkContent: false, workbenchTheme: "light" }
+{ label: "暮霞", video: "...", darkContent: false, workbenchTheme: "light" }
 ```
 
 - `darkContent` 只控制欢迎页文字在当前视频上的深浅。
