@@ -113,8 +113,12 @@ T('欢迎场景均配置轻量首帧图', window.SITE_CONFIG.scenes.every(functi
   return typeof scene.poster === 'string' && /\.jpg$/i.test(scene.poster);
 }));
 var rootEntryHtml = readFile('点我打开ErosIris-Link软件.html');
+var githubEntryHtml = readFile('index.html');
 var welcomeAppSource = readFile('welcome-reverse-prototype/app.js');
 var guideSource = readFile('js/guide.js');
+T('GitHub根入口始终转到软件入口并保留参数', githubEntryHtml.indexOf('点我打开ErosIris-Link软件.html') >= 0 &&
+  githubEntryHtml.indexOf('target.search = window.location.search') >= 0 &&
+  githubEntryHtml.indexOf('target.hash = window.location.hash') >= 0);
 T('软件入口默认进入欢迎页', rootEntryHtml.indexOf("entryParams.get('workspace') === '1'") >= 0 &&
   rootEntryHtml.indexOf("welcome-reverse-prototype/index.html?from=root") >= 0);
 T('欢迎页使用持久工作台参数避免刷新循环', welcomeAppSource.indexOf('url.searchParams.set("workspace", "1")') >= 0 &&
