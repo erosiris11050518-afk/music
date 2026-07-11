@@ -2095,14 +2095,14 @@
 
     /* --- 批量导入：CSV 填写模板下载 / 回传解析（表头自动识别音响或功放） --- */
     el('csv-dl-speaker').addEventListener('click', function () {
-      SP.csvDownload('signalpath-音响填写模板.csv', [
+      SP.csvDownload('ErosIris-Link-音响填写模板.csv', [
         ['型号名称', '分支(全频/超低/线阵列)', '有源无源(有源/无源)', '功率W', '阻抗Ω', '尺寸（寸）'],
         ['DD115H', '全频', '无源', '500', '8', '15'],
         ['双6寸全频', '全频', '无源', '350', '8', '双6寸']
       ]);
     });
     el('csv-dl-amp').addEventListener('click', function () {
-      SP.csvDownload('signalpath-功放填写模板.csv', [
+      SP.csvDownload('ErosIris-Link-功放填写模板.csv', [
         ['型号名称', '通道数(2或4)', '功率W@8Ω', '4Ω功率W(选填)', '最低负载Ω(选填，默认4)', 'U数'],
         ['FA900', '4', '900', '', '4', '2']
       ]);

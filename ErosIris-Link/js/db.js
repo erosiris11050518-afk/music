@@ -26,7 +26,8 @@ SP.exportFilename = function (name, ext) {
     suffix = dot[1];
     name = name.slice(0, -suffix.length);
   }
-  name = name.replace(/^signalpath-?/i, '').replace(/-\d{8}$/i, '');
+  /* 接受旧 SignalPath 文件名，导出时统一为 ErosIris-Link。 */
+  name = name.replace(/^(?:signalpath|ErosIris-Link)-?/i, '').replace(/-\d{8}$/i, '');
   if (/^\d{8}$/.test(name)) name = '';
   return base + (name ? '-' + name : '') + suffix;
 };

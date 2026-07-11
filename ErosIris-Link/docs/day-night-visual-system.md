@@ -1,4 +1,4 @@
-# ErosIris Link 昼夜视觉系统
+# ErosIris-Link 昼夜视觉系统
 
 ## 设计原则
 

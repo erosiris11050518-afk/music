@@ -269,7 +269,7 @@
     };
 
     var head = '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">' +
-      '<title>SignalPath 系统报告 ' + dateStr + '</title><style>' +
+      '<title>ErosIris-Link 系统报告 ' + dateStr + '</title><style>' +
       '*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
       'body{background:' + P.bg + ';color:' + P.text + ';font:13px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;padding:24px}' +
       '.pg{page-break-after:always;padding-bottom:24px}' +
@@ -300,7 +300,7 @@
       '<div class="no-print"><button onclick="window.print()">打印 / 存为 PDF</button></div>';
 
     var pages = [];
-    var cover = '<h1>SIGNALPATH · 音响系统报告</h1>' +
+    var cover = '<h1>EROSIRIS-LINK · 音响系统报告</h1>' +
       '<p class="sub">生成日期：' + dateStr + ' ｜ 设备 ' + st.devices.length +
       ' 台 ｜ 连接 ' + st.connections.length + ' 条</p>';
 
@@ -545,7 +545,7 @@
           (g.d.type === 'speaker' ? '·' + SP.speakerRoleInfo(g.d.speakerRole).name : ''),
           SP.specString(g.d) || '', g.d.inputs.length, Store.visibleOuts(g.d).length]);
       });
-      SP.csvDownload('signalpath-设备清单.csv', rows);
+      SP.csvDownload('ErosIris-Link-设备清单.csv', rows);
       files++;
     }
     if (opt.connections !== false) {
@@ -559,7 +559,7 @@
           (t.inputs[c.tport] || {}).label || (c.net ? '网口' : ''),
           Store.cableOf(c), c.lenM || '', c.note || '']);
       });
-      SP.csvDownload('signalpath-连接清单.csv', rows2);
+      SP.csvDownload('ErosIris-Link-连接清单.csv', rows2);
       files++;
     }
     if (opt.cableSummary !== false) {
@@ -567,7 +567,7 @@
       Store.cableSummary().forEach(function (g) {
         rows3.push([g.type, g.count, g.meters || '', g.missing || 0]);
       });
-      SP.csvDownload('signalpath-线材汇总.csv', rows3);
+      SP.csvDownload('ErosIris-Link-线材汇总.csv', rows3);
       files++;
     }
     SP.toast(files ? '已导出 ' + files + ' 个 Excel（CSV）文件' : '请至少勾选 设备清单/连接清单/线材购买汇总 之一', !files);

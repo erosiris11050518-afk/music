@@ -715,7 +715,7 @@
       var pdfBtn = exportPop.querySelector('[data-export-pdf]');
       if (pdfBtn) pdfBtn.addEventListener('click', function () {
         exportPop.hidden = true;
-        SP.exportDiagramPDF(el('wiring-diagram'), 'SignalPath 系统框图');
+        SP.exportDiagramPDF(el('wiring-diagram'), 'ErosIris-Link 系统框图');
       });
     }
 
@@ -820,7 +820,7 @@
           data = JSON.parse(reader.result);
           if (!data || !data.__signalpathTplLib) throw new Error('bad');
         } catch (e) {
-          SP.toast('导入失败：不是有效的 SignalPath 模板库文件', true);
+          SP.toast('导入失败：不是有效的 ErosIris-Link 模板库文件', true);
           return;
         }
         if (SP.promptTemplateLibImport) {
@@ -849,7 +849,7 @@
             ConfigSlots.addImported(name, importState(data));
             if (idx + 1 < files.length) readNext(idx + 1);
           } catch (e) {
-            alert('导入失败：' + f.name + ' 不是有效的 SignalPath 配置。');
+            alert('导入失败：' + f.name + ' 不是有效的 ErosIris-Link 配置。');
           }
         };
         reader.readAsText(f);

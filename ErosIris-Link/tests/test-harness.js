@@ -1,4 +1,4 @@
-/* SignalPath v2 逻辑回归测试（JavaScriptCore 环境，DOM 桩） */
+/* ErosIris-Link v2 逻辑回归测试（JavaScriptCore 环境，DOM 桩） */
 
 /* ---------- 环境桩 ---------- */
 var _ls = {};

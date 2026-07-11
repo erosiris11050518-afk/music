@@ -17,7 +17,7 @@ import update_manifest
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 DIST = os.path.join(ROOT, 'dist')
-PUBLISH_ITEMS = ('index.html', 'mix-export.html', 'assets', 'audio', 'libs', 'signalpath')
+PUBLISH_ITEMS = ('index.html', 'mix-export.html', 'assets', 'audio', 'libs', 'ErosIris-Link', 'signalpath')
 IGNORE_NAMES = {
     '.DS_Store',
     '__MACOSX',
@@ -30,16 +30,21 @@ IGNORE_NAMES = {
 # uploaded artifact does not). Paths are relative to dist/.
 REQUIRED_AFTER_BUILD = (
     'index.html',
+    'ErosIris-Link/index.html',
+    'ErosIris-Link/点我打开ErosIris-Link软件.html',
+    'ErosIris-Link/assets/brand/logo-title.png',
+    'ErosIris-Link/css/style.css',
+    'ErosIris-Link/js/main.js',
     'signalpath/index.html',
-    'signalpath/assets/brand/logo-title.png',
-    'signalpath/css/style.css',
-    'signalpath/js/main.js',
 )
 
 # HTML files whose local css/js/asset references get an auto cache-busting ?v=
 # appended at build time (dist only; source stays clean). This makes every push
 # serve fresh files instead of a browser-cached old copy — no manual edits ever.
-CACHE_BUST_HTML = ('signalpath/index.html',)
+CACHE_BUST_HTML = (
+    'ErosIris-Link/点我打开ErosIris-Link软件.html',
+    'ErosIris-Link/welcome-reverse-prototype/index.html',
+)
 CACHE_BUST_EXT = ('css', 'js', 'png', 'svg', 'jpg', 'jpeg', 'webp', 'gif', 'ico')
 
 ABSOLUTE_PATH_PATTERNS = (

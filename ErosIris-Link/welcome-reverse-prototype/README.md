@@ -1,6 +1,6 @@
-# ErosIris Link — 电影式开场页（Cinematic Hero）
+# ErosIris-Link — 电影式开场页（Cinematic Hero）
 
-全屏电影式开场页，作为进入 ErosIris Link 工作台之前的交互动画入口。
+全屏电影式开场页，作为进入 ErosIris-Link 工作台之前的交互动画入口。
 原生 HTML / CSS / JS，无框架、无构建工具，可直接部署 GitHub Pages。
 **未修改原有工作台的任何文件。**
 
@@ -78,7 +78,7 @@ welcome-reverse-prototype/
 ## 本地预览
 
 ```bash
-cd /Users/ethanye/AI/signalpath
+cd /Users/ethanye/AI/ErosIris-Link
 python3 -m http.server 8080
 # 打开 http://localhost:8080/welcome-reverse-prototype/
 ```
@@ -102,5 +102,5 @@ python3 -m http.server 8080
 ## 部署注意
 
 - 整个目录直接放上 GitHub Pages 即可（视频共约 76MB，首次 push 稍慢属正常）；
-- 不要覆盖当前线上工作台（`signalpath` 根目录）；
+- 不要覆盖当前线上工作台（`ErosIris-Link` 根目录）；
 - 视频素材来源于原型规格中提供的第三方链接，若正式商用请先确认版权。

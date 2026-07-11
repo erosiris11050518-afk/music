@@ -1,5 +1,5 @@
 /* =========================================================
-   ErosIris Link 开场页 — 统一素材与文案配置
+   ErosIris-Link 开场页 — 统一素材与文案配置
    ---------------------------------------------------------
    所有可替换的内容（文字 / 视频 / 图片 / 链接）都集中在这里，
    改完保存、刷新页面即生效，不需要动 index.html / app.js。
@@ -7,7 +7,7 @@
 window.SITE_CONFIG = {
 
   /* 浏览器标签页标题 */
-  pageTitle: "ErosIris Link",
+  pageTitle: "ErosIris-Link",
 
   /* 进入工作台的跳转地址。
      使用同项目相对路径：本地预览和 GitHub Pages 都会进入当前目录的最新版工作台，
@@ -18,7 +18,7 @@ window.SITE_CONFIG = {
   brand: {
     /* Logo 文字，Instrument Serif italic 渲染。
        建议：8–16 个英文字符；太长会在手机端挤压汉堡按钮 */
-    logo: "ErosIris Link"
+    logo: "ErosIris-Link"
   },
 
   /* ---------- 顶部导航 ---------- */

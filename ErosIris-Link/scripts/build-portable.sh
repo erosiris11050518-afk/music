@@ -6,7 +6,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUTPUT_DIR=${EROSIRIS_RELEASE_DIR:-"$ROOT/../ErosIris-Link-Private-Releases"}
 OUTPUT_FILE="$OUTPUT_DIR/ErosIris-Link-Portable.zip"
 TEMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/erosiris-link-portable.XXXXXX")
-APP_DIR="$TEMP_ROOT/ErosIris Link"
+APP_DIR="$TEMP_ROOT/ErosIris-Link"
 
 cleanup() {
   rm -rf "$TEMP_ROOT"
@@ -34,7 +34,7 @@ find "$APP_DIR" -name '.DS_Store' -delete
 rm -f "$OUTPUT_FILE"
 (
   cd "$TEMP_ROOT"
-  /usr/bin/zip -q -r "$OUTPUT_FILE" "ErosIris Link"
+  /usr/bin/zip -q -r "$OUTPUT_FILE" "ErosIris-Link"
 )
 
 printf 'Created: %s\n' "$OUTPUT_FILE"

@@ -1,4 +1,4 @@
-/* SignalPath v2 UI 启动路径测试：完整加载 + DOMContentLoaded + 各弹窗入口不抛异常 */
+/* ErosIris-Link v2 UI 启动路径测试：完整加载 + DOMContentLoaded + 各弹窗入口不抛异常 */
 
 var _ls = {};
 var window = this;
@@ -557,8 +557,8 @@ Promise.resolve().then(function () {
   T('重做默认快捷键为⌘X', SP.actionCombo('redo') === '⌘X');
   T('导出文件名前缀为 ErosIris-Link+日期',
     SP.exportFilename('系统框图-4K', 'png').indexOf('ErosIris-Link+') === 0 &&
-    SP.exportFilename('signalpath-设备清单.csv').indexOf('ErosIris-Link+') === 0 &&
-    SP.exportFilename('signalpath-设备清单.csv').indexOf('设备清单.csv') > 0);
+    SP.exportFilename('ErosIris-Link-设备清单.csv').indexOf('ErosIris-Link+') === 0 &&
+    SP.exportFilename('ErosIris-Link-设备清单.csv').indexOf('设备清单.csv') > 0);
 
   /* 造点数据再测数据相关入口 */
   var tpls = Store.state.deviceTemplates;
@@ -605,7 +605,7 @@ Promise.resolve().then(function () {
   tryRun('连接清单表 renderWiringTable', function () { SP.renderWiringTable(); });
   T('连接清单含 lenM 输入框', registry['wiring-table-wrap'].innerHTML.indexOf('conn-len') >= 0);
   tryRun('报告选项弹窗 openReportOptions（含预览生成）', function () { SP.openReportOptions(); });
-  T('报告预览已生成（srcdoc 非空）', (registry['report-preview'].srcdoc || '').indexOf('SIGNALPATH') >= 0);
+  T('报告预览已生成（srcdoc 非空）', (registry['report-preview'].srcdoc || '').indexOf('EROSIRIS-LINK') >= 0);
   T('报告含线材购买汇总', registry['report-preview'].srcdoc.indexOf('线材购买汇总') >= 0);
   T('报告含机柜长度建议', registry['report-preview'].srcdoc.indexOf('机柜长度建议') >= 0);
   T('报告含供电功率建议', registry['report-preview'].srcdoc.indexOf('供电功率建议') >= 0);
