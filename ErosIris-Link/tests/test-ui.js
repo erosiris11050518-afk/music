@@ -129,6 +129,20 @@ T('软件入口默认进入欢迎页', rootEntryHtml.indexOf("entryParams.get('w
   rootEntryHtml.indexOf("welcome-reverse-prototype/index.html?from=root") >= 0);
 T('欢迎页使用持久工作台参数避免刷新循环', welcomeAppSource.indexOf('url.searchParams.set("workspace", "1")') >= 0 &&
   rootEntryHtml.indexOf("entryParams.get('from') === 'welcome'") >= 0);
+T('欢迎页四项导航联动工作台真实功能',
+  welcomeAppSource.indexOf('gotoWorkspace(e, item.action)') >= 0 &&
+  welcomeAppSource.indexOf('url.searchParams.set("action", action)') >= 0 &&
+  mainSource.indexOf("['reverse', 'templates', 'wiring', 'report']") >= 0 &&
+  mainSource.indexOf("action === 'templates'") >= 0 &&
+  mainSource.indexOf("action === 'wiring'") >= 0 &&
+  mainSource.indexOf("action === 'report'") >= 0);
+T('欢迎页反推使用全频和超低双数字格并复用反推命令',
+  welcomeHtml.indexOf('id="entry-full" type="number"') >= 0 &&
+  welcomeHtml.indexOf('id="entry-sub" type="number"') >= 0 &&
+  welcomeAppSource.indexOf('function speakerCommand()') >= 0 &&
+  welcomeAppSource.indexOf('parts.push(`${full}只全频`)') >= 0 &&
+  welcomeAppSource.indexOf('parts.push(`${sub}只超低`)') >= 0 &&
+  mainSource.indexOf("SP.openQuickLayout({ mode: 'reverse', command: command })") >= 0);
 T('欢迎页首个场景在媒体就绪后显式播放', welcomeAppSource.indexOf('function playActiveVideo()') >= 0 &&
   welcomeAppSource.indexOf('addEventListener("canplay", playActiveVideo') >= 0 &&
   welcomeAppSource.indexOf('window.addEventListener("load", playActiveVideo') >= 0);

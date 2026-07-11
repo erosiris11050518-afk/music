@@ -25,7 +25,12 @@ window.SITE_CONFIG = {
   nav: {
     /* 桌面玻璃胶囊与移动全屏菜单共用这组链接。
        建议：3–5 项，每项 2–6 个字（或 1–2 个英文单词） */
-    links: ["音响反推", "设备模板", "系统连线", "工程报告"],
+    links: [
+      { label: "音响反推", action: "reverse" },
+      { label: "设备模板", action: "templates" },
+      { label: "系统连线", action: "wiring" },
+      { label: "工程报告", action: "report" }
+    ],
     /* 白色实心按钮文字，建议 ≤ 6 个字 */
     cta: "进入工作台"
   },
@@ -48,8 +53,9 @@ window.SITE_CONFIG = {
        建议 40–70 个中文字，或 120–180 个英文字符 */
     subtext: "",
 
-    /* 输入框占位文字与按钮文字 */
-    inputPlaceholder: "例如：8只全频，4只超低",
+    /* 反推数量格占位数字与按钮文字 */
+    fullrangePlaceholder: "8",
+    subPlaceholder: "4",
     inputCta: "开始反推"
   },
 

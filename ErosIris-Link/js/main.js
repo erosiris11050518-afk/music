@@ -21,6 +21,14 @@
     } catch (e) { return ''; }
   }
 
+  function welcomeAction() {
+    if (!window.location || !window.location.search || typeof URLSearchParams === 'undefined') return '';
+    try {
+      var action = new URLSearchParams(window.location.search).get('action') || '';
+      return ['reverse', 'templates', 'wiring', 'report'].indexOf(action) >= 0 ? action : '';
+    } catch (e) { return ''; }
+  }
+
   function isWelcomeEntry() {
     if (!window.location || !window.location.search || typeof URLSearchParams === 'undefined') return false;
     try { return new URLSearchParams(window.location.search).get('from') === 'welcome'; }
@@ -53,6 +61,7 @@
     try {
       var url = new URL(window.location.href);
       url.searchParams.delete('reverse');
+      url.searchParams.delete('action');
       url.searchParams.delete('from');
       url.searchParams.delete('theme');
       url.searchParams.delete('scene');
@@ -882,11 +891,19 @@
       SP.updateHistoryButtons();
       syncFitBtn();
       var command = welcomeCommand();
+      var action = welcomeAction();
       syncWelcomeLink();
       if (isWelcomeEntry()) clearWelcomeCommand();
-      if (command && SP.openQuickLayout) {
+      if ((action === 'reverse' || command) && SP.openQuickLayout) {
         SP.openQuickLayout({ mode: 'reverse', command: command });
-        SP.toast('已带入欢迎页内容，请检查型号和数量');
+        if (command) SP.toast('已带入全频和超低数量，请检查型号');
+      } else if (action === 'templates' && SP.openTemplatePanel) {
+        SP.openTemplatePanel();
+      } else if (action === 'wiring' && SP.switchView) {
+        SP.switchView('wiring');
+        SP.toast('已经来到系统连线');
+      } else if (action === 'report' && SP.openReportOptions) {
+        SP.openReportOptions();
       }
     });
   });

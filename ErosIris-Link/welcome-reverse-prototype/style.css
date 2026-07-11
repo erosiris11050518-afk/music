@@ -197,7 +197,7 @@ input { font: inherit; }
 
 /* Dark-content mode (3rd video, index 2): 700ms transitions */
 .logo, .nav-link, .hamburger,
-.badge, .heading, .subtext, .email-input, .sw,
+.badge, .heading, .subtext, .email-input, .entry-count, .sw,
 .stats, .stat strong {
   transition: color 700ms ease, border-color 700ms ease, opacity 250ms ease;
 }
@@ -252,10 +252,28 @@ input { font: inherit; }
   border-radius: 9999px;
   padding: 0.375rem 0.375rem 0.375rem 1.25rem;
   width: 100%;
-  max-width: 320px;
+  max-width: 390px;
 }
 @media (min-width: 640px) {
-  .email-pill { max-width: 24rem; }  /* sm:max-w-sm */
+  .email-pill { max-width: 31rem; }
+}
+.entry-count {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1 1 0;
+  min-width: 0;
+  font-family: system-ui, sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+.entry-divider {
+  width: 1px;
+  height: 1.5rem;
+  flex: none;
+  background: rgba(255, 255, 255, 0.24);
 }
 .email-input {
   flex: 1;
@@ -268,6 +286,9 @@ input { font: inherit; }
   color: #fff;
   padding: 0.5rem 0;
 }
+.entry-count .email-input { width: 2.8rem; text-align: center; }
+.email-input::-webkit-inner-spin-button,
+.email-input::-webkit-outer-spin-button { appearance: none; margin: 0; }
 .email-input::placeholder { color: rgba(255, 255, 255, 0.6); }
 .pill-cta { flex: none; }
 
@@ -311,6 +332,7 @@ input { font: inherit; }
 .hero.dark-content .heading,
 .hero.dark-content .subtext,
 .hero.dark-content .email-input,
+.hero.dark-content .entry-count,
 .hero.dark-content .sw,
 .hero.dark-content .logo,
 .hero.dark-content .nav-link,
@@ -319,6 +341,7 @@ input { font: inherit; }
 .hero.dark-content .stat strong { color: #182C41; }
 .hero.dark-content .nav-link:hover { color: #0f1d2b; }
 .hero.dark-content .email-input::placeholder { color: rgba(24, 44, 65, 0.6); }
+.hero.dark-content .entry-divider { background: rgba(24, 44, 65, 0.24); }
 .hero.dark-content .badge { color: rgba(24, 44, 65, 0.92); }
 .hero.dark-content .subtext { color: rgba(24, 44, 65, 0.85); }
 

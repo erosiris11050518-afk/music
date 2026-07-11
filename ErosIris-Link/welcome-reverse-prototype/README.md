@@ -30,9 +30,9 @@ welcome-reverse-prototype/
 | 想改什么 | 改哪里 |
 |---|---|
 | Logo 文字 | `brand.logo` |
-| 导航链接 / 按钮文字 | `nav.links` / `nav.cta` |
+| 导航链接、对应工作台动作 / 按钮文字 | `nav.links[].label` / `nav.links[].action` / `nav.cta` |
 | 徽章、大标题、副文案 | `hero.badge` / `hero.headingLines` / `hero.subtext` |
-| 输入框占位与按钮 | `hero.inputPlaceholder` / `hero.inputCta` |
+| 全频、超低数量占位与按钮 | `hero.fullrangePlaceholder` / `hero.subPlaceholder` / `hero.inputCta` |
 | 背景视频（可增减数量） | `scenes[]`，文件放 `assets/videos/` |
 | 场景切换器标签 | `scenes[].label` |
 | 某场景文字变深色 | `scenes[].darkContent: true` |
@@ -41,6 +41,8 @@ welcome-reverse-prototype/
 | 底部统计 | `stats[]` |
 | 工作台跳转地址 | `workspaceUrl`（默认 `../点我打开ErosIris-Link软件.html`，同时适配本地与线上） |
 | 标签页标题 | `pageTitle` |
+
+导航动作支持 `reverse`、`templates`、`wiring`、`report`，进入工作台后分别打开音响反推、设备模板、系统连线和工程报告。欢迎页数量格会自动生成反推命令，无需重复实现计算逻辑。
 
 ## 素材规格速查表
 

@@ -57,9 +57,12 @@
     heading.appendChild(document.createTextNode(line));
   });
 
-  const entryInput = $("entry-input");
-  entryInput.placeholder = C.hero.inputPlaceholder;
-  entryInput.setAttribute("aria-label", C.hero.inputPlaceholder);
+  const entryFull = $("entry-full");
+  const entrySub = $("entry-sub");
+  entryFull.placeholder = C.hero.fullrangePlaceholder || "8";
+  entrySub.placeholder = C.hero.subPlaceholder || "4";
+  entryFull.setAttribute("aria-label", "全频数量");
+  entrySub.setAttribute("aria-label", "超低数量");
   $("entry-cta").textContent = C.hero.inputCta;
   $("nav-get-started").textContent = C.nav.cta;
   $("m-get-started").textContent = C.nav.cta;
@@ -76,23 +79,27 @@
   const navCta = $("nav-get-started");
   const mCta = $("m-get-started");
 
-  C.nav.links.forEach((text, i) => {
+  const navItems = C.nav.links.map((item) => typeof item === "string"
+    ? { label: item, action: "" }
+    : { label: item.label, action: item.action || "" });
+
+  navItems.forEach((item, i) => {
     const a = document.createElement("a");
     a.className = "nav-link";
     a.href = "#";
-    a.textContent = text;
-    a.addEventListener("click", (e) => e.preventDefault());
+    a.textContent = item.label;
+    a.addEventListener("click", (e) => gotoWorkspace(e, item.action));
     $("nav-pill").insertBefore(a, navCta);
 
     const m = document.createElement("a");
     m.className = "m-link";
     m.href = "#";
     m.style.setProperty("--i", i);
-    m.textContent = text;
-    m.addEventListener("click", (e) => { e.preventDefault(); setMenu(false); });
+    m.textContent = item.label;
+    m.addEventListener("click", (e) => { setMenu(false); gotoWorkspace(e, item.action); });
     $("mobile-panel").insertBefore(m, mCta);
   });
-  mCta.style.setProperty("--i", C.nav.links.length);
+  mCta.style.setProperty("--i", navItems.length);
 
   /* ============================================================
      3. 背景视频与场景切换器（config.scenes）
@@ -325,27 +332,43 @@
   /* ============================================================
      7. 进入工作台（config.workspaceUrl）
      ============================================================ */
-  function workspaceUrl(withCommand) {
+  function speakerCommand() {
+    const full = Math.max(0, Math.floor(Number(entryFull.value) || 0));
+    const sub = Math.max(0, Math.floor(Number(entrySub.value) || 0));
+    const parts = [];
+    if (full) parts.push(`${full}只全频`);
+    if (sub) parts.push(`${sub}只超低`);
+    return parts.join("，");
+  }
+
+  function workspaceUrl(action, command) {
     const url = new URL(C.workspaceUrl, window.location.href);
     url.searchParams.set("workspace", "1");
     url.searchParams.set("from", "welcome");
     url.searchParams.set("theme", sceneTheme(activeVideo));
     url.searchParams.set("scene", String(activeVideo));
     if (demoMode) url.searchParams.set("demo", "1");
-    const command = withCommand ? entryInput.value.trim() : "";
+    if (action) url.searchParams.set("action", action);
     if (command) url.searchParams.set("reverse", command);
     return url.href;
   }
 
-  function gotoWorkspace(e) {
+  function gotoWorkspace(e, action) {
     if (e) e.preventDefault();
     const fromForm = !!(e && e.currentTarget === $("entry-form"));
+    const command = fromForm ? speakerCommand() : "";
+    if (fromForm && !command) {
+      entryFull.setCustomValidity("请至少填写一个音响数量");
+      entryFull.reportValidity();
+      entryFull.addEventListener("input", () => entryFull.setCustomValidity(""), { once: true });
+      return;
+    }
     try {
       localStorage.setItem("signalpath-theme", sceneTheme(activeVideo));
       localStorage.setItem("signalpath-theme-source", "welcome");
       rememberScene(activeVideo);
     } catch (err) { /* 主题记忆失败不应阻止进入工作台 */ }
-    window.location.assign(workspaceUrl(fromForm));
+    window.location.assign(workspaceUrl(fromForm ? "reverse" : action, command));
   }
   $("nav-get-started").addEventListener("click", gotoWorkspace);
   $("m-get-started").addEventListener("click", gotoWorkspace);
