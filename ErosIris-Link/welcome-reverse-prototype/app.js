@@ -59,10 +59,24 @@
 
   const entryFull = $("entry-full");
   const entrySub = $("entry-sub");
+  const entryForm = $("entry-form");
   entryFull.placeholder = C.hero.fullrangePlaceholder || "9";
   entrySub.placeholder = C.hero.subPlaceholder || "3";
   entryFull.setAttribute("aria-label", "全频数量");
   entrySub.setAttribute("aria-label", "超低数量");
+  entryFull.addEventListener("keydown", (e) => {
+    if (e.key !== " " && e.key !== "Spacebar" && e.code !== "Space") return;
+    e.preventDefault();
+    entrySub.focus();
+    entrySub.select();
+  });
+  [entryFull, entrySub].forEach((input) => {
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      entryForm.requestSubmit();
+    });
+  });
   $("entry-cta").textContent = C.hero.inputCta;
   $("nav-get-started").textContent = C.nav.cta;
   $("m-get-started").textContent = C.nav.cta;
@@ -355,7 +369,7 @@
 
   function gotoWorkspace(e, action) {
     if (e) e.preventDefault();
-    const fromForm = !!(e && e.currentTarget === $("entry-form"));
+    const fromForm = !!(e && e.currentTarget === entryForm);
     const command = fromForm ? speakerCommand() : "";
     if (fromForm && !command) {
       entryFull.setCustomValidity("请至少填写一个音响数量");
@@ -372,7 +386,7 @@
   }
   $("nav-get-started").addEventListener("click", gotoWorkspace);
   $("m-get-started").addEventListener("click", gotoWorkspace);
-  $("entry-form").addEventListener("submit", gotoWorkspace);
+  entryForm.addEventListener("submit", gotoWorkspace);
   $("logo").addEventListener("click", (e) => e.preventDefault());
 
   /* ============================================================

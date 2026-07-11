@@ -150,6 +150,15 @@ T('欢迎页数量格使用数字在前的紧凑 9全频 3超低布局',
   readFile('welcome-reverse-prototype/config.js').indexOf('subPlaceholder: "3"') >= 0 &&
   readFile('welcome-reverse-prototype/style.css').indexOf('width: 2.15rem') >= 0 &&
   readFile('welcome-reverse-prototype/style.css').indexOf('margin-left: auto') >= 0);
+T('全频超低使用小白标签泡泡且移除中间竖线',
+  welcomeHtml.indexOf('entry-divider') < 0 &&
+  readFile('welcome-reverse-prototype/style.css').indexOf('.entry-count span') >= 0 &&
+  readFile('welcome-reverse-prototype/style.css').indexOf('background: rgba(255, 255, 255, 0.82)') >= 0 &&
+  readFile('welcome-reverse-prototype/style.css').indexOf('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto') >= 0);
+T('欢迎页数量格支持空格跳转和回车反推',
+  welcomeAppSource.indexOf('e.code !== "Space"') >= 0 &&
+  welcomeAppSource.indexOf('entrySub.focus()') >= 0 &&
+  welcomeAppSource.indexOf('entryForm.requestSubmit()') >= 0);
 T('欢迎页首个场景在媒体就绪后显式播放', welcomeAppSource.indexOf('function playActiveVideo()') >= 0 &&
   welcomeAppSource.indexOf('addEventListener("canplay", playActiveVideo') >= 0 &&
   welcomeAppSource.indexOf('window.addEventListener("load", playActiveVideo') >= 0);
