@@ -148,12 +148,12 @@ T('欢迎页数量格使用数字在前的紧凑 9全频 3超低布局',
   welcomeHtml.indexOf('id="entry-sub" type="number"') < welcomeHtml.indexOf('<span>超低</span>') &&
   readFile('welcome-reverse-prototype/config.js').indexOf('fullrangePlaceholder: "9"') >= 0 &&
   readFile('welcome-reverse-prototype/config.js').indexOf('subPlaceholder: "3"') >= 0 &&
-  readFile('welcome-reverse-prototype/style.css').indexOf('width: 2.15rem') >= 0 &&
+  readFile('welcome-reverse-prototype/style.css').indexOf('width: 1.9rem') >= 0 &&
   readFile('welcome-reverse-prototype/style.css').indexOf('margin-left: auto') >= 0);
-T('全频超低使用小白标签泡泡且移除中间竖线',
+T('全频超低使用等宽轻玻璃数量区且移除中间竖线',
   welcomeHtml.indexOf('entry-divider') < 0 &&
-  readFile('welcome-reverse-prototype/style.css').indexOf('.entry-count span') >= 0 &&
-  readFile('welcome-reverse-prototype/style.css').indexOf('background: rgba(255, 255, 255, 0.82)') >= 0 &&
+  readFile('welcome-reverse-prototype/style.css').indexOf('.entry-count:focus-within') >= 0 &&
+  readFile('welcome-reverse-prototype/style.css').indexOf('background: rgba(255, 255, 255, 0.08)') >= 0 &&
   readFile('welcome-reverse-prototype/style.css').indexOf('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto') >= 0);
 T('欢迎页数量格支持空格跳转和回车反推',
   welcomeAppSource.indexOf('e.code !== "Space"') >= 0 &&
