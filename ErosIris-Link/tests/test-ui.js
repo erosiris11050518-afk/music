@@ -151,6 +151,12 @@ T('触控端单指滚动优先并禁用鼠标框选与设备拖动',
   diagramSource.indexOf('if (!isMouseInput(e) || mobileClient()) return') >= 0 &&
   diagramSource.indexOf('if (isTouchInput(e))') >= 0 &&
   skinSource.indexOf('@media (max-width: 720px), (pointer: coarse)') >= 0);
+T('手机设备连线工具栏按功能组多行显示',
+  skinSource.indexOf('手机端工具栏按功能组换行') >= 0 &&
+  skinSource.indexOf('.diagram-toolbar > .tb-group.grow') >= 0 &&
+  skinSource.indexOf('flex: 1 1 100%') >= 0 &&
+  skinSource.indexOf('grid-template-columns: repeat(2, minmax(0, 1fr))') >= 0 &&
+  skinSource.indexOf('overflow-x: visible') >= 0);
 T('桌面批量选中使用强化高亮和明确删除入口',
   diagramSource.indexOf('has-multi-selection') >= 0 &&
   diagramSource.indexOf("classList.toggle('multi-sel'") >= 0 &&

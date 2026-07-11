@@ -1023,6 +1023,52 @@ html[data-theme="light"] .gd-fill-guide { background: rgba(232, 242, 248, .72); 
   }
 }
 
+/* 手机端工具栏按功能组换行，避免所有控制挤在一条横向长带里。 */
+@media (max-width: 720px) {
+  .diagram-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 6px;
+    overflow-x: visible;
+    padding: 7px 8px;
+  }
+
+  .diagram-toolbar > .tb-group,
+  .diagram-toolbar > .tb-group.grow,
+  .diagram-toolbar > .tb-group.toolbar-right {
+    display: flex;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    min-width: 0;
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .diagram-toolbar > .tb-group:first-child {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .diagram-toolbar > .tb-group:first-child .btn {
+    width: 100%;
+  }
+
+  .diagram-toolbar .btn,
+  .diagram-toolbar .shortcut-hint,
+  .diagram-toolbar select {
+    flex: 0 1 auto;
+    max-width: 100%;
+  }
+
+  .diagram-toolbar .zoom-range {
+    flex: 1 1 120px;
+    min-width: 100px;
+    max-width: 180px;
+  }
+}
+
 .insp-multi-selection {
   display: flex;
   align-items: center;
