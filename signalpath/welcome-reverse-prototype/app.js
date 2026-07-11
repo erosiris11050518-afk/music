@@ -1,0 +1,267 @@
+/* ============================================================
+   ErosIris Link — 电影式开场页
+   从 config.js (window.SITE_CONFIG) 渲染全部动态内容，
+   并处理视频切换 / 深色内容模式 / 移动菜单 / 工作台跳转。
+   ============================================================ */
+(() => {
+  "use strict";
+
+  const C = window.SITE_CONFIG;
+  if (!C) {
+    console.error("SITE_CONFIG 未加载：请确认 config.js 在 app.js 之前引入。");
+    return;
+  }
+
+  const CROSSFADE_MS = 1000; // 与 style.css 中 .bg-video 的过渡时长保持一致
+  const AUTO_ADVANCE_LEAD_S = CROSSFADE_MS / 1000;
+  const SCENE_KEY = "signalpath-welcome-scene";
+
+  const $ = (id) => document.getElementById(id);
+  const hero = $("hero");
+  const urlParams = new URLSearchParams(window.location.search);
+
+  function validSceneIndex(value) {
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 0 && n < C.scenes.length ? n : -1;
+  }
+
+  let initialScene = validSceneIndex(urlParams.get("v"));
+  if (initialScene < 0) {
+    try { initialScene = validSceneIndex(localStorage.getItem(SCENE_KEY)); } catch (e) { initialScene = -1; }
+  }
+  if (initialScene < 0) initialScene = 0;
+
+  function sceneTheme(index) {
+    const scene = C.scenes[index] || C.scenes[0];
+    return scene.workbenchTheme === "dark" ? "dark" : "light";
+  }
+
+  function rememberScene(index) {
+    try {
+      localStorage.setItem(SCENE_KEY, String(index));
+      localStorage.setItem("signalpath-welcome-theme", sceneTheme(index));
+    } catch (e) { /* 隐私模式下保持当前会话可用 */ }
+  }
+
+  /* ============================================================
+     1. 文案注入
+     ============================================================ */
+  document.title = C.pageTitle;
+  $("logo").textContent = C.brand.logo;
+  $("badge").textContent = C.hero.badge;
+  $("subtext").textContent = C.hero.subtext;
+
+  const heading = $("heading");
+  C.hero.headingLines.forEach((line, i) => {
+    if (i > 0) heading.appendChild(document.createElement("br"));
+    heading.appendChild(document.createTextNode(line));
+  });
+
+  const entryInput = $("entry-input");
+  entryInput.placeholder = C.hero.inputPlaceholder;
+  entryInput.setAttribute("aria-label", C.hero.inputPlaceholder);
+  $("entry-cta").textContent = C.hero.inputCta;
+  $("nav-get-started").textContent = C.nav.cta;
+  $("m-get-started").textContent = C.nav.cta;
+
+  /* ============================================================
+     2. 导航链接（桌面胶囊 + 移动菜单共用 config.nav.links）
+     ============================================================ */
+  const navCta = $("nav-get-started");
+  const mCta = $("m-get-started");
+
+  C.nav.links.forEach((text, i) => {
+    const a = document.createElement("a");
+    a.className = "nav-link";
+    a.href = "#";
+    a.textContent = text;
+    a.addEventListener("click", (e) => e.preventDefault());
+    $("nav-pill").insertBefore(a, navCta);
+
+    const m = document.createElement("a");
+    m.className = "m-link";
+    m.href = "#";
+    m.style.setProperty("--i", i);
+    m.textContent = text;
+    m.addEventListener("click", (e) => { e.preventDefault(); setMenu(false); });
+    $("mobile-panel").insertBefore(m, mCta);
+  });
+  mCta.style.setProperty("--i", C.nav.links.length);
+
+  /* ============================================================
+     3. 背景视频与场景切换器（config.scenes）
+     ============================================================ */
+  const videos = [];
+  const switchButtons = [];
+  let activeVideo = initialScene;
+  let isTransitioning = false;
+
+  C.scenes.forEach((scene, i) => {
+    const v = document.createElement("video");
+    v.className = "bg-video" + (i === initialScene ? " is-active" : "");
+    v.muted = true;
+    v.loop = false;
+    v.autoplay = i === initialScene;
+    v.playsInline = true;
+    v.setAttribute("playsinline", "");
+    v.setAttribute("muted", "");
+    v.addEventListener("error", () => { v.style.display = "none"; });
+    v.addEventListener("timeupdate", () => {
+      if (C.sceneAutoAdvance === false || i !== activeVideo || isTransitioning) return;
+      if (!Number.isFinite(v.duration) || v.currentTime <= 0) return;
+      if (v.duration - v.currentTime <= AUTO_ADVANCE_LEAD_S) {
+        setActiveVideo((i + 1) % C.scenes.length);
+      }
+    });
+    v.addEventListener("ended", () => {
+      if (C.sceneAutoAdvance === false || i !== activeVideo || isTransitioning) return;
+      setActiveVideo((i + 1) % C.scenes.length);
+    });
+    v.src = scene.video;
+    $("video-stack").appendChild(v);
+    videos.push(v);
+
+    const b = document.createElement("button");
+    b.className = "sw liquid-glass" + (i === initialScene ? " is-active" : "");
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", String(i === initialScene));
+    b.textContent = scene.label;
+    b.addEventListener("click", () => setActiveVideo(i));
+    $("switcher").appendChild(b);
+    switchButtons.push(b);
+  });
+
+  hero.classList.toggle("dark-content", !!C.scenes[initialScene].darkContent);
+  rememberScene(initialScene);
+
+  function setActiveVideo(index) {
+    if (index === activeVideo || isTransitioning) return;
+    isTransitioning = true;
+
+    const prev = activeVideo;
+    activeVideo = index;
+    rememberScene(index);
+
+    videos[index].currentTime = 0;
+    videos[index].play().catch(() => { /* 自动播放被拒时静默 */ });
+    videos[index].classList.add("is-active");
+    videos[prev].classList.remove("is-active");
+
+    switchButtons.forEach((btn, i) => {
+      btn.classList.toggle("is-active", i === index);
+      btn.setAttribute("aria-selected", String(i === index));
+    });
+
+    // 偏亮场景切换深色文字（700ms 过渡在 CSS 中）
+    hero.classList.toggle("dark-content", !!C.scenes[index].darkContent);
+
+    window.setTimeout(() => {
+      isTransitioning = false;
+      if (!videos[prev].paused) videos[prev].pause();
+      videos[prev].currentTime = 0;
+    }, CROSSFADE_MS);
+  }
+
+  // 页面隐藏时暂停视频，节省资源
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      videos.forEach((v) => { if (!v.paused) v.pause(); });
+    } else {
+      videos[activeVideo].play().catch(() => { /* ignore */ });
+    }
+  });
+
+  /* ============================================================
+     4. 前景遮罩 PNG（config.overlay.image）
+     ============================================================ */
+  const overlayImg = $("overlay-img");
+  if (C.overlay.image) {
+    overlayImg.addEventListener("error", () => { $("train-overlay").style.display = "none"; });
+    overlayImg.src = C.overlay.image;
+  } else {
+    $("train-overlay").style.display = "none";
+  }
+
+  /* ============================================================
+     5. 底部统计（config.stats）
+     ============================================================ */
+  C.stats.forEach((item, i) => {
+    if (i > 0) {
+      const d = document.createElement("span");
+      d.className = "divider";
+      d.setAttribute("aria-hidden", "true");
+      d.textContent = "|";
+      $("stats").appendChild(d);
+    }
+    const span = document.createElement("span");
+    span.className = "stat";
+    if (item.value) {
+      const strong = document.createElement("strong");
+      strong.textContent = item.value;
+      span.appendChild(strong);
+      span.appendChild(document.createTextNode(" " + item.text));
+    } else {
+      span.textContent = item.text;
+    }
+    $("stats").appendChild(span);
+  });
+
+  /* ============================================================
+     6. 移动菜单
+     ============================================================ */
+  const mobileMenu = $("mobile-menu");
+  const hamburger = $("hamburger");
+
+  function setMenu(open) {
+    mobileMenu.classList.toggle("is-open", open);
+    mobileMenu.setAttribute("aria-hidden", String(!open));
+    hamburger.classList.toggle("is-open", open);
+    hamburger.setAttribute("aria-expanded", String(open));
+    hamburger.setAttribute("aria-label", open ? "关闭菜单" : "打开菜单");
+    document.body.classList.toggle("menu-open", open);
+  }
+
+  hamburger.addEventListener("click", () => {
+    setMenu(!mobileMenu.classList.contains("is-open"));
+  });
+  $("mobile-backdrop").addEventListener("click", () => setMenu(false));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && mobileMenu.classList.contains("is-open")) {
+      setMenu(false);
+      hamburger.focus();
+    }
+  });
+
+  /* ============================================================
+     7. 进入工作台（config.workspaceUrl）
+     ============================================================ */
+  function workspaceUrl(withCommand) {
+    const url = new URL(C.workspaceUrl, window.location.href);
+    url.searchParams.set("from", "welcome");
+    url.searchParams.set("theme", sceneTheme(activeVideo));
+    url.searchParams.set("scene", String(activeVideo));
+    const command = withCommand ? entryInput.value.trim() : "";
+    if (command) url.searchParams.set("reverse", command);
+    return url.href;
+  }
+
+  function gotoWorkspace(e) {
+    if (e) e.preventDefault();
+    const fromForm = !!(e && e.currentTarget === $("entry-form"));
+    try {
+      localStorage.setItem("signalpath-theme", sceneTheme(activeVideo));
+      localStorage.setItem("signalpath-theme-source", "welcome");
+      rememberScene(activeVideo);
+    } catch (err) { /* 主题记忆失败不应阻止进入工作台 */ }
+    window.location.assign(workspaceUrl(fromForm));
+  }
+  $("nav-get-started").addEventListener("click", gotoWorkspace);
+  $("m-get-started").addEventListener("click", gotoWorkspace);
+  $("entry-form").addEventListener("submit", gotoWorkspace);
+  $("logo").addEventListener("click", (e) => e.preventDefault());
+
+  /* ============================================================
+     8. 审核辅助：?v=1..n-1 直接打开指定场景
+     ============================================================ */
+  /* 场景参数和上次场景已在创建视频前解析，避免首帧闪过暖阳。 */
+})();

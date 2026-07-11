@@ -12,6 +12,52 @@
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  function welcomeCommand() {
+    if (!window.location || !window.location.search || typeof URLSearchParams === 'undefined') return '';
+    try {
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('from') !== 'welcome') return '';
+      return (params.get('reverse') || '').trim().slice(0, 240);
+    } catch (e) { return ''; }
+  }
+
+  function isWelcomeEntry() {
+    if (!window.location || !window.location.search || typeof URLSearchParams === 'undefined') return false;
+    try { return new URLSearchParams(window.location.search).get('from') === 'welcome'; }
+    catch (e) { return false; }
+  }
+
+  function welcomeScene() {
+    if (!window.location || !window.location.search || typeof URLSearchParams === 'undefined') return -1;
+    try {
+      var n = Number(new URLSearchParams(window.location.search).get('scene'));
+      return Number.isInteger(n) && n >= 0 && n <= 12 ? n : -1;
+    } catch (e) { return -1; }
+  }
+
+  function syncWelcomeLink() {
+    var link = el('btn-welcome');
+    if (!link) return;
+    var scene = welcomeScene();
+    if (scene < 0) {
+      try { scene = Number(localStorage.getItem('signalpath-welcome-scene')); } catch (e) { scene = -1; }
+    }
+    link.href = 'welcome-reverse-prototype/index.html?from=workbench' +
+      (Number.isInteger(scene) && scene >= 0 ? '&v=' + scene : '');
+  }
+
+  function clearWelcomeCommand() {
+    if (!window.history || !window.history.replaceState || !window.location) return;
+    try {
+      var url = new URL(window.location.href);
+      url.searchParams.delete('reverse');
+      url.searchParams.delete('from');
+      url.searchParams.delete('theme');
+      url.searchParams.delete('scene');
+      window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+    } catch (e) {}
+  }
+
   /* ================= Toast 轻提示（替代确认弹窗：直接执行 + 提示可撤销） ================= */
 
   var toastTimer = 0;
@@ -266,9 +312,10 @@
       '<button class="btn ghost sm" id="cfg-tpl-export" title="把设备型号模板 + 快速布局预设 + 台面模板整体存档为一个文件">导出模板库</button>' +
       '<button class="btn ghost sm" id="cfg-tpl-import" title="从模板库文件恢复全部模板（按名称合并去重）">导入模板库</button>' +
       '</div>' +
-      '<p class="cfg-note" style="margin-top:0">模板库存档包含：设备型号模板、快速布局预设、音响反推模板、台面模板。' +
+      '<p class="cfg-note" id="cfg-global-note" style="margin-top:0"><b>当前配置 JSON</b> 是完整全局快照：设备、连线、路由、线材、图片、模板库和各类预设都会保存。</p>' +
+      '<p class="cfg-note" style="margin-top:0"><b>模板库 JSON</b> 包含：设备型号模板、快速布局预设、音响反推模板、台面模板。' +
       '换电脑 / 从链接打开时导入一次即可恢复全部模板。</p>' +
-      '<p class="cfg-note" style="margin-top:0">点「切换」在多套配置间对比；「临时移除」只是从列表隐藏（数据保留）；「删除」彻底移除。</p>' +
+      '<p class="cfg-note" id="cfg-slot-note" style="margin-top:0">点「切换」在多套完整配置间对比；「临时移除」只是从列表隐藏（数据保留）；「删除」彻底移除。</p>' +
       '<div id="cfg-slot-list">' + rows() + '</div>' +
       '</div><div class="modal-foot"><button class="btn primary" data-close-modal>完成</button></div>'
     );
@@ -490,6 +537,8 @@
     function applyTheme(t) {
       document.documentElement.setAttribute('data-theme', t);
       try { localStorage.setItem('signalpath-theme', t); } catch (e) {}
+      var themeMeta = el('theme-color');
+      if (themeMeta) themeMeta.setAttribute('content', t === 'light' ? '#eaf2f6' : '#0a1017');
       var b = el('btn-theme');
       if (b) {
         b.textContent = t === 'light' ? '☾' : '☀︎';
@@ -502,6 +551,7 @@
     var themeBtn = el('btn-theme');
     if (themeBtn) themeBtn.addEventListener('click', function () {
       var cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      try { localStorage.setItem('signalpath-theme-source', 'manual'); } catch (e) {}
       applyTheme(cur);
       SP.renderAll();   /* 框图内嵌 SVG 样式需按新主题重新生成 */
     });
@@ -537,6 +587,10 @@
       if (range) range.value = z;
       var val = el('zoom-val');
       if (val) val.textContent = z + '%';
+      var zin = el('btn-zoom-shortcut-in');
+      var zout = el('btn-zoom-shortcut-out');
+      if (zin) zin.disabled = z >= 200;
+      if (zout) zout.disabled = z <= 10;
     }
     SP.syncZoomUI = syncZoomUI;
     var zoomRange = el('zoom-range');
@@ -557,10 +611,15 @@
       b.title = atFit
         ? '当前为全局视角。点击放大并居中定位到高亮设备'
         : '点击缩放到能一眼看清全部设备的全局视角';
+      var zero = el('btn-zoom-shortcut-fit');
+      if (zero) {
+        zero.title = b.title + '（快捷键 0）';
+        zero.setAttribute('aria-label', b.textContent);
+      }
     }
     SP.syncFitBtn = syncFitBtn;
     var zoomFitBtn = el('btn-zoom-fit');
-    if (zoomFitBtn) zoomFitBtn.addEventListener('click', function () {
+    function toggleFitView() {
       var box = el('wiring-diagram');
       var fit = SP.fitDiagramZoom(box);
       var atFit = Math.abs((SP.diagramZoom || 1) - fit) < 0.02;
@@ -572,7 +631,20 @@
       }
       syncZoomUI();
       syncFitBtn();
-    });
+    }
+    if (zoomFitBtn) zoomFitBtn.addEventListener('click', toggleFitView);
+    var zoomShortcutFit = el('btn-zoom-shortcut-fit');
+    if (zoomShortcutFit) zoomShortcutFit.addEventListener('click', toggleFitView);
+    function zoomStep(factor) {
+      var box = el('wiring-diagram');
+      SP.zoomAt(box, (SP.diagramZoom || 1) * factor);
+      syncZoomUI();
+      syncFitBtn();
+    }
+    var zoomShortcutOut = el('btn-zoom-shortcut-out');
+    if (zoomShortcutOut) zoomShortcutOut.addEventListener('click', function () { zoomStep(1 / 1.2); });
+    var zoomShortcutIn = el('btn-zoom-shortcut-in');
+    if (zoomShortcutIn) zoomShortcutIn.addEventListener('click', function () { zoomStep(1.2); });
     syncZoomUI();
 
     /* ---------- 框图工具条 ---------- */
@@ -804,6 +876,13 @@
       SP.renderAll();
       SP.updateHistoryButtons();
       syncFitBtn();
+      var command = welcomeCommand();
+      syncWelcomeLink();
+      if (isWelcomeEntry()) clearWelcomeCommand();
+      if (command && SP.openQuickLayout) {
+        SP.openQuickLayout({ mode: 'reverse', command: command });
+        SP.toast('已带入欢迎页内容，请检查型号和数量');
+      }
     });
   });
 })();

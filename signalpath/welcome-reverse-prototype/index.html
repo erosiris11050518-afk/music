@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ErosIris Link</title>
+<meta name="description" content="ErosIris Link 电影式开场页 — 从音箱数量开始，反推整套声音系统。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=20260711-4">
+</head>
+<body>
+
+<!--
+  可替换的文字 / 视频 / 图片 / 链接全部在 config.js 中统一管理，
+  本文件只是页面骨架，动态内容由 app.js 按配置注入。
+-->
+
+<section class="hero" id="hero">
+
+  <!-- ===== 背景视频层 (z-0)：由 config.scenes 生成 ===== -->
+  <div class="video-stack" id="video-stack" aria-hidden="true"></div>
+
+  <!-- ===== 前景遮罩 PNG (z-1)：config.overlay.image ===== -->
+  <div class="train-overlay" id="train-overlay" aria-hidden="true">
+    <img id="overlay-img" alt="" draggable="false">
+  </div>
+
+  <!-- ===== 内容层 (z-2) ===== -->
+  <div class="content">
+
+    <!-- 导航 -->
+    <nav class="nav">
+      <a class="logo" href="#" id="logo"></a>
+
+      <div class="nav-pill liquid-glass" id="nav-pill">
+        <!-- 链接由 config.nav.links 注入 -->
+        <a class="btn-solid nav-cta" href="#" id="nav-get-started"></a>
+      </div>
+
+      <button class="hamburger liquid-glass" id="hamburger"
+              aria-label="打开菜单" aria-expanded="false" aria-controls="mobile-menu">
+        <svg class="icon-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
+        </svg>
+        <svg class="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </nav>
+
+    <!-- Hero 主内容 -->
+    <div class="hero-middle" id="hero-middle">
+      <div class="badge liquid-glass" id="badge"></div>
+
+      <h1 class="heading" id="heading"></h1>
+
+      <p class="subtext" id="subtext"></p>
+
+      <form class="email-pill liquid-glass" id="entry-form">
+        <input class="email-input" id="entry-input" type="text" autocomplete="email">
+        <button class="btn-solid pill-cta" type="submit" id="entry-cta"></button>
+      </form>
+
+      <!-- 场景切换器：由 config.scenes 生成 -->
+      <div class="switcher" id="switcher" role="tablist" aria-label="切换背景场景"></div>
+    </div>
+
+    <!-- 底部统计：由 config.stats 生成 -->
+    <div class="stats" id="stats"></div>
+  </div>
+
+  <!-- ===== 移动菜单 (z-50) ===== -->
+  <div class="mobile-menu" id="mobile-menu" aria-hidden="true">
+    <div class="mobile-backdrop" id="mobile-backdrop"></div>
+    <nav class="mobile-panel" id="mobile-panel" aria-label="移动端导航">
+      <!-- 链接由 config.nav.links 注入 -->
+      <a class="btn-solid m-cta" href="#" id="m-get-started"></a>
+    </nav>
+  </div>
+
+</section>
+
+<script src="config.js?v=20260711-4"></script>
+<script src="app.js?v=20260711-6"></script>
+</body>
+</html>

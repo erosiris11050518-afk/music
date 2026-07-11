@@ -101,10 +101,14 @@ load('js/mixer.js');
 load('js/teach.js');
 load('js/report.js');
 load('js/main.js');
+load('welcome-reverse-prototype/config.js');
 
 print('== 模块加载 ==');
 T('全部 12 个模块加载无异常', true);
 T('SP.Store / renderAll 前置就绪', !!SP.Store && !!SP.renderWiringDiagram);
+T('欢迎场景均声明工作台昼夜主题', window.SITE_CONFIG.scenes.every(function (scene) {
+  return scene.workbenchTheme === 'light' || scene.workbenchTheme === 'dark';
+}));
 
 print('== DOMContentLoaded 启动 ==');
 var bootErr = null;
@@ -234,6 +238,9 @@ Promise.resolve().then(function () {
   T('小蝶引导入口就绪', typeof SP.initGuide === 'function' && !!SP.Guide &&
     typeof SP.Guide.go === 'function' && typeof SP.Guide.act === 'function' &&
     typeof SP.Guide.spotlight === 'function');
+  T('小蝶三秒欢迎词已配置', SP.Guide.welcomeDuration === 3000 &&
+    Array.isArray(SP.Guide.welcomeLines) && SP.Guide.welcomeLines.length >= 5 &&
+    SP.Guide.welcomeLines.some(function (line) { return line.indexOf('3 秒反推系统') >= 0; }));
   tryRun('引导主菜单渲染（状态感知）', function () {
     SP.closeModal();
     SP.Guide.go('home');
@@ -265,14 +272,110 @@ Promise.resolve().then(function () {
     if (registry['guide-msg'].innerHTML.indexOf('创建') < 0) throw new Error('没有进入创建步骤');
   });
   tryRun('引导高亮带路 spotlight', function () {
-    if (!SP.Guide.spotlight('ql-confirm')) throw new Error('spotlight 找不到目标');
+    if (!SP.Guide.spotlight('ql-confirm', { persist: true })) throw new Error('spotlight 找不到目标');
     if (!registry['ql-confirm'].classList.contains('guide-spot')) throw new Error('目标没有加高亮类');
+    SP.Guide.close();
+    if (registry['ql-confirm'].classList.contains('guide-spot')) throw new Error('关闭小蝶后高亮文字仍残留');
   });
   tryRun('引导常见问题列表与回答', function () {
     SP.Guide.go('faq');
     if (registry['guide-opts'].innerHTML.indexOf('Dante') < 0) throw new Error('FAQ 列表缺项');
     SP.Guide.act('faq-cable');
     if (registry['guide-msg'].innerHTML.indexOf('线材') < 0) throw new Error('FAQ 回答没有渲染');
+  });
+  T('小蝶五门基础教学已注册', !!SP.Guide.courses &&
+    ['templates', 'reverse', 'cables', 'report', 'excel'].every(function (id) {
+      return !!SP.Guide.courses[id];
+    }));
+  T('小蝶主界面进阶教学已注册', !!SP.Guide.courses &&
+    ['advanced-global', 'advanced-config-json', 'advanced-config-switch', 'advanced-views', 'advanced-canvas',
+      'advanced-viewport', 'advanced-inspector'].every(function (id) {
+      return !!SP.Guide.courses[id] && SP.Guide.courses[id].level === 'advanced';
+    }));
+  T('主界面关键按钮均纳入进阶教学且危险操作只讲解', (function () {
+    var ids = ['advanced-global', 'advanced-config-json', 'advanced-config-switch', 'advanced-views', 'advanced-canvas',
+      'advanced-viewport', 'advanced-inspector'];
+    var steps = [];
+    ids.forEach(function (id) { steps = steps.concat(SP.Guide.courses[id].steps || []); });
+    var targets = steps.map(function (s) { return s.target; });
+    var required = ['#btn-theme', '#btn-report', '#btn-quick', '#btn-templates', '#btn-config',
+      '#btn-clear', '#btn-keys', '#btn-undo', '#btn-redo', '#btn-smart-all-diagram',
+      '#btn-clear-all-wires-diagram', '#btn-clear-devices-diagram', '#btn-power-alarm',
+      '#btn-diagram-orient', '#btn-diagram-align-default', '#btn-diagram-align-relative',
+      '#diagram-scope', '#btn-zoom-fit', '#btn-zoom-shortcut-fit', '#btn-zoom-shortcut-out',
+      '#zoom-range', '#btn-zoom-shortcut-in', '#btn-diagram-export',
+      '#insp-add', '#drawer-toggle', '#cfg-export', '#cfg-import', '#cfg-tpl-export',
+      '#cfg-tpl-import', '#cfg-slot-list', '[data-slot-use]', '[data-slot-hide]'];
+    var danger = steps.filter(function (s) {
+      return ['#btn-clear', '#btn-clear-all-wires-diagram', '#btn-clear-devices-diagram']
+        .indexOf(s.target) >= 0;
+    });
+    return required.every(function (target) { return targets.indexOf(target) >= 0; }) &&
+      danger.length === 3 && danger.every(function (s) { return s.manual && !s.wait; });
+  })());
+  tryRun('教学首页显示基础与进阶课程且每次只有一条拓展', function () {
+    SP.Guide.go('home');
+    var h = registry['guide-extra'].innerHTML;
+    var courseN = (h.match(/class="gd-course/g) || []).length;
+    var tipN = (h.match(/class="gd-tip/g) || []).length;
+    if (courseN < 12 || tipN !== 1 || h.indexOf('Excel 导出') < 0 ||
+        h.indexOf('第一主界面 · 进阶教学') < 0 || h.indexOf('申请免学') < 0) {
+      throw new Error('课程中心内容不完整');
+    }
+  });
+  T('配置进阶课讲清单套全局快照与逐套导出边界', (function () {
+    var json = SP.Guide.courses['advanced-config-json'].steps;
+    var slots = SP.Guide.courses['advanced-config-switch'].steps;
+    var text = json.concat(slots).map(function (s) {
+      return typeof s.text === 'string' ? s.text : '';
+    }).join(' ');
+    var deleteStep = slots.filter(function (s) {
+      return s.target === '[data-slot-del]:not([disabled])';
+    })[0];
+    return json[0].ensure === 'main' && slots[0].ensure === 'main' &&
+      text.indexOf('完整全局快照') >= 0 && text.indexOf('逐套切换、逐套核对、逐套导出') >= 0 &&
+      text.indexOf('不是把两个项目合并') >= 0 && deleteStep && deleteStep.manual && !deleteStep.wait;
+  })());
+  tryRun('模板教学支持下载导入与当前案例提取双路线', function () {
+    SP.Guide.startCourse('templates');
+    SP.Guide.nextCourse();
+    if (registry['guide-opts'].innerHTML.indexOf('下载表格并导入') < 0 ||
+        registry['guide-opts'].innerHTML.indexOf('从当前案例提取') < 0) {
+      throw new Error('模板教学缺少双路线选择');
+    }
+    SP.Guide.act('course-path-download');
+    if (registry['guide-msg'].innerHTML.indexOf('下载填写模版表') < 0) {
+      throw new Error('没有进入下载填写路线');
+    }
+  });
+  tryRun('教学进度可暂停并恢复', function () {
+    SP.Guide.act('course-pause');
+    var p1 = SP.Guide.progress();
+    if (!p1.active || p1.active.id !== 'templates') throw new Error('暂停后进度丢失');
+    SP.Guide.resumeCourse();
+    if (registry['guide-msg'].innerHTML.indexOf('下载填写模版表') < 0) {
+      throw new Error('恢复后没有回到原步骤');
+    }
+  });
+  tryRun('基础教学可申请免学且保留回看入口', function () {
+    SP.Guide.act('course-skip-request');
+    if (registry['guide-opts'].innerHTML.indexOf('确认申请免学') < 0) {
+      throw new Error('免学缺少二次确认');
+    }
+    SP.Guide.act('course-skip-confirm');
+    var p = SP.Guide.progress();
+    if (!['templates', 'reverse', 'cables', 'report', 'excel'].every(function (id) {
+      return p.skipped[id];
+    })) throw new Error('基础课程没有全部标记免学');
+    SP.Guide.go('home');
+    if (registry['guide-extra'].innerHTML.indexOf('已免学 · 可回看') < 0) {
+      throw new Error('免学后没有保留回看状态');
+    }
+    SP.Guide.startCourse('templates');
+    if (registry['guide-msg'].innerHTML.indexOf('模板库') < 0) {
+      throw new Error('免学课程无法重新回看');
+    }
+    SP.Guide.act('course-pause');
   });
   tryRun('AI语音配系统：命令应用到反推卡片', function () {
 	    SP.closeModal();
@@ -341,6 +444,14 @@ Promise.resolve().then(function () {
     tplPanelHtml.indexOf('导出导入') >= 0 &&
     tplPanelHtml.indexOf('提取当前案例中的模板') >= 0 &&
     tplPanelHtml.indexOf('模板库内部操作') >= 0);
+  tryRun('配置面板说明完整配置包含模板库且支持多配置切换', function () {
+    SP.closeModal();
+    registry['btn-config'].fire('click');
+    var cfgHtml = registry['modal-box'].innerHTML;
+    if (cfgHtml.indexOf('完整全局快照') < 0 || cfgHtml.indexOf('模板库和各类预设') < 0 ||
+        cfgHtml.indexOf('多套完整配置间对比') < 0) throw new Error('配置数据边界说明不完整');
+    SP.closeModal();
+  });
   T('单文件与文件夹 CSV 导入入口就绪',
     typeof SP.pickCsvImport === 'function' && typeof SP.pickCsvFolder === 'function' &&
     typeof SP.importCsvFolder === 'function' && typeof SP.catFromFilename === 'function');
@@ -495,7 +606,24 @@ Promise.resolve().then(function () {
     document.documentElement.setAttribute('data-theme', 'dark');
     SP.renderAll();
   });
+  var lightPalette, darkPalette;
+  document.documentElement.setAttribute('data-theme', 'light');
+  lightPalette = SP.diagramTheme();
+  document.documentElement.setAttribute('data-theme', 'dark');
+  darkPalette = SP.diagramTheme();
+  T('昼夜框图色板同步切换', lightPalette.bg !== darkPalette.bg &&
+    lightPalette.title !== darkPalette.title && lightPalette.sel !== darkPalette.sel);
   T('浅色主题下框图仍有内容', registry['wiring-diagram'].innerHTML.indexOf('data-node') >= 0);
+  tryRun('0 / 减号 / 加号提示按钮可直接控制缩放', function () {
+    SP.diagramZoom = 1;
+    registry['btn-zoom-shortcut-in'].fire('click');
+    if (Math.abs(SP.diagramZoom - 1.2) > 0.001) throw new Error('加号按钮没有放大');
+    registry['btn-zoom-shortcut-out'].fire('click');
+    if (Math.abs(SP.diagramZoom - 1) > 0.001) throw new Error('减号按钮没有缩小');
+    SP.diagramZoom = 1.6;
+    registry['btn-zoom-shortcut-fit'].fire('click');
+    if (Math.abs(SP.diagramZoom - 1.6) < 0.001) throw new Error('0 按钮没有切换视角');
+  });
   tryRun('缩放 zoomAt / fit / focus', function () {
     var box = registry['wiring-diagram'];
     box.querySelector = function (s) { return null; };   /* 无 svg 桩时应安全返回 */

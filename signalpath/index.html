@@ -3,9 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#050607">
+<meta name="theme-color" id="theme-color" content="#0a1017">
 <title>SignalPath · 音响系统连线图管理</title>
+<script>
+(function () {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var requested = params.get('from') === 'welcome' ? params.get('theme') : '';
+    var theme = requested || localStorage.getItem('signalpath-theme');
+    if (theme !== 'light' && theme !== 'dark') theme = 'dark';
+    if (requested === 'light' || requested === 'dark') localStorage.setItem('signalpath-theme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
+    document.getElementById('theme-color').setAttribute('content', theme === 'light' ? '#eaf2f6' : '#0a1017');
+  } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+})();
+</script>
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/workbench-skin.css?v=20260711-10">
 </head>
 <body>
 
@@ -14,6 +28,9 @@
     <img class="brand-logo" src="assets/brand/logo-title.png"
       onerror="this.onerror=null;this.src='assets/brand/logo-title.svg';"
       alt="ErosIris Link">
+    <a class="btn ghost sm welcome-btn" id="btn-welcome"
+      href="welcome-reverse-prototype/index.html?from=workbench"
+      title="返回欢迎页" aria-label="返回欢迎页">⌂</a>
     <button class="btn ghost sm theme-btn" id="btn-theme" title="切换黑 / 白主题">☀︎</button>
   </div>
   <div class="topbar-actions">
@@ -66,10 +83,13 @@
         <span class="tb-group grow">
           <select class="config-switch" id="diagram-scope" title="整体视图 / 一调音台一页面"></select>
           <button class="btn ghost sm" id="btn-zoom-fit" title="全局视角 / 定位当前 双态切换">全局视角</button>
-          <span class="shortcut-hint" title="定位当前 / 全局视角快捷键">0</span>
-          <span class="shortcut-hint" title="缩小快捷键">-</span>
+          <button type="button" class="shortcut-hint" id="btn-zoom-shortcut-fit"
+            title="全局视角 / 定位当前（快捷键 0）" aria-label="全局视角或定位当前">0</button>
+          <button type="button" class="shortcut-hint" id="btn-zoom-shortcut-out"
+            title="缩小画布（快捷键 -）" aria-label="缩小画布">-</button>
           <input type="range" id="zoom-range" class="zoom-range" min="25" max="200" step="5" value="100" title="缩放比例（以视口中心为锚点），也可 ⌘+滚轮缩放">
-          <span class="shortcut-hint" title="放大快捷键">+</span>
+          <button type="button" class="shortcut-hint" id="btn-zoom-shortcut-in"
+            title="放大画布（快捷键 +）" aria-label="放大画布">+</button>
           <span class="zoom-val" id="zoom-val">100%</span>
         </span>
         <span class="tb-group toolbar-right">
@@ -275,15 +295,15 @@
 
 <script src="js/db.js"></script>
 <script src="js/store.js"></script>
-<script src="js/diagram.js"></script>
+<script src="js/diagram.js?v=20260711-2"></script>
 <script src="js/inspector.js"></script>
 <script src="js/quick.js"></script>
-<script src="js/guide.js"></script>
+<script src="js/guide.js?v=20260711-8"></script>
 <script src="js/keys.js"></script>
 <script src="js/cables.js"></script>
 <script src="js/mixer.js"></script>
 <script src="js/teach.js"></script>
 <script src="js/report.js"></script>
-<script src="js/main.js"></script>
+<script src="js/main.js?v=20260711-7"></script>
 </body>
 </html>

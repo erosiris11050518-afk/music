@@ -22,20 +22,20 @@
       document.documentElement.getAttribute('data-theme') === 'light';
   }
 
-  /* 框图主题色板：dark = 石墨深底，light = 纸白底 */
+  /* 框图主题色板：dark = 哑光机架，light = 冰晶工作面 */
   function diagramTheme() {
     return isLightTheme() ? {
-      nodeFill: '#ffffff', nodeStroke: '#aeb7c2',
-      speakerFill: '#f2f9f5',
-      title: '#11161c', dim: '#4f5966', faint: '#76818e',
-      tick: '#9aa4b0', implicit: '#c4cad2', bg: '#f5f6f8', red: '#c94f3f',
-      chipTx: '#ffffff', sel: '#c47f16', plug: '#2a2f36'
+      nodeFill: '#fbfdfe', nodeStroke: '#9db2bd',
+      speakerFill: '#f0f8f4',
+      title: '#172126', dim: '#52616a', faint: '#778792',
+      tick: '#91a3ad', implicit: '#becbd2', bg: '#e8f1f5', red: '#c94f3f',
+      chipTx: '#ffffff', sel: '#2689bd', plug: '#27343b'
     } : {
-      nodeFill: '#1a2028', nodeStroke: '#53606e',
-      speakerFill: '#17231f',
-      title: '#f8fafc', dim: '#aeb8c4', faint: '#7d8996',
-      tick: '#4a5560', implicit: '#3a4450', bg: '#0f1318', red: '#e0604f',
-      chipTx: '#0f1318', sel: '#eda63d', plug: '#c9d0d9'
+      nodeFill: '#171a1e', nodeStroke: '#4b525a',
+      speakerFill: '#14201c',
+      title: '#f2f4f6', dim: '#b5bbc3', faint: '#7c848e',
+      tick: '#454b52', implicit: '#343a40', bg: '#090b0e', red: '#e0604f',
+      chipTx: '#08090b', sel: '#69bfe8', plug: '#cbd0d5'
     };
   }
 
