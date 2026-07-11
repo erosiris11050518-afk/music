@@ -109,6 +109,9 @@ T('SP.Store / renderAll 前置就绪', !!SP.Store && !!SP.renderWiringDiagram);
 T('欢迎场景均声明工作台昼夜主题', window.SITE_CONFIG.scenes.every(function (scene) {
   return scene.workbenchTheme === 'light' || scene.workbenchTheme === 'dark';
 }));
+T('欢迎场景均配置轻量首帧图', window.SITE_CONFIG.scenes.every(function (scene) {
+  return typeof scene.poster === 'string' && /\.jpg$/i.test(scene.poster);
+}));
 var rootEntryHtml = readFile('index.html');
 var welcomeAppSource = readFile('welcome-reverse-prototype/app.js');
 T('项目根地址默认进入欢迎页', rootEntryHtml.indexOf("entryParams.get('workspace') === '1'") >= 0 &&
@@ -118,6 +121,9 @@ T('欢迎页使用持久工作台参数避免刷新循环', welcomeAppSource.ind
 T('欢迎页首个场景在媒体就绪后显式播放', welcomeAppSource.indexOf('function playActiveVideo()') >= 0 &&
   welcomeAppSource.indexOf('addEventListener("canplay", playActiveVideo') >= 0 &&
   welcomeAppSource.indexOf('window.addEventListener("load", playActiveVideo') >= 0);
+T('欢迎页优先当前视频并为卡顿播放自动重试', welcomeAppSource.indexOf('v.preload = i === initialScene ? "auto" : "none"') >= 0 &&
+  welcomeAppSource.indexOf('function schedulePlaybackRetry(index)') >= 0 &&
+  welcomeAppSource.indexOf('ensureVideoSource((i + 1) % videos.length, "auto")') >= 0);
 
 print('== DOMContentLoaded 启动 ==');
 var bootErr = null;

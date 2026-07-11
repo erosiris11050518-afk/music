@@ -1,0 +1,6 @@
+# 私下发布的软件包不得进入 GitHub Pages 源目录。
+/release/
+*.zip
+*.dmg
+*.exe
+*.msi

@@ -1,0 +1,10 @@
+ErosIris Link 便携版使用说明
+
+1. 请先完整解压 ErosIris Link 文件夹，不要直接在压缩包内运行。
+2. 双击“START ErosIris Link.html”即可打开欢迎页。
+3. 推荐使用最新版 Chrome、Edge 或 Safari 浏览器。
+4. 请勿单独移动启动文件，也不要删除 assets、css、js 和 welcome-reverse-prototype 文件夹。
+5. 视频、图片和程序均保存在本地，打开后不依赖网络加载这些资源。
+6. 移动文件夹、切换浏览器或更新版本前，建议先在工作台导出完整配置 JSON 备份。
+
+Windows 和 macOS 使用同一个压缩包及启动文件。

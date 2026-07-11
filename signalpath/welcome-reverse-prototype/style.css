@@ -31,6 +31,7 @@ input { font: inherit; }
   position: absolute;
   inset: 0;
   z-index: 0;
+  background: #182c41 url('assets/posters/golden-hour.jpg') center / cover no-repeat;
 }
 .bg-video {
   position: absolute;

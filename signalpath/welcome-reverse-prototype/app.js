@@ -93,8 +93,19 @@
      ============================================================ */
   const videos = [];
   const switchButtons = [];
+  const retryCounts = [];
+  const videoStack = $("video-stack");
   let activeVideo = initialScene;
   let isTransitioning = false;
+  let playbackRetryTimer = 0;
+  let nextPreloadTimer = 0;
+
+  function showScenePoster(index) {
+    const poster = C.scenes[index] && C.scenes[index].poster;
+    videoStack.style.backgroundImage = poster ? `url(${JSON.stringify(poster)})` : "none";
+  }
+
+  showScenePoster(initialScene);
 
   C.scenes.forEach((scene, i) => {
     const v = document.createElement("video");
@@ -103,10 +114,28 @@
     v.defaultMuted = true;
     v.loop = false;
     v.autoplay = i === initialScene;
+    v.preload = i === initialScene ? "auto" : "none";
     v.playsInline = true;
     v.setAttribute("playsinline", "");
     v.setAttribute("muted", "");
+    if (scene.poster) v.poster = scene.poster;
+    v.dataset.src = scene.video;
     v.addEventListener("error", () => { v.style.display = "none"; });
+    v.addEventListener("playing", () => {
+      if (i !== activeVideo) return;
+      retryCounts[i] = 0;
+      window.clearTimeout(playbackRetryTimer);
+      window.clearTimeout(nextPreloadTimer);
+      nextPreloadTimer = window.setTimeout(() => {
+        if (i === activeVideo) ensureVideoSource((i + 1) % videos.length, "auto");
+      }, 2000);
+    });
+    v.addEventListener("waiting", () => {
+      if (i === activeVideo && v.currentTime < 0.25) schedulePlaybackRetry(i);
+    });
+    v.addEventListener("stalled", () => {
+      if (i === activeVideo && v.currentTime < 0.25) schedulePlaybackRetry(i);
+    });
     v.addEventListener("timeupdate", () => {
       if (C.sceneAutoAdvance === false || i !== activeVideo || isTransitioning) return;
       if (!Number.isFinite(v.duration) || v.currentTime <= 0) return;
@@ -118,9 +147,10 @@
       if (C.sceneAutoAdvance === false || i !== activeVideo || isTransitioning) return;
       setActiveVideo((i + 1) % C.scenes.length);
     });
-    v.src = scene.video;
+    if (i === initialScene) v.src = scene.video;
     $("video-stack").appendChild(v);
     videos.push(v);
+    retryCounts.push(0);
 
     const b = document.createElement("button");
     b.className = "sw liquid-glass" + (i === initialScene ? " is-active" : "");
@@ -135,16 +165,47 @@
   hero.classList.toggle("dark-content", !!C.scenes[initialScene].darkContent);
   rememberScene(initialScene);
 
+  function ensureVideoSource(index, preload) {
+    const current = videos[index];
+    if (!current) return;
+    if (preload) current.preload = preload;
+    if (!current.hasAttribute("src")) {
+      current.src = current.dataset.src;
+      current.load();
+    }
+  }
+
+  function attemptVideoPlay(index) {
+    const current = videos[index];
+    if (!current || document.hidden) return;
+    const playPromise = current.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => { /* 静音自动播放仍被浏览器限制时保留首帧图 */ });
+    }
+  }
+
+  function schedulePlaybackRetry(index) {
+    window.clearTimeout(playbackRetryTimer);
+    if ((retryCounts[index] || 0) >= 2) return;
+    playbackRetryTimer = window.setTimeout(() => {
+      const current = videos[index];
+      if (!current || index !== activeVideo || document.hidden || current.currentTime >= 0.25) return;
+      retryCounts[index] = (retryCounts[index] || 0) + 1;
+      try { current.currentTime = 0; } catch (e) { /* 尚未获得首帧时继续等待 */ }
+      attemptVideoPlay(index);
+      schedulePlaybackRetry(index);
+    }, 1400);
+  }
+
   function playActiveVideo() {
     const current = videos[activeVideo];
     if (!current || document.hidden) return;
+    ensureVideoSource(activeVideo, "auto");
     current.muted = true;
     current.defaultMuted = true;
     current.playsInline = true;
-    const playPromise = current.play();
-    if (playPromise && typeof playPromise.catch === "function") {
-      playPromise.catch(() => { /* 静音自动播放仍被浏览器限制时保持静态首帧 */ });
-    }
+    attemptVideoPlay(activeVideo);
+    schedulePlaybackRetry(activeVideo);
   }
 
   // 动态创建的 video 不能只依赖 autoplay 属性；显式启动并在媒体就绪后兜底。
@@ -163,7 +224,9 @@
     activeVideo = index;
     rememberScene(index);
 
-    videos[index].currentTime = 0;
+    showScenePoster(index);
+    ensureVideoSource(index, "auto");
+    try { videos[index].currentTime = 0; } catch (e) { /* 等待视频元数据 */ }
     playActiveVideo();
     videos[index].classList.add("is-active");
     videos[prev].classList.remove("is-active");
