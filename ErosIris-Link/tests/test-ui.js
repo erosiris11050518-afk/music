@@ -526,8 +526,8 @@ Promise.resolve().then(function () {
     if (registry['rv-cards-wrap'].innerHTML.indexOf('有源全频') >= 0) throw new Error('撤销没有回退上一条语音添加');
   });
   SP.closeModal();
-  /* 1：重复打开面板不叠加委托监听（此前输入 1 变 11 的根因回归） */
-  tryRun('重复打开面板：输入 1 仍是 1（监听器已去重）', function () {
+  /* 重复监听与 iOS 原生输入回归：keydown 不抢先写值，input 才作为唯一数据源。 */
+  tryRun('手机数量格：输入 1 仍是 1（不与系统输入叠加）', function () {
     SP.openQuickLayout();
     SP.closeModal();
     SP.openQuickLayout();
@@ -541,7 +541,10 @@ Promise.resolve().then(function () {
       key: '1', code: 'Digit1', target: cell,
       preventDefault: function () {}, stopPropagation: function () {}
     });
-    if (cell.value !== '1') throw new Error('监听器叠加：按 1 得到 "' + cell.value + '"');
+    if (cell.value !== '') throw new Error('keydown 抢先写入了数字："' + cell.value + '"');
+    cell.value = '1';
+    registry['modal-box'].fire('input', { target: cell });
+    if (cell.value !== '1') throw new Error('系统输入 1 后得到 "' + cell.value + '"');
   });
   SP.closeModal();
   /* 严格桩：getElementById 只认已渲染进 modal-box 的 id，未渲染返回 null，

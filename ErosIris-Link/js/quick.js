@@ -2114,6 +2114,14 @@
 
     /* ================= 事件委托：input / change ================= */
 
+    function cleanCountValue(value) {
+      var digits = String(value || '')
+        .replace(/[０-９]/g, function (n) { return String(n.charCodeAt(0) - 65296); })
+        .replace(/\D/g, '');
+      if (!digits) return '';
+      return String(Math.min(128, parseInt(digits, 10) || 0));
+    }
+
     on('input', function (e) {
       var t = e.target;
       if (!t || !t.getAttribute) return;
@@ -2123,7 +2131,7 @@
         if (clean !== t.value) t.value = clean;
       }
       if (t.getAttribute('data-ql-count') !== null) {
-        var cleanN = t.value.replace(/\D/g, '');
+        var cleanN = cleanCountValue(t.value);
         if (cleanN !== t.value) t.value = cleanN;
         qlCalcShow();
         return;
@@ -2131,7 +2139,7 @@
       if (t.getAttribute('data-rv-cnt') !== null) {
         var g1 = rvGroups[+t.getAttribute('data-rv-cnt')];
         if (g1) {
-          g1.count = t.value.replace(/\D/g, '');
+          g1.count = cleanCountValue(t.value);
           if (g1.count !== t.value) t.value = g1.count;
           markGroupDirty(g1);
           rvCalcShow();
@@ -2258,11 +2266,9 @@
             if (pv.select) pv.select();
           }
         } else if (/^\d$/.test(e.key)) {
-          e.preventDefault();
-          var v = (t.value + e.key).replace(/^0+(\d)/, '$1');
-          t.value = String(Math.min(128, +v));
-          if (isQlCell) qlCalcShow();
-          if (isRvCell) { var gg2 = rvGroups[+t.getAttribute('data-rv-cnt')]; if (gg2) { gg2.count = t.value; markGroupDirty(gg2); rvCalcShow(); } }
+          /* 让浏览器完成输入，再由 input 事件统一同步。iOS/iPadOS 数字键盘有时
+             会忽略 keydown.preventDefault；这里手动追加会与系统输入叠加成 11。 */
+          return;
         } else if (e.key.length === 1) {
           e.preventDefault();   /* 数量格只接受数字 */
         }
