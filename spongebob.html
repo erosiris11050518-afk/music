@@ -265,20 +265,15 @@ button.cmp.before { border-color: var(--warn); color: var(--warn); background: r
   <div class="card panel" id="panel-gate">
     <h2>Gate 门（压低底噪 / 空白段噪声）</h2>
     <p class="hint">噪声门 / Expander 原理，适合压低<b>底噪和空白段噪声</b>；不是 AI 人声降噪，请勿期待去除持续强噪声。</p>
-    <div class="prepost" data-rta="gate">
-      <span class="hint">RTA 探测：</span>
-      <button data-pp="pre">Pre 门前</button>
-      <button data-pp="post" class="sel">Post 门后</button>
-    </div>
-    <canvas id="gateCanvas" height="150"></canvas>
-    <p class="hint">播放后看频谱：把<b>门限（黄线）</b>调到刚好压过噪声底、又不吃掉人声即可。</p>
+    <canvas id="gateCanvas" height="180"></canvas>
+    <p class="hint">调音台式动态曲线：横轴是输入电平，纵轴是输出电平；<b>黄线</b>是 Threshold，移动点是 Gate 实际检测值。</p>
     <label class="check" style="margin:10px 0;">
       <input type="checkbox" id="gateOn">
       <span>启用 Gate（默认关闭）</span>
     </label>
     <div class="slider-row">
       <div class="lab"><span>Threshold 门限</span><b id="gateThLab">-45dB</b></div>
-      <input type="range" id="gateTh" min="-80" max="-20" value="-45">
+      <input type="range" id="gateTh" min="-100" max="0" value="-45">
     </div>
     <div class="slider-row">
       <div class="lab"><span>Reduction 压低量</span><b id="gateRedLab">80dB（静音）</b></div>
@@ -291,6 +286,10 @@ button.cmp.before { border-color: var(--warn); color: var(--warn); background: r
     <div class="slider-row">
       <div class="lab"><span>Attack 开启</span><b id="gateAtkLab">5ms</b></div>
       <input type="range" id="gateAtk" min="1" max="50" value="5">
+    </div>
+    <div class="slider-row">
+      <div class="lab"><span>Hold 保持</span><b id="gateHoldLab">60ms</b></div>
+      <input type="range" id="gateHold" min="0" max="500" value="60">
     </div>
     <div class="slider-row">
       <div class="lab"><span>Release 关闭</span><b id="gateRelLab">120ms</b></div>
@@ -997,7 +996,7 @@ const state = {
   cutDirty: false,
   segmentBuffer: null,     // 应用剪切后的片段
   gatedBuffer: null,       // 片段 + 降噪后的缓存
-  gate: { on: false, threshold: -45, reduction: 80, ratio: 20, attack: 5, release: 120 },
+  gate: { on: false, threshold: -45, reduction: 80, ratio: 20, attack: 5, hold: 60, release: 120 },
   chorus: { on: true, length: 80, voices: 1, rate: 4.2, pitchFudge: 0.13, wetDb: -14, dryDb: -4 },
   verb: { type: 'off', preDelay: 20, decay: 2.2, size: 1.0, lowCut: 120, highCut: 7500, bassMulti: 1.0, wet: 25, dry: 100 },
   bitrate: 192,
@@ -1068,34 +1067,90 @@ function ensureSegment() {
 }
 
 /* 下行扩展器曲线：Ratio 决定门限下的衰减速度，Reduction 限制最大衰减。 */
-function gateTargetGain(env, g) {
-  const envDb = 20 * Math.log10(Math.max(env, 1e-8));
+function gateTargetGain(env, g, measuredDb) {
+  const envDb = measuredDb == null ? 20 * Math.log10(Math.max(env, 1e-8)) : measuredDb;
   const belowDb = Math.max(0, g.threshold - envDb);
   const ratio = clamp(+g.ratio || 4, 1, 20);
-  // 最高档为硬门：包络低于 Threshold 时目标增益为 0，Release 决定关门速度。
-  if (ratio >= 20 && envDb < g.threshold) return 0;
+  // 最高档为硬门；Reduction 仍限制关门后的最大压低量。
+  if (ratio >= 20 && envDb < g.threshold) {
+    const reductionDb = Math.max(0, +g.reduction || 0);
+    return reductionDb >= 80 ? 0 : Math.pow(10, -reductionDb / 20);
+  }
   const reductionDb = Math.min(Math.max(0, g.reduction), belowDb * (ratio - 1));
   return Math.pow(10, -reductionDb / 20);
 }
 const gateRatioText = ratio => +ratio >= 20 ? '∞:1（硬门）' : `${ratio}:1`;
 const gateReductionText = reduction => +reduction >= 80 ? '80dB（静音）' : `${reduction}dB`;
 
-/* 离线 Gate：立体声联动检测，与实时试听使用同一扩展曲线。 */
+/*
+  Gate 时序状态机：立体声联动检测，实时试听与离线导出共用。
+  检测器只保留 3ms 的短尾巴，避免代替用户设定的 Hold / Release。
+  Attack / Release 使用线性斜率，设定多少 ms 就在对应时间内完成全幅开/关。
+*/
+function resetGateRuntime(rt) {
+  rt.gEnv = 0;
+  rt.gGain = 0;
+  rt.gateHoldSamples = 0;
+  rt.gateHoldRemainingMs = 0;
+  rt.gateInputDb = -100;
+  rt.gateOutputDb = -100;
+  rt.gateReductionDb = 80;
+  rt.gatePhase = 'closed';
+  return rt;
+}
+function gateTiming(g, sr) {
+  return {
+    detectorC: Math.exp(-1 / (sr * 0.003)),
+    holdSamples: Math.max(0, Math.round((+g.hold || 0) * sr / 1000)),
+    attackStep: 1 / Math.max(1, Math.round(Math.max(0, +g.attack || 0) * sr / 1000)),
+    releaseStep: 1 / Math.max(1, Math.round(Math.max(0, +g.release || 0) * sr / 1000)),
+  };
+}
+function advanceGate(peak, g, sr, rt, timing) {
+  const t = timing || gateTiming(g, sr);
+  const detectorC = t.detectorC;
+  rt.gEnv = peak >= rt.gEnv ? peak : peak + (rt.gEnv - peak) * detectorC;
+  const inputDb = 20 * Math.log10(Math.max(rt.gEnv, 1e-8));
+  const above = inputDb >= g.threshold;
+  let target;
+
+  if (above) {
+    rt.gateHoldSamples = t.holdSamples;
+    target = 1;
+    rt.gatePhase = rt.gGain >= 0.999 ? 'open' : 'attack';
+  } else if (rt.gateHoldSamples > 0) {
+    rt.gateHoldSamples--;
+    target = 1;
+    rt.gatePhase = 'hold';
+  } else {
+    target = gateTargetGain(rt.gEnv, g, inputDb);
+    rt.gatePhase = rt.gGain <= target + 1e-5 ? (target <= 1e-4 ? 'closed' : 'attenuate') : 'release';
+  }
+
+  if (target > rt.gGain) rt.gGain = Math.min(target, rt.gGain + t.attackStep);
+  else if (target < rt.gGain) rt.gGain = Math.max(target, rt.gGain - t.releaseStep);
+
+  if (above && rt.gGain >= 0.999) rt.gatePhase = 'open';
+  else if (!above && rt.gateHoldSamples <= 0 && Math.abs(rt.gGain - target) <= 1e-5) rt.gatePhase = target <= 1e-4 ? 'closed' : 'attenuate';
+  rt.gateInputDb = Math.max(-100, inputDb);
+  rt.gateReductionDb = Math.min(80, Math.max(0, -20 * Math.log10(Math.max(rt.gGain, 1e-4))));
+  rt.gateOutputDb = Math.max(-100, rt.gateInputDb - rt.gateReductionDb);
+  rt.gateHoldRemainingMs = rt.gateHoldSamples * 1000 / sr;
+  return rt.gGain;
+}
+
+/* 离线 Gate：使用与实时试听完全相同的检测和时序逻辑。 */
 function gateProcess(buf, g) {
   const sr = buf.sampleRate, ch = buf.numberOfChannels;
   const out = makeBuffer(ch, buf.length, sr);
-  const atkC = Math.exp(-1 / (sr * Math.max(0.001, g.attack / 1000)));
-  const relC = Math.exp(-1 / (sr * Math.max(0.005, g.release / 1000)));
-  const envC = Math.exp(-1 / (sr * 0.02)); // 20ms 包络跟随
   const xs = Array.from({ length: ch }, (_, c) => buf.getChannelData(c));
   const ys = Array.from({ length: ch }, (_, c) => out.getChannelData(c));
-  let env = 0, gain = 1;
+  const rt = resetGateRuntime({});
+  const timing = gateTiming(g, sr);
   for (let i = 0; i < buf.length; i++) {
     let peak = 0;
     for (let c = 0; c < ch; c++) peak = Math.max(peak, Math.abs(xs[c][i]));
-    env = peak > env ? peak : env * envC + peak * (1 - envC);
-    const target = gateTargetGain(env, g);
-    gain = target > gain ? target + (gain - target) * atkC : target + (gain - target) * relC;
+    const gain = advanceGate(peak, g, sr, rt, timing);
     for (let c = 0; c < ch; c++) ys[c][i] = xs[c][i] * gain;
   }
   return out;
@@ -1124,7 +1179,8 @@ const Live = {
   master: null, srcBus: null, gateNode: null,
   eqChain: null, chorusChain: null, revEqChain: null, pre: null, conv: null, wet: null, dry: null, mixBus: null,
   an: {},
-  gEnv: 0, gGain: 1, gateReductionDb: 0,
+  gEnv: 0, gGain: 0, gateReductionDb: 80, gateHoldSamples: 0,
+  gateHoldRemainingMs: 0, gateInputDb: -100, gateOutputDb: -100, gatePhase: 'closed',
 
   build() {
     if (this.built) return;
@@ -1137,7 +1193,7 @@ const Live = {
     this.an = { gatePre: mkAn(), gatePost: mkAn(), eqPost: mkAn(), chorusPost: mkAn(), revPost: mkAn() };
 
     // 实时 Gate（噪声门），跨缓冲保持包络状态
-    const gate = ctx.createScriptProcessor(2048, 2, 2);
+    const gate = ctx.createScriptProcessor(256, 2, 2);
     gate.onaudioprocess = e => {
       const inB = e.inputBuffer, outB = e.outputBuffer;
       const active = state.cmp.all !== 'before' && state.cmp.gate !== 'before' && state.gate.on;
@@ -1145,25 +1201,19 @@ const Live = {
       if (!active) {
         for (let c = 0; c < chs; c++) outB.getChannelData(c).set(inB.getChannelData(c));
         this.gateReductionDb = 0;
+        this.gatePhase = 'bypass';
         return;
       }
       const g = state.gate, sr = inB.sampleRate;
-      const atkC = Math.exp(-1 / (sr * Math.max(0.001, g.attack / 1000)));
-      const relC = Math.exp(-1 / (sr * Math.max(0.005, g.release / 1000)));
-      const envC = Math.exp(-1 / (sr * 0.02));
+      const timing = gateTiming(g, sr);
       const xs = Array.from({ length: chs }, (_, c) => inB.getChannelData(c));
       const ys = Array.from({ length: chs }, (_, c) => outB.getChannelData(c));
-      let env = this.gEnv || 0, gain = this.gGain == null ? 1 : this.gGain;
       for (let i = 0; i < inB.length; i++) {
         let peak = 0;
         for (let c = 0; c < chs; c++) peak = Math.max(peak, Math.abs(xs[c][i]));
-        env = peak > env ? peak : env * envC + peak * (1 - envC);
-        const target = gateTargetGain(env, g);
-        gain = target > gain ? target + (gain - target) * atkC : target + (gain - target) * relC;
+        const gain = advanceGate(peak, g, sr, this, timing);
         for (let c = 0; c < chs; c++) ys[c][i] = xs[c][i] * gain;
       }
-      this.gEnv = env; this.gGain = gain;
-      this.gateReductionDb = Math.min(80, Math.max(0, -20 * Math.log10(Math.max(gain, 1e-8))));
     };
     this.gateNode = gate;
 
@@ -1201,6 +1251,7 @@ const Live = {
   play(offset) {
     if (!state.originalBuffer) return;
     this.build();
+    resetGateRuntime(this);
     const ctx = ensureCtx();
     const seg = ensureSegment();
     if (!seg) return;
@@ -1624,7 +1675,7 @@ const PRESET_KEY = 'spongebobExport.userPresets.v1';
 function defaultParams() {
   return {
     cut: { mode: 'keep', start: 0, end: null, rmStart: 0, rmEnd: 0 },
-    gate: { on: false, threshold: -45, reduction: 80, ratio: 20, attack: 5, release: 120 },
+    gate: { on: false, threshold: -45, reduction: 80, ratio: 20, attack: 5, hold: 60, release: 120 },
     eq: { enabled: true, filters: {} },
     chorus: { on: true, length: 80, voices: 1, rate: 4.2, pitchFudge: 0.13, wetDb: -14, dryDb: -4 },
     verb: { type: 'off', preDelay: 20, decay: 2.2, size: 1.0, lowCut: 120, highCut: 7500, bassMulti: 1.0, wet: 25, dry: 100, eq: { enabled: true, filters: {} } },
@@ -1888,7 +1939,7 @@ $('#playWave').addEventListener('pointerdown', e => {
   Live.seek(clamp((e.clientX - rect.left) / rect.width, 0, 1) * dur);
 });
 
-/* --- Gate 面板 RTA：频谱 + 门限线（帮助把门限设在噪声底之上） --- */
+/* --- Gate 面板：调音台式输入/输出动态曲线 + 实时检测点 --- */
 function drawGateRta() {
   const canvas = $('#gateCanvas');
   if (!canvas) return;
@@ -1900,56 +1951,72 @@ function drawGateRta() {
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   c.clearRect(0, 0, w, h);
   c.fillStyle = '#101827'; c.fillRect(0, 0, w, h);
-  const padL = 34, padB = 16, padT = 8;
-  const gw = w - padL - 8, gh = h - padT - padB;
-  const DB_MIN = -80, DB_MAX = 0;
+  const padL = 39, padR = 10, padB = 35, padT = 12;
+  const gw = w - padL - padR, gh = h - padT - padB;
+  const DB_MIN = -100, DB_MAX = 0;
+  const xOf = db => padL + (clamp(db, DB_MIN, DB_MAX) - DB_MIN) / (DB_MAX - DB_MIN) * gw;
   const yOf = db => padT + (1 - (clamp(db, DB_MIN, DB_MAX) - DB_MIN) / (DB_MAX - DB_MIN)) * gh;
-  const xOf = f => padL + (Math.log(clamp(f, 20, MAX_FREQ) / 20) / Math.log(MAX_FREQ / 20)) * gw;
-  // 网格
+
+  // 横纵轴使用同一 dBFS 标尺：不再把频谱 bin 当作 Gate 检测电平。
   c.strokeStyle = '#243552'; c.fillStyle = '#6f83a4'; c.lineWidth = 1; c.font = '10px sans-serif';
-  [-80, -60, -40, -20, 0].forEach(db => {
-    const y = yOf(db); c.beginPath(); c.moveTo(padL, y); c.lineTo(padL + gw, y); c.stroke();
-    c.fillText(db + '', 4, y + 3);
+  [-100, -80, -60, -40, -20, 0].forEach(db => {
+    const x = xOf(db), y = yOf(db);
+    c.beginPath(); c.moveTo(x, padT); c.lineTo(x, padT + gh); c.stroke();
+    c.beginPath(); c.moveTo(padL, y); c.lineTo(padL + gw, y); c.stroke();
+    c.fillText(String(db), 4, y + 3);
+    const tw = c.measureText(String(db)).width;
+    c.fillText(String(db), clamp(x - tw / 2, padL - 2, padL + gw - tw), padT + gh + 13);
   });
-  [100, 1000, 10000].forEach(f => {
-    const x = xOf(f); c.beginPath(); c.moveTo(x, padT); c.lineTo(x, padT + gh); c.stroke();
-    c.fillText(hzLabel(f).replace('Hz', ''), x + 2, padT + gh + 12);
-  });
-  // 频谱（float dB）
-  let curPeak = -120;
-  if (Live.built && Live.playing) {
-    const an = state.rta.gate === 'pre' ? Live.an.gatePre : Live.an.gatePost;
-    const arr = an._fbuf || (an._fbuf = new Float32Array(an.frequencyBinCount));
-    an.getFloatFrequencyData(arr);
-    const sr = ensureCtx().sampleRate;
-    c.beginPath(); c.moveTo(padL, padT + gh);
-    for (let i = 1; i < arr.length; i++) {
-      const freq = i * sr / an.fftSize;
-      if (freq > MAX_FREQ) break;
-      const x = xOf(freq), y = yOf(arr[i]);
-      c.lineTo(x, y);
-      if (arr[i] > curPeak) curPeak = arr[i];
-    }
-    c.lineTo(padL + gw, padT + gh); c.closePath();
-    c.fillStyle = 'rgba(74,222,128,.22)'; c.fill();
-    c.strokeStyle = 'rgba(74,222,128,.7)'; c.lineWidth = 1.2; c.stroke();
+  c.fillStyle = '#91a4c4'; c.font = '10px sans-serif';
+  c.fillText('输入 dBFS →', padL + Math.max(0, (gw - c.measureText('输入 dBFS →').width) / 2), h - 5);
+  c.save(); c.translate(10, padT + 54); c.rotate(-Math.PI / 2); c.fillText('输出 dBFS →', 0, 0); c.restore();
+
+  // 1:1 参考线。
+  c.strokeStyle = '#52647f'; c.setLineDash([4, 4]); c.lineWidth = 1;
+  c.beginPath(); c.moveTo(xOf(DB_MIN), yOf(DB_MIN)); c.lineTo(xOf(0), yOf(0)); c.stroke();
+  c.setLineDash([]);
+
+  // 静态扩展曲线：Threshold / Ratio / Reduction 任一变化都会立即改变图形。
+  c.beginPath();
+  for (let i = 0; i <= 300; i++) {
+    const inputDb = DB_MIN + (DB_MAX - DB_MIN) * i / 300;
+    const env = Math.pow(10, inputDb / 20);
+    const gain = inputDb >= state.gate.threshold ? 1 : gateTargetGain(env, state.gate);
+    const outputDb = clamp(inputDb + 20 * Math.log10(Math.max(gain, 1e-8)), DB_MIN, DB_MAX);
+    const x = xOf(inputDb), y = yOf(outputDb);
+    if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
   }
-  // 门限线
-  const thY = yOf(state.gate.threshold);
+  c.strokeStyle = '#38bdf8'; c.lineWidth = 2.4; c.stroke();
+
+  // Threshold 使用黄色竖线，与处理器实际比较的时域 dBFS 完全同源。
+  const thX = xOf(state.gate.threshold);
   c.strokeStyle = '#fbbf24'; c.setLineDash([5, 4]); c.lineWidth = 1.6;
-  c.beginPath(); c.moveTo(padL, thY); c.lineTo(padL + gw, thY); c.stroke();
+  c.beginPath(); c.moveTo(thX, padT); c.lineTo(thX, padT + gh); c.stroke();
   c.setLineDash([]);
   c.fillStyle = '#fbbf24'; c.font = '11px sans-serif';
-  c.fillText(`门限 ${state.gate.threshold}dB · 最大压低 ${gateReductionText(state.gate.reduction)} · ${gateRatioText(state.gate.ratio)}`, padL + 4, thY - 4);
-  // 使用 Gate 处理器的实际增益衰减，不再用单个频谱峰值误判开/关。
+  const thText = `T ${state.gate.threshold}dB`;
+  c.fillText(thText, clamp(thX + 4, padL + 3, padL + gw - c.measureText(thText).width), padT + 12);
+
   const bypassed = state.cmp.all === 'before' || state.cmp.gate === 'before';
-  const reduction = Live.built ? Live.gateReductionDb : 0;
-  let status = state.gate.on ? (bypassed ? 'Gate 已旁通' : (Live.playing && reduction > 0.1 ? `正在压低 ${reduction.toFixed(1)}dB` : '信号通过')) : 'Gate 未启用';
-  $('#gateStatus').textContent = `${status} · Ratio ${gateRatioText(state.gate.ratio)} · 最大 ${gateReductionText(state.gate.reduction)}`;
+  const phaseNames = { open: '已开门', attack: '正在开门', hold: '保持', release: '正在关门', attenuate: '稳定压低', closed: '已关门', bypass: '已旁通' };
+  const phaseColors = { open: '#4ade80', attack: '#38bdf8', hold: '#fbbf24', release: '#fb923c', attenuate: '#f87171', closed: '#f87171', bypass: '#94a3b8' };
+  const phase = !state.gate.on || bypassed ? 'bypass' : Live.gatePhase;
   if (Live.built && Live.playing) {
-    c.fillStyle = reduction > 0.1 ? '#f87171' : '#4ade80'; c.font = '12px sans-serif';
-    c.fillText(reduction > 0.1 ? `● 正在压低 ${reduction.toFixed(1)}dB` : '● 信号通过', padL + 4, padT + 12);
+    const inputDb = clamp(Live.gateInputDb, DB_MIN, DB_MAX);
+    const outputDb = bypassed || !state.gate.on ? inputDb : clamp(Live.gateOutputDb, DB_MIN, DB_MAX);
+    c.beginPath(); c.arc(xOf(inputDb), yOf(outputDb), 5, 0, Math.PI * 2);
+    c.fillStyle = phaseColors[phase] || '#e8eef7'; c.fill();
+    c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke();
   }
+
+  c.fillStyle = '#dce7f7'; c.font = '11px sans-serif';
+  c.fillText(`A ${state.gate.attack}ms · H ${state.gate.hold}ms · R ${state.gate.release}ms`, padL + 5, padT + gh - 7);
+  const holdText = phase === 'hold' ? ` ${Live.gateHoldRemainingMs.toFixed(0)}ms` : '';
+  const runText = !state.gate.on ? 'Gate 未启用' : !Live.playing ? 'Gate 等待播放' : bypassed ? 'Gate 已旁通' : `${phaseNames[phase] || '等待信号'}${holdText}`;
+  const levels = Live.built && Live.playing
+    ? `输入 ${Live.gateInputDb.toFixed(1)}dBFS · 输出 ${(bypassed ? Live.gateInputDb : Live.gateOutputDb).toFixed(1)}dBFS · 压低 ${(bypassed ? 0 : Live.gateReductionDb).toFixed(1)}dB`
+    : '播放音频后显示实时输入/输出电平';
+  $('#gateStatus').textContent = `${runText} · ${levels} · ${gateRatioText(state.gate.ratio)} · 最大 ${gateReductionText(state.gate.reduction)}`;
 }
 
 /* --- 剪切 UI 同步 --- */
@@ -2019,18 +2086,20 @@ function gateChanged() {
   state.gate.reduction = +$('#gateRed').value;
   state.gate.ratio = +$('#gateRatio').value;
   state.gate.attack = +$('#gateAtk').value;
+  state.gate.hold = +$('#gateHold').value;
   state.gate.release = +$('#gateRel').value;
   $('#gateThLab').textContent = state.gate.threshold + 'dB';
   $('#gateRedLab').textContent = gateReductionText(state.gate.reduction);
   $('#gateRatioLab').textContent = gateRatioText(state.gate.ratio);
   $('#gateAtkLab').textContent = state.gate.attack + 'ms';
+  $('#gateHoldLab').textContent = state.gate.hold + 'ms';
   $('#gateRelLab').textContent = state.gate.release + 'ms';
-  Live.gEnv = 0; Live.gGain = 1; Live.gateReductionDb = 0;
+  resetGateRuntime(Live);
   state.gatedBuffer = null;   // 仅导出缓存失效；实时 Gate 直接读参数
   updateExpSummary();
   drawGateRta();
 }
-['#gateOn', '#gateTh', '#gateRed', '#gateRatio', '#gateAtk', '#gateRel'].forEach(s => $(s).addEventListener('input', gateChanged));
+['#gateOn', '#gateTh', '#gateRed', '#gateRatio', '#gateAtk', '#gateHold', '#gateRel'].forEach(s => $(s).addEventListener('input', gateChanged));
 
 /* --- EQ 总开关 --- */
 $('#eqToggleBtn').addEventListener('click', () => {
@@ -2196,7 +2265,7 @@ $('#stopBtn').addEventListener('click', () => Live.stop());
 $$('.cmp-row .cmp').forEach(btn => btn.addEventListener('click', () => {
   const key = btn.dataset.cmp;
   state.cmp[key] = state.cmp[key] === 'after' ? 'before' : 'after';
-  if (key === 'gate' || key === 'all') { Live.gEnv = 0; Live.gGain = 1; Live.gateReductionDb = 0; }
+  if (key === 'gate' || key === 'all') resetGateRuntime(Live);
   applyRouting();
   updateCmpUi(); updateTransport();
   if (key === 'gate' || key === 'all') drawGateRta();
@@ -2241,11 +2310,13 @@ function syncAllUi() {
   $('#gateRed').value = state.gate.reduction;
   $('#gateRatio').value = state.gate.ratio;
   $('#gateAtk').value = state.gate.attack;
+  $('#gateHold').value = state.gate.hold;
   $('#gateRel').value = state.gate.release;
   $('#gateThLab').textContent = state.gate.threshold + 'dB';
   $('#gateRedLab').textContent = gateReductionText(state.gate.reduction);
   $('#gateRatioLab').textContent = gateRatioText(state.gate.ratio);
   $('#gateAtkLab').textContent = state.gate.attack + 'ms';
+  $('#gateHoldLab').textContent = state.gate.hold + 'ms';
   $('#gateRelLab').textContent = state.gate.release + 'ms';
   $('#eqToggleBtn').textContent = mainEq.enabled ? 'EQ 取消' : 'EQ 作用';
   $('#eqToggleBtn').classList.toggle('primary', !mainEq.enabled);
