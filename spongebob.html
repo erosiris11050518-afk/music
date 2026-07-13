@@ -281,12 +281,12 @@ button.cmp.before { border-color: var(--warn); color: var(--warn); background: r
       <input type="range" id="gateTh" min="-80" max="-20" value="-45">
     </div>
     <div class="slider-row">
-      <div class="lab"><span>Reduction 压低量</span><b id="gateRedLab">18dB</b></div>
-      <input type="range" id="gateRed" min="0" max="40" value="18">
+      <div class="lab"><span>Reduction 压低量</span><b id="gateRedLab">80dB（静音）</b></div>
+      <input type="range" id="gateRed" min="0" max="80" value="80">
     </div>
     <div class="slider-row">
-      <div class="lab"><span>Ratio 扩展比率</span><b id="gateRatioLab">4:1</b></div>
-      <input type="range" id="gateRatio" min="1" max="20" value="4">
+      <div class="lab"><span>Ratio 扩展比率</span><b id="gateRatioLab">∞:1（硬门）</b></div>
+      <input type="range" id="gateRatio" min="1" max="20" value="20">
     </div>
     <div class="slider-row">
       <div class="lab"><span>Attack 开启</span><b id="gateAtkLab">5ms</b></div>
@@ -997,7 +997,7 @@ const state = {
   cutDirty: false,
   segmentBuffer: null,     // 应用剪切后的片段
   gatedBuffer: null,       // 片段 + 降噪后的缓存
-  gate: { on: false, threshold: -45, reduction: 18, ratio: 4, attack: 5, release: 120 },
+  gate: { on: false, threshold: -45, reduction: 80, ratio: 20, attack: 5, release: 120 },
   chorus: { on: true, length: 80, voices: 1, rate: 4.2, pitchFudge: 0.13, wetDb: -14, dryDb: -4 },
   verb: { type: 'off', preDelay: 20, decay: 2.2, size: 1.0, lowCut: 120, highCut: 7500, bassMulti: 1.0, wet: 25, dry: 100 },
   bitrate: 192,
@@ -1072,9 +1072,13 @@ function gateTargetGain(env, g) {
   const envDb = 20 * Math.log10(Math.max(env, 1e-8));
   const belowDb = Math.max(0, g.threshold - envDb);
   const ratio = clamp(+g.ratio || 4, 1, 20);
+  // 最高档为硬门：包络低于 Threshold 时目标增益为 0，Release 决定关门速度。
+  if (ratio >= 20 && envDb < g.threshold) return 0;
   const reductionDb = Math.min(Math.max(0, g.reduction), belowDb * (ratio - 1));
   return Math.pow(10, -reductionDb / 20);
 }
+const gateRatioText = ratio => +ratio >= 20 ? '∞:1（硬门）' : `${ratio}:1`;
+const gateReductionText = reduction => +reduction >= 80 ? '80dB（静音）' : `${reduction}dB`;
 
 /* 离线 Gate：立体声联动检测，与实时试听使用同一扩展曲线。 */
 function gateProcess(buf, g) {
@@ -1159,7 +1163,7 @@ const Live = {
         for (let c = 0; c < chs; c++) ys[c][i] = xs[c][i] * gain;
       }
       this.gEnv = env; this.gGain = gain;
-      this.gateReductionDb = Math.max(0, -20 * Math.log10(Math.max(gain, 1e-8)));
+      this.gateReductionDb = Math.min(80, Math.max(0, -20 * Math.log10(Math.max(gain, 1e-8))));
     };
     this.gateNode = gate;
 
@@ -1620,7 +1624,7 @@ const PRESET_KEY = 'spongebobExport.userPresets.v1';
 function defaultParams() {
   return {
     cut: { mode: 'keep', start: 0, end: null, rmStart: 0, rmEnd: 0 },
-    gate: { on: false, threshold: -45, reduction: 18, ratio: 4, attack: 5, release: 120 },
+    gate: { on: false, threshold: -45, reduction: 80, ratio: 20, attack: 5, release: 120 },
     eq: { enabled: true, filters: {} },
     chorus: { on: true, length: 80, voices: 1, rate: 4.2, pitchFudge: 0.13, wetDb: -14, dryDb: -4 },
     verb: { type: 'off', preDelay: 20, decay: 2.2, size: 1.0, lowCut: 120, highCut: 7500, bassMulti: 1.0, wet: 25, dry: 100, eq: { enabled: true, filters: {} } },
@@ -1640,7 +1644,7 @@ function deepMerge(base, extra) {
 /* 内置模板（不可删除） */
 const BUILTIN_PRESETS = {
   '歌手预设 - 清晰人声': deepMerge(defaultParams(), {
-    gate: { on: true, threshold: -50, reduction: 12 },
+    gate: { on: true, threshold: -50, reduction: 80, ratio: 20 },
     eq: { filters: { highpass: { freq: 80, enabled: true, q: 0.707 }, bell: { freq: 250, gain: -3, q: 1.4, enabled: true }, bell2: { freq: 3000, gain: 2.5, q: 1.6, enabled: true }, highshelf: { freq: 12000, gain: 2, q: 0.707, enabled: true } } },
     verb: { type: 'plate', wet: 18, decay: 1.4, preDelay: 30, lowCut: 150, highCut: 8000,
       eq: { filters: { highpass: { freq: 150, enabled: true, q: 0.707 }, lowpass: { freq: 8000, enabled: true, q: 0.707 } } } },
@@ -1651,7 +1655,7 @@ const BUILTIN_PRESETS = {
       eq: { filters: { highpass: { freq: 130, enabled: true, q: 0.707 }, lowpass: { freq: 7000, enabled: true, q: 0.707 } } } },
   }),
   '歌手预设 - 短视频人声': deepMerge(defaultParams(), {
-    gate: { on: true, threshold: -45, reduction: 18, release: 150 },
+    gate: { on: true, threshold: -45, reduction: 80, ratio: 20, release: 150 },
     eq: { filters: { highpass: { freq: 90, enabled: true, q: 0.707 }, bell: { freq: 4000, gain: 3, q: 1.8, enabled: true }, highshelf: { freq: 12000, gain: 2.5, q: 0.707, enabled: true } } },
     verb: { type: 'plate', wet: 12, decay: 1.1, preDelay: 15, lowCut: 180, highCut: 9000,
       eq: { filters: { highpass: { freq: 180, enabled: true, q: 0.707 }, lowpass: { freq: 9000, enabled: true, q: 0.707 } } } },
@@ -1781,7 +1785,7 @@ function updateExpSummary() {
   if (!state.originalBuffer) { $('#expSummary').textContent = '上传音频后可导出。'; return; }
   const v = state.verb;
   $('#expSummary').innerHTML =
-    `将导出：片段 <b>${fmtTime(segKeptSeconds())}</b> · Gate <b>${state.gate.on ? '开 ' + state.gate.ratio + ':1' : '关'}</b>` +
+    `将导出：片段 <b>${fmtTime(segKeptSeconds())}</b> · Gate <b>${state.gate.on ? '开 ' + gateRatioText(state.gate.ratio) : '关'}</b>` +
     ` · EQ <b>${mainEq.enabled ? mainEq.activeCount() + ' 点' : '取消'}</b>` +
     ` · Chorus <b>${state.chorus.on ? state.chorus.voices + ' 声部 / ' + state.chorus.wetDb + 'dB' : '关'}</b>` +
     ` · 混响 <b>${v.type === 'off' ? '关' : (v.type === 'hall' ? 'Hall' : 'Plate') + ' ' + v.wet + '%'}</b>`;
@@ -1936,12 +1940,12 @@ function drawGateRta() {
   c.beginPath(); c.moveTo(padL, thY); c.lineTo(padL + gw, thY); c.stroke();
   c.setLineDash([]);
   c.fillStyle = '#fbbf24'; c.font = '11px sans-serif';
-  c.fillText('门限 ' + state.gate.threshold + 'dB', padL + 4, thY - 4);
+  c.fillText(`门限 ${state.gate.threshold}dB · 最大压低 ${gateReductionText(state.gate.reduction)} · ${gateRatioText(state.gate.ratio)}`, padL + 4, thY - 4);
   // 使用 Gate 处理器的实际增益衰减，不再用单个频谱峰值误判开/关。
   const bypassed = state.cmp.all === 'before' || state.cmp.gate === 'before';
   const reduction = Live.built ? Live.gateReductionDb : 0;
   let status = state.gate.on ? (bypassed ? 'Gate 已旁通' : (Live.playing && reduction > 0.1 ? `正在压低 ${reduction.toFixed(1)}dB` : '信号通过')) : 'Gate 未启用';
-  $('#gateStatus').textContent = `${status} · Ratio ${state.gate.ratio}:1 · 最大 ${state.gate.reduction}dB`;
+  $('#gateStatus').textContent = `${status} · Ratio ${gateRatioText(state.gate.ratio)} · 最大 ${gateReductionText(state.gate.reduction)}`;
   if (Live.built && Live.playing) {
     c.fillStyle = reduction > 0.1 ? '#f87171' : '#4ade80'; c.font = '12px sans-serif';
     c.fillText(reduction > 0.1 ? `● 正在压低 ${reduction.toFixed(1)}dB` : '● 信号通过', padL + 4, padT + 12);
@@ -2017,8 +2021,8 @@ function gateChanged() {
   state.gate.attack = +$('#gateAtk').value;
   state.gate.release = +$('#gateRel').value;
   $('#gateThLab').textContent = state.gate.threshold + 'dB';
-  $('#gateRedLab').textContent = state.gate.reduction + 'dB';
-  $('#gateRatioLab').textContent = state.gate.ratio + ':1';
+  $('#gateRedLab').textContent = gateReductionText(state.gate.reduction);
+  $('#gateRatioLab').textContent = gateRatioText(state.gate.ratio);
   $('#gateAtkLab').textContent = state.gate.attack + 'ms';
   $('#gateRelLab').textContent = state.gate.release + 'ms';
   Live.gEnv = 0; Live.gGain = 1; Live.gateReductionDb = 0;
@@ -2239,8 +2243,8 @@ function syncAllUi() {
   $('#gateAtk').value = state.gate.attack;
   $('#gateRel').value = state.gate.release;
   $('#gateThLab').textContent = state.gate.threshold + 'dB';
-  $('#gateRedLab').textContent = state.gate.reduction + 'dB';
-  $('#gateRatioLab').textContent = state.gate.ratio + ':1';
+  $('#gateRedLab').textContent = gateReductionText(state.gate.reduction);
+  $('#gateRatioLab').textContent = gateRatioText(state.gate.ratio);
   $('#gateAtkLab').textContent = state.gate.attack + 'ms';
   $('#gateRelLab').textContent = state.gate.release + 'ms';
   $('#eqToggleBtn').textContent = mainEq.enabled ? 'EQ 取消' : 'EQ 作用';
