@@ -106,7 +106,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
 .bell-tabs button.add { border-style: dashed; color: var(--text-dim); }
 
 /* 实时对比按钮：after=蓝(听处理后) / before=橙(听处理前) */
-.cmp-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; margin: 6px 0; }
+.cmp-row { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 6px; margin: 6px 0; }
 .cmp-row button.cmp { min-height: 42px; }
 button.cmp.after { border-color: var(--accent); color: var(--accent); background: rgba(56,189,248,.12); font-weight: 700; }
 button.cmp.before { border-color: var(--warn); color: var(--warn); background: rgba(251,146,60,.16); font-weight: 700; }
@@ -122,6 +122,7 @@ button.cmp.before { border-color: var(--warn); color: var(--warn); background: r
 .progress-bar { height: 100%; width: 0%; background: var(--accent); transition: width .15s; }
 @media (max-width: 430px) {
   .bell-tabs { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  .cmp-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
 }
 </style>
 </head>
@@ -162,6 +163,7 @@ button.cmp.before { border-color: var(--warn); color: var(--warn); background: r
     <p class="hint" style="margin-top:8px;">实时对比（点一下即时切换，<b>不会重新播放</b>，方便盲听前后）：</p>
     <div class="cmp-row">
       <button class="btn ghost small cmp" id="cmpAll" data-cmp="all">总效果：后</button>
+      <button class="btn ghost small cmp" id="cmpGate" data-cmp="gate">Gate：后</button>
       <button class="btn ghost small cmp" id="cmpEq" data-cmp="eq">EQ：后</button>
       <button class="btn ghost small cmp" id="cmpRev" data-cmp="rev">混响：后</button>
     </div>
@@ -276,6 +278,10 @@ button.cmp.before { border-color: var(--warn); color: var(--warn); background: r
     <div class="slider-row">
       <div class="lab"><span>Reduction 压低量</span><b id="gateRedLab">18dB</b></div>
       <input type="range" id="gateRed" min="0" max="40" value="18">
+    </div>
+    <div class="slider-row">
+      <div class="lab"><span>Ratio 扩展比率</span><b id="gateRatioLab">4:1</b></div>
+      <input type="range" id="gateRatio" min="1" max="20" value="4">
     </div>
     <div class="slider-row">
       <div class="lab"><span>Attack 开启</span><b id="gateAtkLab">5ms</b></div>
@@ -909,13 +915,13 @@ const state = {
   cutDirty: false,
   segmentBuffer: null,     // 应用剪切后的片段
   gatedBuffer: null,       // 片段 + 降噪后的缓存
-  gate: { on: false, threshold: -45, reduction: 18, attack: 5, release: 120 },
+  gate: { on: false, threshold: -45, reduction: 18, ratio: 4, attack: 5, release: 120 },
   verb: { type: 'off', preDelay: 20, decay: 2.2, size: 1.0, lowCut: 120, highCut: 7500, bassMulti: 1.0, wet: 25, dry: 100 },
   bitrate: 192,
   peaks: null,
   segPeaks: null,          // 剪切片段的波形峰值（播放定位用）
   // 实时对比开关：'after'=听处理后 / 'before'=听处理前
-  cmp: { all: 'after', eq: 'after', rev: 'after' },
+  cmp: { all: 'after', gate: 'after', eq: 'after', rev: 'after' },
   // 各面板 RTA 探测点：'pre' 处理前 / 'post' 处理后
   rta: { gate: 'post', eq: 'post', verb: 'post' },
   activeTab: 'cut',
@@ -978,25 +984,32 @@ function ensureSegment() {
   return state.segmentBuffer;
 }
 
-/* 轻量噪声门（离线 JS 处理，试听与导出共用同一实现保证一致） */
+/* 下行扩展器曲线：Ratio 决定门限下的衰减速度，Reduction 限制最大衰减。 */
+function gateTargetGain(env, g) {
+  const envDb = 20 * Math.log10(Math.max(env, 1e-8));
+  const belowDb = Math.max(0, g.threshold - envDb);
+  const ratio = clamp(+g.ratio || 4, 1, 20);
+  const reductionDb = Math.min(Math.max(0, g.reduction), belowDb * (ratio - 1));
+  return Math.pow(10, -reductionDb / 20);
+}
+
+/* 离线 Gate：立体声联动检测，与实时试听使用同一扩展曲线。 */
 function gateProcess(buf, g) {
   const sr = buf.sampleRate, ch = buf.numberOfChannels;
   const out = makeBuffer(ch, buf.length, sr);
-  const thLin = Math.pow(10, g.threshold / 20);
-  const redLin = Math.pow(10, -g.reduction / 20);
   const atkC = Math.exp(-1 / (sr * Math.max(0.001, g.attack / 1000)));
   const relC = Math.exp(-1 / (sr * Math.max(0.005, g.release / 1000)));
   const envC = Math.exp(-1 / (sr * 0.02)); // 20ms 包络跟随
-  for (let c = 0; c < ch; c++) {
-    const x = buf.getChannelData(c), y = out.getChannelData(c);
-    let env = 0, gain = 1;
-    for (let i = 0; i < x.length; i++) {
-      const a = Math.abs(x[i]);
-      env = a > env ? a : env * envC + a * (1 - envC);
-      const target = env < thLin ? redLin : 1;
-      gain = target > gain ? target + (gain - target) * atkC : target + (gain - target) * relC;
-      y[i] = x[i] * gain;
-    }
+  const xs = Array.from({ length: ch }, (_, c) => buf.getChannelData(c));
+  const ys = Array.from({ length: ch }, (_, c) => out.getChannelData(c));
+  let env = 0, gain = 1;
+  for (let i = 0; i < buf.length; i++) {
+    let peak = 0;
+    for (let c = 0; c < ch; c++) peak = Math.max(peak, Math.abs(xs[c][i]));
+    env = peak > env ? peak : env * envC + peak * (1 - envC);
+    const target = gateTargetGain(env, g);
+    gain = target > gain ? target + (gain - target) * atkC : target + (gain - target) * relC;
+    for (let c = 0; c < ch; c++) ys[c][i] = xs[c][i] * gain;
   }
   return out;
 }
@@ -1024,7 +1037,7 @@ const Live = {
   master: null, srcBus: null, gateNode: null,
   eqChain: null, revEqChain: null, pre: null, conv: null, wet: null, dry: null, mixBus: null,
   an: {},
-  gEnv: [0, 0], gGain: [1, 1],
+  gEnv: 0, gGain: 1, gateReductionDb: 0,
 
   build() {
     if (this.built) return;
@@ -1040,29 +1053,30 @@ const Live = {
     const gate = ctx.createScriptProcessor(2048, 2, 2);
     gate.onaudioprocess = e => {
       const inB = e.inputBuffer, outB = e.outputBuffer;
-      const active = state.cmp.all !== 'before' && state.gate.on;
+      const active = state.cmp.all !== 'before' && state.cmp.gate !== 'before' && state.gate.on;
       const chs = Math.min(inB.numberOfChannels, outB.numberOfChannels);
       if (!active) {
         for (let c = 0; c < chs; c++) outB.getChannelData(c).set(inB.getChannelData(c));
+        this.gateReductionDb = 0;
         return;
       }
       const g = state.gate, sr = inB.sampleRate;
-      const thLin = Math.pow(10, g.threshold / 20), redLin = Math.pow(10, -g.reduction / 20);
       const atkC = Math.exp(-1 / (sr * Math.max(0.001, g.attack / 1000)));
       const relC = Math.exp(-1 / (sr * Math.max(0.005, g.release / 1000)));
       const envC = Math.exp(-1 / (sr * 0.02));
-      for (let c = 0; c < chs; c++) {
-        const x = inB.getChannelData(c), y = outB.getChannelData(c);
-        let env = this.gEnv[c] || 0, gain = this.gGain[c] == null ? 1 : this.gGain[c];
-        for (let i = 0; i < x.length; i++) {
-          const a = Math.abs(x[i]);
-          env = a > env ? a : env * envC + a * (1 - envC);
-          const target = env < thLin ? redLin : 1;
-          gain = target > gain ? target + (gain - target) * atkC : target + (gain - target) * relC;
-          y[i] = x[i] * gain;
-        }
-        this.gEnv[c] = env; this.gGain[c] = gain;
+      const xs = Array.from({ length: chs }, (_, c) => inB.getChannelData(c));
+      const ys = Array.from({ length: chs }, (_, c) => outB.getChannelData(c));
+      let env = this.gEnv || 0, gain = this.gGain == null ? 1 : this.gGain;
+      for (let i = 0; i < inB.length; i++) {
+        let peak = 0;
+        for (let c = 0; c < chs; c++) peak = Math.max(peak, Math.abs(xs[c][i]));
+        env = peak > env ? peak : env * envC + peak * (1 - envC);
+        const target = gateTargetGain(env, g);
+        gain = target > gain ? target + (gain - target) * atkC : target + (gain - target) * relC;
+        for (let c = 0; c < chs; c++) ys[c][i] = xs[c][i] * gain;
       }
+      this.gEnv = env; this.gGain = gain;
+      this.gateReductionDb = Math.max(0, -20 * Math.log10(Math.max(gain, 1e-8)));
     };
     this.gateNode = gate;
 
@@ -1514,7 +1528,7 @@ const PRESET_KEY = 'mixExport.userPresets.v1';
 function defaultParams() {
   return {
     cut: { mode: 'keep', start: 0, end: null, rmStart: 0, rmEnd: 0 },
-    gate: { on: false, threshold: -45, reduction: 18, attack: 5, release: 120 },
+    gate: { on: false, threshold: -45, reduction: 18, ratio: 4, attack: 5, release: 120 },
     eq: { enabled: true, filters: {} },
     verb: { type: 'off', preDelay: 20, decay: 2.2, size: 1.0, lowCut: 120, highCut: 7500, bassMulti: 1.0, wet: 25, dry: 100, eq: { enabled: true, filters: {} } },
     bitrate: 192,
@@ -1637,13 +1651,14 @@ function updateTransport() {
 }
 /* 实时对比按钮外观：后=蓝 / 前=橙；总效果=前 时单项对比不可用（整链已旁通） */
 function updateCmpUi() {
-  [['#cmpAll', 'all', '总效果'], ['#cmpEq', 'eq', 'EQ'], ['#cmpRev', 'rev', '混响']].forEach(([sel, key, name]) => {
+  [['#cmpAll', 'all', '总效果'], ['#cmpGate', 'gate', 'Gate'], ['#cmpEq', 'eq', 'EQ'], ['#cmpRev', 'rev', '混响']].forEach(([sel, key, name]) => {
     const after = state.cmp[key] === 'after';
     const btn = $(sel);
     btn.textContent = `${name}：${after ? '后' : '前'}`;
     btn.classList.toggle('after', after);
     btn.classList.toggle('before', !after);
   });
+  $('#cmpGate').disabled = state.cmp.all === 'before';
   $('#cmpEq').disabled = state.cmp.all === 'before';
   $('#cmpRev').disabled = state.cmp.all === 'before';
 }
@@ -1670,7 +1685,7 @@ function updateExpSummary() {
   if (!state.originalBuffer) { $('#expSummary').textContent = '上传音频后可导出。'; return; }
   const v = state.verb;
   $('#expSummary').innerHTML =
-    `将导出：片段 <b>${fmtTime(segKeptSeconds())}</b> · Gate <b>${state.gate.on ? '开' : '关'}</b>` +
+    `将导出：片段 <b>${fmtTime(segKeptSeconds())}</b> · Gate <b>${state.gate.on ? '开 ' + state.gate.ratio + ':1' : '关'}</b>` +
     ` · EQ <b>${mainEq.enabled ? mainEq.activeCount() + ' 点' : '取消'}</b>` +
     ` · 混响 <b>${v.type === 'off' ? '关' : (v.type === 'hall' ? 'Hall' : 'Plate') + ' ' + v.wet + '%'}</b>`;
 }
@@ -1825,11 +1840,14 @@ function drawGateRta() {
   c.setLineDash([]);
   c.fillStyle = '#fbbf24'; c.font = '11px sans-serif';
   c.fillText('门限 ' + state.gate.threshold + 'dB', padL + 4, thY - 4);
-  // 开/关状态
+  // 使用 Gate 处理器的实际增益衰减，不再用单个频谱峰值误判开/关。
+  const bypassed = state.cmp.all === 'before' || state.cmp.gate === 'before';
+  const reduction = Live.built ? Live.gateReductionDb : 0;
+  let status = state.gate.on ? (bypassed ? 'Gate 已旁通' : (Live.playing && reduction > 0.1 ? `正在压低 ${reduction.toFixed(1)}dB` : '信号通过')) : 'Gate 未启用';
+  $('#gateStatus').textContent = `${status} · Ratio ${state.gate.ratio}:1 · 最大 ${state.gate.reduction}dB`;
   if (Live.built && Live.playing) {
-    const open = curPeak > state.gate.threshold;
-    c.fillStyle = open ? '#4ade80' : '#f87171'; c.font = '12px sans-serif';
-    c.fillText(open ? '● 门开（信号通过）' : '● 门关（被压低）', padL + 4, padT + 12);
+    c.fillStyle = reduction > 0.1 ? '#f87171' : '#4ade80'; c.font = '12px sans-serif';
+    c.fillText(reduction > 0.1 ? `● 正在压低 ${reduction.toFixed(1)}dB` : '● 信号通过', padL + 4, padT + 12);
   }
 }
 
@@ -1898,17 +1916,20 @@ function gateChanged() {
   state.gate.on = $('#gateOn').checked;
   state.gate.threshold = +$('#gateTh').value;
   state.gate.reduction = +$('#gateRed').value;
+  state.gate.ratio = +$('#gateRatio').value;
   state.gate.attack = +$('#gateAtk').value;
   state.gate.release = +$('#gateRel').value;
   $('#gateThLab').textContent = state.gate.threshold + 'dB';
   $('#gateRedLab').textContent = state.gate.reduction + 'dB';
+  $('#gateRatioLab').textContent = state.gate.ratio + ':1';
   $('#gateAtkLab').textContent = state.gate.attack + 'ms';
   $('#gateRelLab').textContent = state.gate.release + 'ms';
+  Live.gEnv = 0; Live.gGain = 1; Live.gateReductionDb = 0;
   state.gatedBuffer = null;   // 仅导出缓存失效；实时 Gate 直接读参数
   updateExpSummary();
-  if (!Live.playing) drawGateRta();   // 播放中由动画循环刷新
+  drawGateRta();
 }
-['#gateOn', '#gateTh', '#gateRed', '#gateAtk', '#gateRel'].forEach(s => $(s).addEventListener('input', gateChanged));
+['#gateOn', '#gateTh', '#gateRed', '#gateRatio', '#gateAtk', '#gateRel'].forEach(s => $(s).addEventListener('input', gateChanged));
 
 /* --- EQ 总开关 --- */
 $('#eqToggleBtn').addEventListener('click', () => {
@@ -2048,8 +2069,10 @@ $('#stopBtn').addEventListener('click', () => Live.stop());
 $$('.cmp-row .cmp').forEach(btn => btn.addEventListener('click', () => {
   const key = btn.dataset.cmp;
   state.cmp[key] = state.cmp[key] === 'after' ? 'before' : 'after';
+  if (key === 'gate' || key === 'all') { Live.gEnv = 0; Live.gGain = 1; Live.gateReductionDb = 0; }
   applyRouting();
   updateCmpUi(); updateTransport();
+  if (key === 'gate' || key === 'all') drawGateRta();
 }));
 
 // 各面板 RTA 的 Pre / Post 探测点切换
@@ -2089,10 +2112,12 @@ function syncAllUi() {
   $('#gateOn').checked = state.gate.on;
   $('#gateTh').value = state.gate.threshold;
   $('#gateRed').value = state.gate.reduction;
+  $('#gateRatio').value = state.gate.ratio;
   $('#gateAtk').value = state.gate.attack;
   $('#gateRel').value = state.gate.release;
   $('#gateThLab').textContent = state.gate.threshold + 'dB';
   $('#gateRedLab').textContent = state.gate.reduction + 'dB';
+  $('#gateRatioLab').textContent = state.gate.ratio + ':1';
   $('#gateAtkLab').textContent = state.gate.attack + 'ms';
   $('#gateRelLab').textContent = state.gate.release + 'ms';
   $('#eqToggleBtn').textContent = mainEq.enabled ? 'EQ 取消' : 'EQ 作用';
