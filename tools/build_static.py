@@ -18,7 +18,8 @@ import update_manifest
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 DIST = os.path.join(ROOT, 'dist')
 PUBLISH_ITEMS = (
-    'index.html', 'mix-export.html', 'spongebob.html', 'assets', 'audio', 'libs',
+    'index.html', 'mix-export.html', 'spongebob.html', 'spongebob-guide.html',
+    'assets', 'audio', 'libs',
     'ErosIris-Link', 'aurora-room', 'signalpath',
 )
 IGNORE_NAMES = {
@@ -34,6 +35,7 @@ IGNORE_NAMES = {
 REQUIRED_AFTER_BUILD = (
     'index.html',
     'spongebob.html',
+    'spongebob-guide.html',
     'ErosIris-Link/index.html',
     'ErosIris-Link/点我打开ErosIris-Link软件.html',
     'ErosIris-Link/assets/brand/logo-title.png',
