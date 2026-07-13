@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>粗混导出工具 · 耳朵训练室</title>
+<title>海绵宝宝音 走你</title>
 <style>
 /* ============================================================
    独立页面：上传粗混导出工具（剪切/降噪/EQ/混响/导出）
@@ -73,6 +73,8 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
 .band-chips button.on::after { content: ' ●'; font-size: 9px; vertical-align: 2px; }
 
 .tabs button { min-height: 44px; }
+#mainTabs { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); }
+#mainTabs button { min-width: 0; }
 .panel { display: none; }
 .panel.active { display: block; }
 
@@ -106,7 +108,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); flex
 .bell-tabs button.add { border-style: dashed; color: var(--text-dim); }
 
 /* 实时对比按钮：after=蓝(听处理后) / before=橙(听处理前) */
-.cmp-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; margin: 6px 0; }
+.cmp-row { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 6px; margin: 6px 0; }
 .cmp-row button.cmp { min-height: 42px; }
 button.cmp.after { border-color: var(--accent); color: var(--accent); background: rgba(56,189,248,.12); font-weight: 700; }
 button.cmp.before { border-color: var(--warn); color: var(--warn); background: rgba(251,146,60,.16); font-weight: 700; }
@@ -122,6 +124,8 @@ button.cmp.before { border-color: var(--warn); color: var(--warn); background: r
 .progress-bar { height: 100%; width: 0%; background: var(--accent); transition: width .15s; }
 @media (max-width: 430px) {
   .bell-tabs { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  .cmp-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  #mainTabs { grid-template-columns: repeat(3, minmax(0,1fr)); }
 }
 </style>
 </head>
@@ -130,11 +134,11 @@ button.cmp.before { border-color: var(--warn); color: var(--warn); background: r
 
   <header style="display:flex;justify-content:space-between;align-items:center;padding:10px 2px;">
     <div>
-      <div style="font-size:19px;font-weight:700;">🎛️ 粗混导出工具</div>
-      <div class="hint">剪切 · Gate · EQ · 混响 · 导出（纯本机处理，不上传服务器）</div>
+      <div style="font-size:19px;font-weight:700;">🧽 海绵宝宝音 走你</div>
+      <div class="hint">剪切 · Gate · EQ · Chorus · 混响 · 导出（纯本机处理）</div>
     </div>
     <div class="row" style="justify-content:flex-end;">
-      <a href="./spongebob.html" class="hint">🧽 佩瑶专用</a>
+      <a href="./mix-export.html" class="hint">普通导出页</a>
       <a href="./index.html" class="hint">← 返回耳训</a>
     </div>
   </header>
@@ -163,6 +167,7 @@ button.cmp.before { border-color: var(--warn); color: var(--warn); background: r
     <div class="cmp-row">
       <button class="btn ghost small cmp" id="cmpAll" data-cmp="all">总效果：后</button>
       <button class="btn ghost small cmp" id="cmpEq" data-cmp="eq">EQ：后</button>
+      <button class="btn ghost small cmp" id="cmpChorus" data-cmp="chorus">Chorus：后</button>
       <button class="btn ghost small cmp" id="cmpRev" data-cmp="rev">混响：后</button>
     </div>
     <div class="slider-row">
@@ -191,13 +196,14 @@ button.cmp.before { border-color: var(--warn); color: var(--warn); background: r
     <button data-tab="cut" class="sel">✂️ 剪切</button>
     <button data-tab="gate">🔇 Gate</button>
     <button data-tab="eq">🎚 EQ</button>
+    <button data-tab="chorus">🌀 Chorus</button>
     <button data-tab="verb">🌊 混响</button>
     <button data-tab="exp">💾 导出</button>
   </div>
 
   <!-- ========== 剪切 ========== -->
   <div class="card panel active" id="panel-cut">
-    <h2>剪切（后续 Gate / EQ / 混响 / 导出只处理保留的片段）</h2>
+    <h2>剪切（后续 Gate / EQ / Chorus / 混响 / 导出只处理保留的片段）</h2>
     <div class="band-chips" id="cutMode">
       <button data-mode="keep" class="sel">保留区间</button>
       <button data-mode="remove">删除中间区间</button>
@@ -316,6 +322,43 @@ button.cmp.before { border-color: var(--warn); color: var(--warn); background: r
     <p class="hint">播放后曲线下方会显示实时频谱（RTA）；Pre = EQ 处理前，Post = 处理后。</p>
   </div>
 
+  <!-- ========== Chorus ========== -->
+  <div class="card panel" id="panel-chorus">
+    <div class="row" style="justify-content:space-between;">
+      <h2>Chorus（位于主 EQ 之后、混响之前）</h2>
+      <label class="check">
+        <input type="checkbox" id="chorusOn" checked>
+        <span>启用</span>
+      </label>
+    </div>
+    <p class="hint">已按 SpongeBob Ukulele 参数设为默认值；调整时会立即作用于试听和导出。</p>
+    <div class="slider-row">
+      <div class="lab"><span>Chorus Length 延迟长度</span><b id="chLengthLab">80 ms</b></div>
+      <input type="range" id="chLength" min="5" max="120" value="80">
+    </div>
+    <div class="slider-row">
+      <div class="lab"><span>Number Of Voices 声部数</span><b id="chVoicesLab">1</b></div>
+      <input type="range" id="chVoices" min="1" max="4" value="1">
+    </div>
+    <div class="slider-row">
+      <div class="lab"><span>Rate 调制速率</span><b id="chRateLab">4.2 Hz</b></div>
+      <input type="range" id="chRate" min="1" max="100" value="42">
+    </div>
+    <div class="slider-row">
+      <div class="lab"><span>Pitch Fudge Factor 音高漂移</span><b id="chFudgeLab">0.13</b></div>
+      <input type="range" id="chFudge" min="0" max="50" value="13">
+    </div>
+    <div class="slider-row">
+      <div class="lab"><span>Wet Mix 效果声</span><b id="chWetLab">-14 dB</b></div>
+      <input type="range" id="chWet" min="-40" max="0" value="-14">
+    </div>
+    <div class="slider-row">
+      <div class="lab"><span>Dry Mix 原声</span><b id="chDryLab">-4 dB</b></div>
+      <input type="range" id="chDry" min="-40" max="0" value="-4">
+    </div>
+    <p class="hint">Pitch Fudge 控制延迟的漂移幅度；声部数增加时会自动分摊湿声增益，避免突然过响。</p>
+  </div>
+
   <!-- ========== 混响 ========== -->
   <div class="card panel" id="panel-verb">
     <h2>混响（卷积式，返回声可单独 EQ）</h2>
@@ -374,7 +417,7 @@ button.cmp.before { border-color: var(--warn); color: var(--warn); background: r
     </div>
     <div class="pill" id="expPill" style="display:none;"></div>
     <div class="progress-wrap" id="expProgWrap"><div class="progress-bar" id="expProg"></div></div>
-    <p class="hint">导出包含：剪切片段 → Gate → 主 EQ → 混响（含混响 EQ 与干湿比）。
+    <p class="hint">导出包含：剪切片段 → Gate → 主 EQ → Chorus → 混响（含混响 EQ 与干湿比）。
       手机端建议 30-90 秒；超过 3 分钟或用 MP3 会明显更慢，<b>渲染期间请勿切出页面或锁屏</b>。</p>
     <p class="hint">⚠️ 微信内打开时保存文件可能受限，如无法下载请点右上角 ··· 选择"在浏览器打开"。</p>
   </div>
@@ -407,6 +450,46 @@ const hzLabel = f => f >= 1000 ? (f / 1000).toFixed(f % 1000 ? 1 : 0) + 'kHz' : 
 const fmtDb = v => (v > 0 ? '+' : '') + v + 'dB';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const fmtTime = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}.${Math.floor((s % 1) * 10)}`;
+const dbToGain = db => Math.pow(10, db / 20);
+
+/* Chorus：干声 + 正弦 LFO 调制的延迟声部。同一工厂同时用于实时试听和离线导出。 */
+function createChorusChain(context) {
+  const input = context.createGain();
+  const output = context.createGain();
+  const dry = context.createGain();
+  const taps = [];
+  input.connect(dry); dry.connect(output);
+
+  for (let i = 0; i < 4; i++) {
+    const delay = context.createDelay(0.3);
+    const depth = context.createGain();
+    const osc = context.createOscillator();
+    const wet = context.createGain();
+    const panner = context.createStereoPanner ? context.createStereoPanner() : context.createGain();
+    input.connect(delay); delay.connect(panner); panner.connect(wet); wet.connect(output);
+    osc.type = 'sine'; osc.connect(depth); depth.connect(delay.delayTime); osc.start(0);
+    taps.push({ delay, depth, osc, wet, panner });
+  }
+
+  function apply(p, forceBypass) {
+    const active = p.on && !forceBypass;
+    const voices = clamp(Math.round(p.voices), 1, taps.length);
+    const baseDelay = clamp(p.length, 5, 120) / 1000;
+    const modDepth = Math.min(baseDelay * clamp(p.pitchFudge, 0, 0.5), baseDelay * 0.9);
+    dry.gain.value = active ? dbToGain(p.dryDb) : 1;
+    taps.forEach((tap, i) => {
+      tap.delay.delayTime.value = baseDelay;
+      tap.depth.gain.value = modDepth;
+      tap.osc.frequency.value = clamp(p.rate, 0.1, 10) * (1 + i * 0.017);
+      tap.wet.gain.value = active && i < voices ? dbToGain(p.wetDb) / Math.sqrt(voices) : 0;
+      if ('pan' in tap.panner) {
+        tap.panner.pan.value = voices === 1 ? 0 : -0.75 + (1.5 * i / Math.max(1, voices - 1));
+      }
+    });
+  }
+
+  return { input, output, apply };
+}
 
 /* 频率轴样条映射（与主站完全一致：0-20kHz 非线性轴） */
 const FREQ_AXIS = [
@@ -910,12 +993,13 @@ const state = {
   segmentBuffer: null,     // 应用剪切后的片段
   gatedBuffer: null,       // 片段 + 降噪后的缓存
   gate: { on: false, threshold: -45, reduction: 18, attack: 5, release: 120 },
+  chorus: { on: true, length: 80, voices: 1, rate: 4.2, pitchFudge: 0.13, wetDb: -14, dryDb: -4 },
   verb: { type: 'off', preDelay: 20, decay: 2.2, size: 1.0, lowCut: 120, highCut: 7500, bassMulti: 1.0, wet: 25, dry: 100 },
   bitrate: 192,
   peaks: null,
   segPeaks: null,          // 剪切片段的波形峰值（播放定位用）
   // 实时对比开关：'after'=听处理后 / 'before'=听处理前
-  cmp: { all: 'after', eq: 'after', rev: 'after' },
+  cmp: { all: 'after', eq: 'after', chorus: 'after', rev: 'after' },
   // 各面板 RTA 探测点：'pre' 处理前 / 'post' 处理后
   rta: { gate: 'post', eq: 'post', verb: 'post' },
   activeTab: 'cut',
@@ -1013,8 +1097,8 @@ function currentProcBuffer() {
 
 /* ---------------- ④ 实时试听引擎（常驻信号图 + 实时对比 + RTA） ----------------
    信号图（单一常驻，切换对比只改参数，绝不重建/重播）：
-     src → srcBus → [Gate ScriptProcessor] → EQ 链 → 干声(dry) ┐
-                                                └→ 预延迟→卷积→混响EQ→湿声(wet) ┴→ mixBus → master → 输出
+     src → srcBus → [Gate ScriptProcessor] → EQ 链 → Chorus → 干声(dry) ┐
+                                                          └→ 预延迟→卷积→混响EQ→湿声(wet) ┴→ mixBus → master → 输出
    analyser 侧探测点：gatePre / gatePost / eqPost / revPost，供各面板 RTA 的 Pre/Post 选择。
    Gate 为实时 ScriptProcessor（预览用；导出仍用离线 gateProcess 保证质量）。
 ------------------------------------------------------------------ */
@@ -1022,7 +1106,7 @@ const Live = {
   built: false, src: null, playing: false,
   startTime: 0, offset: 0,
   master: null, srcBus: null, gateNode: null,
-  eqChain: null, revEqChain: null, pre: null, conv: null, wet: null, dry: null, mixBus: null,
+  eqChain: null, chorusChain: null, revEqChain: null, pre: null, conv: null, wet: null, dry: null, mixBus: null,
   an: {},
   gEnv: [0, 0], gGain: [1, 1],
 
@@ -1034,7 +1118,7 @@ const Live = {
     this.master.gain.value = (+$('#volRange').value / 100) * 0.9;
     this.mixBus = ctx.createGain();
     this.srcBus = ctx.createGain();
-    this.an = { gatePre: mkAn(), gatePost: mkAn(), eqPost: mkAn(), revPost: mkAn() };
+    this.an = { gatePre: mkAn(), gatePost: mkAn(), eqPost: mkAn(), chorusPost: mkAn(), revPost: mkAn() };
 
     // 实时 Gate（噪声门），跨缓冲保持包络状态
     const gate = ctx.createScriptProcessor(2048, 2, 2);
@@ -1067,6 +1151,7 @@ const Live = {
     this.gateNode = gate;
 
     this.eqChain = mainEq.buildChain(ctx);
+    this.chorusChain = createChorusChain(ctx);
     this.revEqChain = revEq.buildChain(ctx);
     this.pre = ctx.createDelay(0.5);
     this.conv = ctx.createConvolver();
@@ -1078,8 +1163,10 @@ const Live = {
     gate.connect(this.an.gatePost);
     gate.connect(this.eqChain.input);
     this.eqChain.output.connect(this.an.eqPost);
-    this.eqChain.output.connect(this.dry);
-    this.eqChain.output.connect(this.pre);
+    this.eqChain.output.connect(this.chorusChain.input);
+    this.chorusChain.output.connect(this.an.chorusPost);
+    this.chorusChain.output.connect(this.dry);
+    this.chorusChain.output.connect(this.pre);
     this.pre.connect(this.conv);
     this.conv.connect(this.revEqChain.input);
     this.revEqChain.output.connect(this.an.revPost);
@@ -1151,16 +1238,19 @@ function applyRouting() {
   if (!Live.built) return;
   const rawMode = state.cmp.all === 'before';
   const eqBypass = rawMode || state.cmp.eq === 'before';
+  const chorusBypass = rawMode || state.cmp.chorus === 'before';
   const v = state.verb;
   const revOff = rawMode || state.cmp.rev === 'before' || v.type === 'off';
   Live.eqChain.apply(eqBypass);
+  Live.chorusChain.apply(state.chorus, chorusBypass);
   Live.revEqChain.apply(false);
   Live.pre.delayTime.value = v.preDelay / 1000;
-  Live.dry.gain.value = v.dry / 100;
+  Live.dry.gain.value = rawMode || state.cmp.rev === 'before' ? 1 : v.dry / 100;
   Live.wet.gain.value = revOff ? 0 : v.wet / 100;
   if (!revOff) Live.conv.buffer = getIR(ensureCtx().sampleRate);
 }
 function applyEqLive() { applyRouting(); }
+function applyChorusLive() { applyRouting(); }
 function applyReverbLive() { applyRouting(); }
 
 /* RTA 数据供给：按面板 + Pre/Post 选择返回对应 analyser 的频谱 */
@@ -1168,7 +1258,7 @@ function rtaData(which) {
   if (!Live.built || !Live.playing) return null;
   const an = which === 'gate' ? (state.rta.gate === 'pre' ? Live.an.gatePre : Live.an.gatePost)
     : which === 'eq' ? (state.rta.eq === 'pre' ? Live.an.gatePost : Live.an.eqPost)
-    : (state.rta.verb === 'pre' ? Live.an.eqPost : Live.an.revPost);
+    : (state.rta.verb === 'pre' ? Live.an.chorusPost : Live.an.revPost);
   if (!an) return null;
   const buf = an._buf || (an._buf = new Uint8Array(an.frequencyBinCount));
   an.getByteFrequencyData(buf);
@@ -1322,26 +1412,29 @@ async function renderProcessed() {
   setExpProgress(15);
   await tick();
   const input = currentProcBuffer();
-  setExpStage('busy', '⏳ 阶段 3/3：离线渲染（EQ + 混响）… 请勿切出页面');
+  setExpStage('busy', '⏳ 阶段 3/3：离线渲染（EQ + Chorus + 混响）… 请勿切出页面');
   setExpProgress(30);
   await tick();
   const v = state.verb;
-  const tail = v.type === 'off' ? 0.05 : clamp(v.decay * v.size + v.preDelay / 1000, 0.3, 9);
+  const chorusTail = state.chorus.on ? state.chorus.length / 1000 * (1 + state.chorus.pitchFudge) : 0;
+  const tail = v.type === 'off' ? chorusTail + 0.05 : clamp(v.decay * v.size + v.preDelay / 1000 + chorusTail, 0.3, 9.2);
   const sr = input.sampleRate;
   const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
   const off = new OfflineCtx(2, Math.ceil((input.duration + tail) * sr), sr);
   // 重建与试听完全一致的链路
   const eqChain = mainEq.buildChain(off);
+  const chorusChain = createChorusChain(off); chorusChain.apply(state.chorus, false);
   const revEqChain = revEq.buildChain(off);
   const pre = off.createDelay(0.5); pre.delayTime.value = v.preDelay / 1000;
   const conv = off.createConvolver();
   const wet = off.createGain(); wet.gain.value = v.type === 'off' ? 0 : v.wet / 100;
   const dry = off.createGain(); dry.gain.value = v.dry / 100;
   const sum = off.createGain(); sum.gain.value = 1;
-  eqChain.output.connect(dry).connect(sum);
+  eqChain.output.connect(chorusChain.input);
+  chorusChain.output.connect(dry).connect(sum);
   if (v.type !== 'off') {
     conv.buffer = getIR(sr);
-    eqChain.output.connect(pre); pre.connect(conv);
+    chorusChain.output.connect(pre); pre.connect(conv);
     conv.connect(revEqChain.input);
     revEqChain.output.connect(wet).connect(sum);
   }
@@ -1445,7 +1538,7 @@ async function doExport(format) {
   Live.stop();
   try {
     const rendered = await renderProcessed();
-    const base = (state.fileName.replace(/\.[^.]+$/, '') || 'mix') + '-mix';
+    const base = (state.fileName.replace(/\.[^.]+$/, '') || 'mix') + '-海绵宝宝音';
     if (format === 'wav') {
       setExpStage('busy', '⏳ 写入 WAV…');
       setExpProgress(85); await tick();
@@ -1510,12 +1603,13 @@ function syncVerbCutFromRevEq() {
 }
 
 /* ---------------- ⑦ 模板（localStorage） ---------------- */
-const PRESET_KEY = 'mixExport.userPresets.v1';
+const PRESET_KEY = 'spongebobExport.userPresets.v1';
 function defaultParams() {
   return {
     cut: { mode: 'keep', start: 0, end: null, rmStart: 0, rmEnd: 0 },
     gate: { on: false, threshold: -45, reduction: 18, attack: 5, release: 120 },
     eq: { enabled: true, filters: {} },
+    chorus: { on: true, length: 80, voices: 1, rate: 4.2, pitchFudge: 0.13, wetDb: -14, dryDb: -4 },
     verb: { type: 'off', preDelay: 20, decay: 2.2, size: 1.0, lowCut: 120, highCut: 7500, bassMulti: 1.0, wet: 25, dry: 100, eq: { enabled: true, filters: {} } },
     bitrate: 192,
   };
@@ -1571,6 +1665,7 @@ function collectParams() {
     cut: Object.assign({}, state.cut),
     gate: Object.assign({}, state.gate),
     eq: mainEq.getParams(),
+    chorus: Object.assign({}, state.chorus),
     verb: Object.assign({}, state.verb, { eq: revEq.getParams() }),
     bitrate: state.bitrate,
   };
@@ -1588,6 +1683,7 @@ function applyParams(p) {
   Object.assign(state.gate, full.gate);
   state.gatedBuffer = null;
   mainEq.setParams(full.eq);
+  Object.assign(state.chorus, full.chorus);
   const ve = full.verb.eq;
   Object.assign(state.verb, full.verb); delete state.verb.eq;
   revEq.setParams(ve);
@@ -1630,14 +1726,14 @@ function updateTransport() {
   if (Live.playing) {
     const raw = state.cmp.all === 'before';
     setPill(raw ? 'flat' : 'proc',
-      raw ? '🔵 正在听：处理前（原声片段）' : '🟠 正在听：处理后（Gate + EQ + 混响）');
+      raw ? '🔵 正在听：处理前（原声片段）' : '🟠 正在听：处理后（Gate + EQ + Chorus + 混响）');
   } else {
     setPill('', '⏸ 停在 ' + fmtTime(Live.position()) + '（点波形可定位，播放从此处继续）');
   }
 }
 /* 实时对比按钮外观：后=蓝 / 前=橙；总效果=前 时单项对比不可用（整链已旁通） */
 function updateCmpUi() {
-  [['#cmpAll', 'all', '总效果'], ['#cmpEq', 'eq', 'EQ'], ['#cmpRev', 'rev', '混响']].forEach(([sel, key, name]) => {
+  [['#cmpAll', 'all', '总效果'], ['#cmpEq', 'eq', 'EQ'], ['#cmpChorus', 'chorus', 'Chorus'], ['#cmpRev', 'rev', '混响']].forEach(([sel, key, name]) => {
     const after = state.cmp[key] === 'after';
     const btn = $(sel);
     btn.textContent = `${name}：${after ? '后' : '前'}`;
@@ -1645,6 +1741,7 @@ function updateCmpUi() {
     btn.classList.toggle('before', !after);
   });
   $('#cmpEq').disabled = state.cmp.all === 'before';
+  $('#cmpChorus').disabled = state.cmp.all === 'before';
   $('#cmpRev').disabled = state.cmp.all === 'before';
 }
 function updateEnableStates() {
@@ -1672,6 +1769,7 @@ function updateExpSummary() {
   $('#expSummary').innerHTML =
     `将导出：片段 <b>${fmtTime(segKeptSeconds())}</b> · Gate <b>${state.gate.on ? '开' : '关'}</b>` +
     ` · EQ <b>${mainEq.enabled ? mainEq.activeCount() + ' 点' : '取消'}</b>` +
+    ` · Chorus <b>${state.chorus.on ? state.chorus.voices + ' 声部 / ' + state.chorus.wetDb + 'dB' : '关'}</b>` +
     ` · 混响 <b>${v.type === 'off' ? '关' : (v.type === 'hall' ? 'Hall' : 'Plate') + ' ' + v.wet + '%'}</b>`;
 }
 
@@ -1918,6 +2016,32 @@ $('#eqToggleBtn').addEventListener('click', () => {
   applyEqLive(); updateExpSummary();
 });
 
+/* --- Chorus UI --- */
+function syncChorusUi() {
+  const c = state.chorus;
+  $('#chorusOn').checked = c.on;
+  $('#chLength').value = c.length; $('#chLengthLab').textContent = Math.round(c.length) + ' ms';
+  $('#chVoices').value = c.voices; $('#chVoicesLab').textContent = Math.round(c.voices);
+  $('#chRate').value = Math.round(c.rate * 10); $('#chRateLab').textContent = c.rate.toFixed(1) + ' Hz';
+  $('#chFudge').value = Math.round(c.pitchFudge * 100); $('#chFudgeLab').textContent = c.pitchFudge.toFixed(2);
+  $('#chWet').value = c.wetDb; $('#chWetLab').textContent = Math.round(c.wetDb) + ' dB';
+  $('#chDry').value = c.dryDb; $('#chDryLab').textContent = Math.round(c.dryDb) + ' dB';
+}
+function chorusChanged() {
+  Object.assign(state.chorus, {
+    on: $('#chorusOn').checked,
+    length: +$('#chLength').value,
+    voices: +$('#chVoices').value,
+    rate: +$('#chRate').value / 10,
+    pitchFudge: +$('#chFudge').value / 100,
+    wetDb: +$('#chWet').value,
+    dryDb: +$('#chDry').value,
+  });
+  syncChorusUi(); applyChorusLive(); updateExpSummary();
+}
+['#chorusOn', '#chLength', '#chVoices', '#chRate', '#chFudge', '#chWet', '#chDry']
+  .forEach(s => $(s).addEventListener('input', chorusChanged));
+
 /* --- 混响 UI --- */
 const verbSliderDefs = [
   ['#vPre', '#vPreLab', v => v, v => Math.round(v) + 'ms', 'preDelay'],
@@ -2104,6 +2228,7 @@ function syncAllUi() {
     box.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x.dataset.pp === state.rta[which]));
   });
   updateCmpUi();
+  syncChorusUi();
   syncVerbSliderLabels();
   syncCutUi();
   updateExpSummary();
